@@ -27,11 +27,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. dbus-fronius source code has been analyzed and the exact discovery requirements (manufacturer string, SunSpec model order, any HTTP dependencies) are documented
   2. SolarEdge SE30K registers have been read live via Modbus TCP and the actual register layout matches or has been reconciled with documentation
   3. A complete register mapping table exists that translates every needed SolarEdge register to its Fronius SunSpec equivalent (including scale factors)
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Project scaffolding, dbus-fronius expectations doc, register mapping spec with unit tests
+- [ ] 01-02-PLAN.md — Live SE30K register validation via Modbus TCP
 
 ### Phase 2: Core Proxy (Read Path)
 **Goal**: Venus OS discovers the proxy as a Fronius inverter and displays live monitoring data from the SolarEdge SE30K
@@ -88,7 +88,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Protocol Research & Validation | 0/? | Not started | - |
+| 1. Protocol Research & Validation | 0/2 | Planning complete | - |
 | 2. Core Proxy (Read Path) | 0/? | Not started | - |
 | 3. Control Path & Production Hardening | 0/? | Not started | - |
 | 4. Configuration Webapp | 0/? | Not started | - |
