@@ -1,26 +1,26 @@
 # Requirements: Venus OS Fronius Proxy
 
 **Defined:** 2026-03-17
-**Core Value:** Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern können wie einen echten Fronius-Inverter
+**Core Value:** Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie einen echten Fronius-Inverter
 
 ## v1 Requirements
 
 ### Protocol Research & Validation
 
-- [ ] **PROTO-01**: dbus-fronius Source Code analysiert — exakte Fronius-Erwartungen (Discovery, Manufacturer-String, SunSpec Models) dokumentiert
+- [ ] **PROTO-01**: dbus-fronius Source Code analysiert -- exakte Fronius-Erwartungen (Discovery, Manufacturer-String, SunSpec Models) dokumentiert
 - [ ] **PROTO-02**: SolarEdge SE30K Register-Map per Modbus TCP live ausgelesen und validiert
-- [ ] **PROTO-03**: Register-Mapping-Spezifikation erstellt (SolarEdge → Fronius SunSpec Translation Table)
+- [ ] **PROTO-03**: Register-Mapping-Spezifikation erstellt (SolarEdge -> Fronius SunSpec Translation Table)
 
 ### Modbus Proxy Core
 
-- [ ] **PROXY-01**: Modbus TCP Server läuft und akzeptiert Verbindungen von Venus OS
+- [ ] **PROXY-01**: Modbus TCP Server laeuft und akzeptiert Verbindungen von Venus OS
 - [ ] **PROXY-02**: SunSpec Common Model (Model 1) korrekt bereitgestellt mit Fronius-Manufacturer-String
 - [ ] **PROXY-03**: SunSpec Inverter Model 103 (three-phase) korrekt bereitgestellt mit Live-Daten vom SE30K
 - [ ] **PROXY-04**: SunSpec Nameplate Model (Model 120) korrekt bereitgestellt
-- [ ] **PROXY-05**: SunSpec Model Chain korrekt aufgebaut (Header → Common → Inverter → Nameplate → End)
+- [ ] **PROXY-05**: SunSpec Model Chain korrekt aufgebaut (Header -> Common -> Inverter -> Nameplate -> End)
 - [ ] **PROXY-06**: SolarEdge Register werden per Modbus TCP Client async gepollt
 - [ ] **PROXY-07**: Venus OS wird aus Register-Cache bedient (nicht synchron durch-proxied)
-- [ ] **PROXY-08**: Scale Factors korrekt übersetzt zwischen SolarEdge und Fronius SunSpec-Profil
+- [ ] **PROXY-08**: Scale Factors korrekt uebersetzt zwischen SolarEdge und Fronius SunSpec-Profil
 - [ ] **PROXY-09**: Venus OS erkennt und zeigt den Proxy als Fronius Inverter an
 
 ### Steuerung (Control Path)
@@ -31,22 +31,22 @@
 
 ### Webapp
 
-- [ ] **WEB-01**: Webapp erreichbar über HTTP im LAN
-- [ ] **WEB-02**: SolarEdge IP-Adresse und Modbus-Port konfigurierbar über UI
+- [ ] **WEB-01**: Webapp erreichbar ueber HTTP im LAN
+- [ ] **WEB-02**: SolarEdge IP-Adresse und Modbus-Port konfigurierbar ueber UI
 - [ ] **WEB-03**: Verbindungsstatus zu SolarEdge und Venus OS live angezeigt
 - [ ] **WEB-04**: Service-Health-Status angezeigt (uptime, letzte erfolgreiche Polls)
 - [ ] **WEB-05**: Register-Viewer zeigt Live Modbus Register (SolarEdge-Quell- und Fronius-Ziel-Register)
 
 ### Deployment & Betrieb
 
-- [ ] **DEPL-01**: Läuft als systemd Service mit Auto-Start und Restart-on-Failure
+- [ ] **DEPL-01**: Laeuft als systemd Service mit Auto-Start und Restart-on-Failure
 - [ ] **DEPL-02**: Automatische Reconnection bei Verbindungsabbruch zum SolarEdge
-- [ ] **DEPL-03**: Graceful Handling wenn Inverter offline (Nacht/Wartung) — keine Crash-Loops
-- [ ] **DEPL-04**: Strukturiertes Logging (JSON) für systemd Journal
+- [ ] **DEPL-03**: Graceful Handling wenn Inverter offline (Nacht/Wartung) -- keine Crash-Loops
+- [ ] **DEPL-04**: Strukturiertes Logging (JSON) fuer systemd Journal
 
 ### Architektur
 
-- [ ] **ARCH-01**: Plugin-Interface definiert für Inverter-Marken (SolarEdge als erstes Plugin)
+- [ ] **ARCH-01**: Plugin-Interface definiert fuer Inverter-Marken (SolarEdge als erstes Plugin)
 - [ ] **ARCH-02**: Register-Mapping als austauschbares Modul (nicht hardcoded)
 
 ## v2 Requirements
@@ -71,8 +71,8 @@
 
 | Feature | Reason |
 |---------|--------|
-| TLS/Auth für Webapp | Alles im selben LAN, kein Sicherheits-Overhead gewünscht |
-| Mobile App | Webapp reicht, responsive Design genügt |
+| TLS/Auth fuer Webapp | Alles im selben LAN, kein Sicherheits-Overhead gewuenscht |
+| Mobile App | Webapp reicht, responsive Design genuegt |
 | Historische Datenbank | Venus OS macht Langzeit-Logging selbst |
 | Docker/Container-Orchestrierung | Direktes Deployment auf LXC (Debian 13) |
 | Andere Inverter-Marken in v1 | Nur SolarEdge SE30K, aber Architektur vorbereitet |
@@ -81,38 +81,38 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROTO-01 | — | Pending |
-| PROTO-02 | — | Pending |
-| PROTO-03 | — | Pending |
-| PROXY-01 | — | Pending |
-| PROXY-02 | — | Pending |
-| PROXY-03 | — | Pending |
-| PROXY-04 | — | Pending |
-| PROXY-05 | — | Pending |
-| PROXY-06 | — | Pending |
-| PROXY-07 | — | Pending |
-| PROXY-08 | — | Pending |
-| PROXY-09 | — | Pending |
-| CTRL-01 | — | Pending |
-| CTRL-02 | — | Pending |
-| CTRL-03 | — | Pending |
-| WEB-01 | — | Pending |
-| WEB-02 | — | Pending |
-| WEB-03 | — | Pending |
-| WEB-04 | — | Pending |
-| WEB-05 | — | Pending |
-| DEPL-01 | — | Pending |
-| DEPL-02 | — | Pending |
-| DEPL-03 | — | Pending |
-| DEPL-04 | — | Pending |
-| ARCH-01 | — | Pending |
-| ARCH-02 | — | Pending |
+| PROTO-01 | Phase 1 | Pending |
+| PROTO-02 | Phase 1 | Pending |
+| PROTO-03 | Phase 1 | Pending |
+| PROXY-01 | Phase 2 | Pending |
+| PROXY-02 | Phase 2 | Pending |
+| PROXY-03 | Phase 2 | Pending |
+| PROXY-04 | Phase 2 | Pending |
+| PROXY-05 | Phase 2 | Pending |
+| PROXY-06 | Phase 2 | Pending |
+| PROXY-07 | Phase 2 | Pending |
+| PROXY-08 | Phase 2 | Pending |
+| PROXY-09 | Phase 2 | Pending |
+| CTRL-01 | Phase 3 | Pending |
+| CTRL-02 | Phase 3 | Pending |
+| CTRL-03 | Phase 3 | Pending |
+| WEB-01 | Phase 4 | Pending |
+| WEB-02 | Phase 4 | Pending |
+| WEB-03 | Phase 4 | Pending |
+| WEB-04 | Phase 4 | Pending |
+| WEB-05 | Phase 4 | Pending |
+| DEPL-01 | Phase 3 | Pending |
+| DEPL-02 | Phase 3 | Pending |
+| DEPL-03 | Phase 3 | Pending |
+| DEPL-04 | Phase 3 | Pending |
+| ARCH-01 | Phase 2 | Pending |
+| ARCH-02 | Phase 2 | Pending |
 
 **Coverage:**
 - v1 requirements: 26 total
-- Mapped to phases: 0
-- Unmapped: 26 (will be mapped during roadmap creation)
+- Mapped to phases: 26
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after initial definition*
+*Last updated: 2026-03-17 after roadmap creation*
