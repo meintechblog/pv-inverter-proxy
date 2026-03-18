@@ -1,5 +1,23 @@
 # Milestones
 
+## v2.1 Dashboard Redesign & Polish (Shipped: 2026-03-18)
+
+**Phases:** 9-12 (4 phases, 7 plans)
+**Commits:** 34 | **LOC:** +1,223/-79 | **Timeline:** ~2 hours
+**Git range:** `feat(09-01)` → `feat(12-01)`
+
+**Key accomplishments:**
+1. CSS animation foundation: gauge 0.5s + deadband, entrance animations, prefers-reduced-motion
+2. Toast notification system: stacking (max 4), exit animations, click-to-dismiss, duplicate suppression
+3. Peak statistics: peak kW, operating hours (MPPT), efficiency indicator with dashboard card
+4. Smart event notifications: override, fault, temperature (75C), night mode transitions
+5. Venus OS Widget: connection status, Apple-style lock toggle (900s safety cap), confirmation dialog
+6. Unified single-page dashboard: inline power control, collapsible override log, 2-row bottom grid
+
+**Requirements:** 19/19 complete (4 ANIM, 5 NOTIF, 3 STATS, 4 VENUS, 3 LAYOUT)
+
+---
+
 ## v2.0 Dashboard & Power Control (Shipped: 2026-03-18)
 
 **Phases:** 5-8 (4 phases, 7 plans)
