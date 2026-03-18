@@ -53,11 +53,11 @@ Full details: `.planning/milestones/v2.0-ROADMAP.md`
   3. Value changes in cards produce a subtle highlight flash
   4. All animations are disabled when prefers-reduced-motion is active in the browser
   5. Multiple toast notifications stack visually without overlapping, each dismissible by click with an exit animation
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 09-01: TBD
-- [ ] 09-02: TBD
+- [ ] 09-01-PLAN.md — Animation foundation: CSS variables, gauge 0.5s transition + deadband, entrance animations, value flash thresholds, prefers-reduced-motion
+- [ ] 09-02-PLAN.md — Toast system refactor: stacking container, exit animations, click-to-dismiss, duplicate suppression
 
 ### Phase 10: Peak Statistics & Smart Notifications
 **Goal**: Users can see daily performance stats at a glance and receive automatic alerts for important inverter events
@@ -117,7 +117,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12
 | 6. Live Dashboard | v2.0 | 2/2 | Complete | 2026-03-18 |
 | 7. Power Control | v2.0 | 2/2 | Complete | 2026-03-18 |
 | 8. Inverter Details & Polish | v2.0 | 1/1 | Complete | 2026-03-18 |
-| 9. CSS Animations & Toast System | v2.1 | 0/? | Not started | - |
+| 9. CSS Animations & Toast System | v2.1 | 0/2 | Planning complete | - |
 | 10. Peak Statistics & Smart Notifications | v2.1 | 0/? | Not started | - |
 | 11. Venus OS Widget & Lock Toggle | v2.1 | 0/? | Not started | - |
 | 12. Unified Dashboard Layout | v2.1 | 0/? | Not started | - |
