@@ -473,6 +473,8 @@ body {
 .ve-card--entering:nth-child(6) { animation-delay: 300ms; }
 .ve-card--entering:nth-child(7) { animation-delay: 360ms; }
 .ve-card--entering:nth-child(8) { animation-delay: 420ms; }
+.ve-card--entering:nth-child(9) { animation-delay: 480ms; }
+.ve-card--entering:nth-child(10) { animation-delay: 540ms; }
 
 /* ===== Apple-style Toggle ===== */
 .ve-toggle {
@@ -692,6 +694,53 @@ body {
     gap: 1rem;
 }
 
+.ve-dashboard-row1 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.ve-dashboard-row2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+/* Inline Power Control */
+.ve-power-control-inline {
+    margin-bottom: 1rem;
+}
+
+/* Collapsible Override Log */
+.ve-override-log-section {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--ve-border);
+}
+
+.ve-override-log-toggle {
+    background: none;
+    border: 1px solid var(--ve-border);
+    border-radius: 6px;
+    color: var(--ve-text-dim);
+    padding: 6px 12px;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    width: 100%;
+    text-align: left;
+}
+
+.ve-override-log-toggle:hover {
+    color: var(--ve-text);
+    border-color: var(--ve-blue);
+}
+
+.ve-override-log--collapsed {
+    display: none;
+}
+
 .ve-card-title {
     font-size: 0.85rem;
     color: var(--ve-text-dim);
@@ -818,6 +867,12 @@ body {
         grid-column: 1 / -1;
     }
     .ve-dashboard-bottom {
+        grid-template-columns: 1fr;
+    }
+    .ve-dashboard-row1 {
+        grid-template-columns: 1fr;
+    }
+    .ve-dashboard-row2 {
         grid-template-columns: 1fr;
     }
 }
