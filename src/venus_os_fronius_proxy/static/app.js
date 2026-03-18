@@ -213,7 +213,7 @@ function detectEvents(prev, curr) {
     // Detect auto-unlock event: was locked, now unlocked
     if (prev.venus_os && curr.venus_os) {
         if (prev.venus_os.is_locked && !curr.venus_os.is_locked) {
-            showToast('Venus OS control auto-unlocked', 'info');
+            showToast('Venus OS control re-enabled (auto)', 'info');
         }
     }
 }
@@ -1181,7 +1181,7 @@ function stopCountdownInterval() {
             var unlockTime = new Date(Date.now() + 15 * 60 * 1000);
             var timeStr = unlockTime.getHours() + ':' + (unlockTime.getMinutes() < 10 ? '0' : '') + unlockTime.getMinutes();
             showConfirmDialog(
-                'Lock Venus OS control for <strong>15 minutes</strong>?<br>' +
+                'Disable Venus OS control for <strong>15 minutes</strong>?<br>' +
                 'Venus OS will not be able to limit inverter power during this time.<br>' +
                 'Auto-unlock at ' + timeStr + '.',
                 function() { sendLockCommand(true); }
@@ -1202,7 +1202,7 @@ async function sendLockCommand(lock) {
         var data = await res.json();
         if (data.success) {
             showToast(
-                lock ? 'Venus OS control locked (15 min)' : 'Venus OS control unlocked',
+                lock ? 'Venus OS control disabled (15 min)' : 'Venus OS control enabled',
                 lock ? 'warning' : 'success'
             );
         } else {
