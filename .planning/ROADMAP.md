@@ -97,10 +97,10 @@ Plans:
   1. Power control (slider, toggle, override log) appears inline below the power gauge -- no navigation required
   2. All widgets (gauge, power control, 3-phase, sparkline, status, daily energy, peak stats, Venus OS) are visible in a compact grid on one page
   3. Sidebar navigation shows only Dashboard, Config, and Registers (power control page removed)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 12-01: TBD
+- [ ] 12-01-PLAN.md — Merge Power Control inline into Dashboard, 2-row bottom grid, remove Power Control page and nav item
 
 ## Progress
 
@@ -120,4 +120,4 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12
 | 9. CSS Animations & Toast System | 2/2 | Complete   | 2026-03-18 | - |
 | 10. Peak Statistics & Smart Notifications | 2/2 | Complete    | 2026-03-18 | - |
 | 11. Venus OS Widget & Lock Toggle | 2/2 | Complete    | 2026-03-18 | - |
-| 12. Unified Dashboard Layout | v2.1 | 0/? | Not started | - |
+| 12. Unified Dashboard Layout | v2.1 | 0/1 | Not started | - |
