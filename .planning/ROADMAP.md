@@ -56,8 +56,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Backend WebSocket infrastructure: /ws endpoint, broadcast from poll loop, client tracking with WeakSet
-- [ ] 06-02-PLAN.md — Frontend dashboard widgets: SVG power gauge, 3-phase cards, sparkline, WebSocket-driven updates
+- [x] 06-01-PLAN.md — Backend WebSocket infrastructure: /ws endpoint, broadcast from poll loop, client tracking with WeakSet
+- [x] 06-02-PLAN.md — Frontend dashboard widgets: SVG power gauge, 3-phase cards, sparkline, WebSocket-driven updates
 
 ### Phase 7: Power Control
 **Goal**: Users can view and test power limiting from the webapp with safety confirmations, and see who currently controls the inverter
@@ -69,11 +69,11 @@ Plans:
   3. User can toggle power limiting on/off with a confirmation step, and the inverter responds accordingly
   4. After applying a power limit, the UI shows confirmation that the SE30K accepted the new value (live feedback from actual register read-back)
   5. When Venus OS overrides the power limit, the dashboard clearly indicates Venus OS has control and logs the override event with timestamp and value
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: TBD
-- [ ] 07-02: TBD
+- [ ] 07-01-PLAN.md — Backend: ControlState extension, OverrideLog, EDPC refresh loop, POST /api/power-limit, Venus OS override tracking
+- [ ] 07-02-PLAN.md — Frontend: Power Control page with slider, confirmation dialog, toggle, live feedback, override log
 
 ### Phase 8: Inverter Details & Polish
 **Goal**: Dashboard shows comprehensive inverter health information and daily production summary
@@ -98,6 +98,6 @@ Plans:
 | 3. Control Path & Production Hardening | v1.0 | 3/3 | Complete | 2026-03-18 |
 | 4. Configuration Webapp | v1.0 | 2/2 | Complete | 2026-03-18 |
 | 5. Data Pipeline & Theme Foundation | v2.0 | 2/2 | Complete | 2026-03-18 |
-| 6. Live Dashboard | 2/2 | Complete   | 2026-03-18 | - |
-| 7. Power Control | v2.0 | 0/? | Not started | - |
+| 6. Live Dashboard | v2.0 | 2/2 | Complete | 2026-03-18 |
+| 7. Power Control | v2.0 | 0/2 | Not started | - |
 | 8. Inverter Details & Polish | v2.0 | 0/? | Not started | - |
