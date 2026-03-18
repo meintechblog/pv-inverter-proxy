@@ -403,3 +403,49 @@ def test_peak_stats_reset_new_instance():
     cache = _make_cache_with_values(overrides)
     snap2 = collector2.collect(cache)
     assert snap2["inverter"]["peak_power_w"] == 1000
+
+
+# --- Venus OS lock section (Phase 11) ---
+
+
+def test_snapshot_venus_os_section():
+    """Snapshot includes venus_os dict with is_locked, lock_remaining_s, last_source, last_change_ts."""
+    collector = DashboardCollector()
+    overrides = _zero_sf_overrides()
+    overrides[40093] = [0, 0]
+    overrides[40095] = 0
+    overrides[40083] = 1000
+    overrides[40084] = 0
+
+    cache = _make_cache_with_values(overrides)
+    cs = ControlState()
+    snapshot = collector.collect(cache, control_state=cs)
+
+    assert "venus_os" in snapshot
+    vo = snapshot["venus_os"]
+    assert "is_locked" in vo
+    assert "lock_remaining_s" in vo
+    assert "last_source" in vo
+    assert "last_change_ts" in vo
+    assert vo["is_locked"] is False
+    assert vo["lock_remaining_s"] is None
+
+
+def test_snapshot_venus_os_locked():
+    """When locked, venus_os section shows is_locked=True and lock_remaining_s > 0."""
+    collector = DashboardCollector()
+    overrides = _zero_sf_overrides()
+    overrides[40093] = [0, 0]
+    overrides[40095] = 0
+    overrides[40083] = 1000
+    overrides[40084] = 0
+
+    cache = _make_cache_with_values(overrides)
+    cs = ControlState()
+    cs.lock(900.0)
+    snapshot = collector.collect(cache, control_state=cs)
+
+    vo = snapshot["venus_os"]
+    assert vo["is_locked"] is True
+    assert vo["lock_remaining_s"] is not None
+    assert vo["lock_remaining_s"] > 0

@@ -298,3 +298,41 @@ async def test_power_limit_feedback(client, shared_ctx, mock_plugin):
     data = await resp.json()
     assert data["success"] is False
     assert data["error"] == "Inverter timeout"
+
+
+# ---------- POST /api/venus-lock (Phase 11) ----------
+
+
+async def test_venus_lock_endpoint_lock(client, shared_ctx):
+    """POST /api/venus-lock with action=lock locks for 15 min."""
+    resp = await client.post("/api/venus-lock", json={"action": "lock"})
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["success"] is True
+    assert shared_ctx["control_state"].is_locked is True
+
+
+async def test_venus_lock_endpoint_unlock(client, shared_ctx):
+    """POST /api/venus-lock with action=unlock unlocks."""
+    shared_ctx["control_state"].lock(900.0)
+    resp = await client.post("/api/venus-lock", json={"action": "unlock"})
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["success"] is True
+    assert shared_ctx["control_state"].is_locked is False
+
+
+async def test_venus_lock_endpoint_invalid_action(client):
+    """POST /api/venus-lock with invalid action returns 400."""
+    resp = await client.post("/api/venus-lock", json={"action": "foo"})
+    assert resp.status == 400
+
+
+async def test_venus_lock_endpoint_invalid_json(client):
+    """POST /api/venus-lock with invalid JSON returns 400."""
+    resp = await client.post(
+        "/api/venus-lock",
+        data=b"not json",
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status == 400

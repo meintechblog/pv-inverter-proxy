@@ -316,3 +316,122 @@ class TestEdpcRefreshLoop:
             await task
 
         plugin.write_power_limit.assert_not_called()
+
+
+# ---------- Lock state (Phase 11) ----------
+
+
+class TestControlStateLock:
+    def test_lock_defaults(self):
+        """New ControlState has is_locked=False, lock_expires_at=None."""
+        cs = ControlState()
+        assert cs.is_locked is False
+        assert cs.lock_expires_at is None
+
+    def test_lock_sets_is_locked(self):
+        """lock() sets is_locked=True."""
+        cs = ControlState()
+        cs.lock()
+        assert cs.is_locked is True
+
+    def test_lock_sets_deadline(self):
+        """lock() sets lock_expires_at in the future."""
+        cs = ControlState()
+        before = time.monotonic()
+        cs.lock(900.0)
+        after = time.monotonic()
+        assert cs.lock_expires_at is not None
+        assert before + 900.0 <= cs.lock_expires_at <= after + 900.0
+
+    def test_lock_caps_at_900s(self):
+        """lock(2000) caps duration at 900s (HARD CAP)."""
+        cs = ControlState()
+        before = time.monotonic()
+        cs.lock(2000.0)
+        after = time.monotonic()
+        assert cs.lock_expires_at is not None
+        # Must be capped at 900, not 2000
+        assert cs.lock_expires_at <= after + 900.1
+        assert cs.lock_expires_at >= before + 899.9
+
+    def test_lock_default_duration_900(self):
+        """lock() with no args uses 900s default."""
+        cs = ControlState()
+        before = time.monotonic()
+        cs.lock()
+        after = time.monotonic()
+        assert cs.lock_expires_at is not None
+        assert before + 899.9 <= cs.lock_expires_at <= after + 900.1
+
+    def test_unlock_clears_state(self):
+        """unlock() clears is_locked and lock_expires_at."""
+        cs = ControlState()
+        cs.lock(900.0)
+        assert cs.is_locked is True
+        cs.unlock()
+        assert cs.is_locked is False
+        assert cs.lock_expires_at is None
+
+    def test_check_lock_expiry_not_expired(self):
+        """check_lock_expiry() returns False when lock not expired."""
+        cs = ControlState()
+        cs.lock(900.0)
+        assert cs.check_lock_expiry() is False
+        assert cs.is_locked is True
+
+    def test_check_lock_expiry_expired(self):
+        """check_lock_expiry() returns True and unlocks when expired."""
+        cs = ControlState()
+        cs.lock(0.0)  # Expires immediately
+        # monotonic should now be >= lock_expires_at
+        assert cs.check_lock_expiry() is True
+        assert cs.is_locked is False
+        assert cs.lock_expires_at is None
+
+    def test_check_lock_expiry_not_locked(self):
+        """check_lock_expiry() returns False when not locked."""
+        cs = ControlState()
+        assert cs.check_lock_expiry() is False
+
+    def test_lock_remaining_s_not_locked(self):
+        """lock_remaining_s returns None when not locked."""
+        cs = ControlState()
+        assert cs.lock_remaining_s is None
+
+    def test_lock_remaining_s_locked(self):
+        """lock_remaining_s returns approximate remaining seconds when locked."""
+        cs = ControlState()
+        cs.lock(900.0)
+        remaining = cs.lock_remaining_s
+        assert remaining is not None
+        assert 899.0 <= remaining <= 900.1
+
+
+class TestEdpcLockExpiry:
+    @pytest.mark.asyncio
+    async def test_edpc_auto_unlock_expired(self):
+        """edpc_refresh_loop auto-unlocks expired lock and broadcasts."""
+        cs = ControlState()
+        cs.lock(0.0)  # Expires immediately
+
+        plugin = AsyncMock()
+        from venus_os_fronius_proxy.plugin import WriteResult
+        plugin.write_power_limit = AsyncMock(return_value=WriteResult(success=True))
+        log = OverrideLog()
+        broadcast = AsyncMock()
+
+        task = asyncio.create_task(
+            edpc_refresh_loop(plugin, cs, log, interval=0.05, broadcast_fn=broadcast)
+        )
+        await asyncio.sleep(0.15)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # Lock should have been cleared
+        assert cs.is_locked is False
+        # Should have logged the auto-unlock
+        events = log.get_all()
+        assert any(e["action"] == "unlock" and "auto-unlock" in e.get("detail", "") for e in events)
+        # Should have broadcast
+        assert broadcast.call_count >= 1

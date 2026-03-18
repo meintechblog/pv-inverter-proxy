@@ -468,3 +468,99 @@ class TestVenusOsOverrideTracking:
         events = override_log.get_all()
         assert len(events) >= 1
         assert events[-1]["source"] == "venus_os"
+
+
+# ---------- Lock check in write path (Phase 11) ----------
+
+
+class TestProxyLockBehavior:
+    @pytest.mark.asyncio
+    async def test_locked_wmaxlimpct_not_forwarded(self):
+        """When locked, WMaxLimPct write accepted but NOT forwarded to inverter."""
+        plugin = _make_mock_plugin(poll_success=True)
+        initial_values = build_initial_registers()
+        datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
+        cache = RegisterCache(datablock, staleness_timeout=30.0)
+        control = ControlState()
+        control.lock(900.0)
+        control.last_source = "webapp"  # Set a known source
+
+        slave_ctx = StalenessAwareSlaveContext(
+            cache=cache, plugin=plugin, control_state=control, hr=datablock,
+        )
+        slave_ctx._shared_ctx = {"override_log": OverrideLog()}
+
+        # Write WMaxLimPct while locked
+        await slave_ctx._handle_control_write(40154, [5000])
+
+        # Plugin should NOT have been called
+        plugin.write_power_limit.assert_not_called()
+        # Local register should still be updated
+        assert control.wmaxlimpct_raw == 5000
+
+    @pytest.mark.asyncio
+    async def test_locked_wmaxlim_ena_not_forwarded(self):
+        """When locked, WMaxLim_Ena write accepted but NOT forwarded to inverter."""
+        plugin = _make_mock_plugin(poll_success=True)
+        initial_values = build_initial_registers()
+        datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
+        cache = RegisterCache(datablock, staleness_timeout=30.0)
+        control = ControlState()
+        control.lock(900.0)
+        control.last_source = "webapp"
+
+        slave_ctx = StalenessAwareSlaveContext(
+            cache=cache, plugin=plugin, control_state=control, hr=datablock,
+        )
+        slave_ctx._shared_ctx = {"override_log": OverrideLog()}
+
+        # Write WMaxLim_Ena while locked
+        await slave_ctx._handle_control_write(40158, [1])
+
+        # Plugin should NOT have been called
+        plugin.write_power_limit.assert_not_called()
+        # Local register should still be updated
+        assert control.wmaxlim_ena == 1
+
+    @pytest.mark.asyncio
+    async def test_locked_does_not_update_source(self):
+        """When locked, write does NOT call set_from_venus_os (source unchanged)."""
+        plugin = _make_mock_plugin(poll_success=True)
+        initial_values = build_initial_registers()
+        datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
+        cache = RegisterCache(datablock, staleness_timeout=30.0)
+        control = ControlState()
+        control.lock(900.0)
+        control.last_source = "webapp"
+
+        slave_ctx = StalenessAwareSlaveContext(
+            cache=cache, plugin=plugin, control_state=control, hr=datablock,
+        )
+        slave_ctx._shared_ctx = {"override_log": OverrideLog()}
+
+        await slave_ctx._handle_control_write(40154, [5000])
+
+        # Source should NOT have changed to "venus_os"
+        assert control.last_source == "webapp"
+
+    @pytest.mark.asyncio
+    async def test_unlocked_still_forwards(self):
+        """When unlocked (default), write is forwarded to inverter normally."""
+        plugin = _make_mock_plugin(poll_success=True)
+        initial_values = build_initial_registers()
+        datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
+        cache = RegisterCache(datablock, staleness_timeout=30.0)
+        control = ControlState()
+        # is_locked defaults to False
+        control.update_wmaxlim_ena(1)  # Enable so the plugin is called
+
+        slave_ctx = StalenessAwareSlaveContext(
+            cache=cache, plugin=plugin, control_state=control, hr=datablock,
+        )
+        slave_ctx._shared_ctx = {"override_log": OverrideLog()}
+
+        await slave_ctx._handle_control_write(40154, [5000])
+
+        # Plugin SHOULD have been called
+        plugin.write_power_limit.assert_called_once()
+        assert control.last_source == "venus_os"
