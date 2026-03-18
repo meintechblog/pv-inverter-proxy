@@ -137,9 +137,10 @@ body {
     border-bottom: 1px solid var(--ve-border);
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 12px;
-    padding: 10px 20px;
-    min-height: 48px;
+    padding: 6px 20px;
+    min-height: 32px;
     position: sticky;
     top: 0;
     z-index: 10;
