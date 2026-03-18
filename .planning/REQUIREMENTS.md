@@ -12,8 +12,8 @@ Requirements for v2.0 Dashboard & Power Control UI milestone.
 - [x] **DASH-01**: Venus OS themed UI (exakte Farben #387DC5/#141414, Fonts, Widget-Style)
 - [x] **DASH-02**: Live Power Gauge — zentrale Anzeige aktuelle Leistung vs 30kW Nennleistung
 - [x] **DASH-03**: 3-Phasen Detail — L1/L2/L3 Strom, Spannung, Leistung einzeln
-- [ ] **DASH-04**: Inverter Status Panel — Operating/Sleeping/Throttled/Fault, Temperatur, DC Werte
-- [ ] **DASH-05**: Tagesertrag Anzeige — heutiger Ertrag in kWh (in-memory, reset bei Restart)
+- [x] **DASH-04**: Inverter Status Panel — Operating/Sleeping/Throttled/Fault, Temperatur, DC Werte
+- [x] **DASH-05**: Tagesertrag Anzeige — heutiger Ertrag in kWh (in-memory, reset bei Restart)
 - [x] **DASH-06**: Mini-Sparklines — Leistungsverlauf letzte 60 Minuten (SVG, in-memory Ring Buffer)
 
 ### Power Control (CTRL)
@@ -69,8 +69,8 @@ Requirements for v2.0 Dashboard & Power Control UI milestone.
 | DASH-01 | Phase 5 | Complete |
 | DASH-02 | Phase 6 | Complete |
 | DASH-03 | Phase 6 | Complete |
-| DASH-04 | Phase 8 | Pending |
-| DASH-05 | Phase 8 | Pending |
+| DASH-04 | Phase 8 | Complete |
+| DASH-05 | Phase 8 | Complete |
 | DASH-06 | Phase 6 | Complete |
 | CTRL-04 | Phase 7 | Complete |
 | CTRL-05 | Phase 7 | Complete |

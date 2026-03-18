@@ -24,7 +24,7 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
 - [x] **Phase 5: Data Pipeline & Theme Foundation** - Backend data collector, time series buffer, 3-file split, Venus OS theme (completed 2026-03-18)
 - [x] **Phase 6: Live Dashboard** - WebSocket push, power gauge, 3-phase details, sparklines (completed 2026-03-18)
 - [x] **Phase 7: Power Control** - Read-only display, test slider, enable/disable, override detection, EDPC refresh (completed 2026-03-18)
-- [ ] **Phase 8: Inverter Details & Polish** - Status panel, daily energy, existing config/register integration
+- [x] **Phase 8: Inverter Details & Polish** - Status panel, daily energy, existing config/register integration (completed 2026-03-18)
 
 ## Phase Details
 
@@ -100,4 +100,4 @@ Plans:
 | 5. Data Pipeline & Theme Foundation | v2.0 | 2/2 | Complete | 2026-03-18 |
 | 6. Live Dashboard | v2.0 | 2/2 | Complete | 2026-03-18 |
 | 7. Power Control | 2/2 | Complete   | 2026-03-18 | - |
-| 8. Inverter Details & Polish | v2.0 | 0/1 | Not started | - |
+| 8. Inverter Details & Polish | 1/1 | Complete   | 2026-03-18 | - |
