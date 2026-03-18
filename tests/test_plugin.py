@@ -58,6 +58,9 @@ class TestInverterPluginABC:
             async def write_power_limit(self, enable: bool, limit_pct: float) -> WriteResult:
                 return WriteResult(success=True)
 
+            async def reconfigure(self, host: str, port: int, unit_id: int) -> None:
+                pass
+
             async def close(self) -> None:
                 pass
 
