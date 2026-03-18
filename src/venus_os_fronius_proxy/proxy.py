@@ -224,6 +224,7 @@ async def _poll_loop(
     control_state: ControlState | None = None,
     poll_interval: float = POLL_INTERVAL,
     poll_counter: dict | None = None,
+    shared_ctx: dict | None = None,
 ) -> None:
     """Background polling loop with reconnection and night mode.
 
@@ -251,6 +252,13 @@ async def _poll_loop(
             if result.success:
                 poll_counter["success"] += 1
                 conn_mgr.on_poll_success()
+
+                # Store raw SE30K poll data for webapp register viewer (source column)
+                if shared_ctx is not None:
+                    shared_ctx["last_se_poll"] = {
+                        "common_registers": result.common_registers,
+                        "inverter_registers": result.inverter_registers,
+                    }
 
                 # Preserve energy reading from inverter registers
                 if len(result.inverter_registers) > 27:
@@ -392,11 +400,12 @@ async def run_proxy(
         shared_ctx["conn_mgr"] = conn_mgr
         shared_ctx["control_state"] = control_state
         shared_ctx["poll_counter"] = poll_counter
+        shared_ctx["last_se_poll"] = None
 
     try:
         await asyncio.gather(
             _start_server(server),
-            _poll_loop(plugin, cache, conn_mgr, control_state, poll_interval=poll_interval, poll_counter=poll_counter),
+            _poll_loop(plugin, cache, conn_mgr, control_state, poll_interval=poll_interval, poll_counter=poll_counter, shared_ctx=shared_ctx),
         )
     finally:
         await plugin.close()
