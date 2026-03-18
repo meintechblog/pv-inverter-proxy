@@ -25,9 +25,9 @@
 
 ### Steuerung (Control Path)
 
-- [ ] **CTRL-01**: Venus OS kann Leistungsbegrenzung (Active Power Limit) setzen via SunSpec Model 123
-- [ ] **CTRL-02**: Leistungsbegrenzung wird korrekt an SolarEdge SE30K weitergeleitet
-- [ ] **CTRL-03**: Steuerungsbefehle werden validiert bevor sie an den Inverter gesendet werden
+- [x] **CTRL-01**: Venus OS kann Leistungsbegrenzung (Active Power Limit) setzen via SunSpec Model 123
+- [x] **CTRL-02**: Leistungsbegrenzung wird korrekt an SolarEdge SE30K weitergeleitet
+- [x] **CTRL-03**: Steuerungsbefehle werden validiert bevor sie an den Inverter gesendet werden
 
 ### Webapp
 
@@ -93,9 +93,9 @@
 | PROXY-07 | Phase 2 | Complete |
 | PROXY-08 | Phase 2 | Complete |
 | PROXY-09 | Phase 2 | Complete |
-| CTRL-01 | Phase 3 | Pending |
-| CTRL-02 | Phase 3 | Pending |
-| CTRL-03 | Phase 3 | Pending |
+| CTRL-01 | Phase 3 | Complete |
+| CTRL-02 | Phase 3 | Complete |
+| CTRL-03 | Phase 3 | Complete |
 | WEB-01 | Phase 4 | Pending |
 | WEB-02 | Phase 4 | Pending |
 | WEB-03 | Phase 4 | Pending |
