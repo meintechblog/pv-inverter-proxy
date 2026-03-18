@@ -55,6 +55,13 @@
         </svg>
         <span class="nav-label">Registers</span>
       </a>
+
+      <a class="nav-item" data-page="power">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+        <span class="nav-label">Power Control</span>
+      </a>
     </nav>
 
     <!-- Overlay for mobile sidebar -->
@@ -192,6 +199,58 @@
         <div class="ve-panel">
           <h2>Register Viewer</h2>
           <div id="register-models"></div>
+        </div>
+      </div>
+
+      <!-- Power Control Page -->
+      <div id="page-power" class="page">
+        <div class="ve-card">
+          <h2 class="ve-card-title">Power Control <span class="ve-badge ve-badge--test">Manual Test</span></h2>
+
+          <!-- Venus OS Override Banner -->
+          <div id="ctrl-override-banner" class="ve-ctrl-override-banner" style="display:none">
+            Venus OS has control -- manual slider disabled
+          </div>
+
+          <!-- Status indicator -->
+          <div id="ctrl-status" class="ve-ctrl-status">
+            <span class="ve-dot" id="ctrl-dot"></span>
+            <span id="ctrl-label">No limit active</span>
+          </div>
+
+          <!-- Read-only display -->
+          <div class="ve-ctrl-readout">
+            <div><label>Current Limit</label><span id="ctrl-limit">--</span></div>
+            <div><label>Source</label><span id="ctrl-source">--</span></div>
+            <div><label>Last Changed</label><span id="ctrl-ts">--</span></div>
+          </div>
+
+          <!-- Slider (disabled when Venus OS controls) -->
+          <div class="ve-ctrl-slider-group" id="ctrl-slider-group">
+            <input type="range" min="0" max="100" value="100" id="ctrl-slider" class="ve-ctrl-slider">
+            <div class="ve-ctrl-slider-labels">
+              <span>0%</span>
+              <span id="ctrl-slider-value">100% = 30.0 kW</span>
+              <span>100%</span>
+            </div>
+            <div class="ve-button-group">
+              <button id="ctrl-apply" class="ve-btn ve-btn--primary">Apply</button>
+              <button id="ctrl-toggle" class="ve-btn">Enable</button>
+            </div>
+          </div>
+
+          <!-- Revert countdown -->
+          <div id="ctrl-revert" class="ve-ctrl-revert" style="display:none">
+            Auto-revert in: <span id="ctrl-revert-time">5:00</span>
+          </div>
+        </div>
+
+        <!-- Override Log -->
+        <div class="ve-card">
+          <h2 class="ve-card-title">Override Log</h2>
+          <div id="override-log" class="ve-override-log">
+            <div class="ve-text-dim">No events yet</div>
+          </div>
         </div>
       </div>
     </main>

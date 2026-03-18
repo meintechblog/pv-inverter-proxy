@@ -92,9 +92,9 @@ class TestSidebarNavigation:
         html = _read_static("index.html")
         assert 'data-page="registers"' in html
 
-    def test_three_nav_items(self):
+    def test_four_nav_items(self):
         html = _read_static("index.html")
-        assert html.count("data-page=") == 3
+        assert html.count("data-page=") == 4
 
 
 class TestResponsiveBreakpoints:
