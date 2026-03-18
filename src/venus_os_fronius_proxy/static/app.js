@@ -43,6 +43,11 @@ if (sidebarOverlay) {
     });
 }
 
+// ===== Animation Guards =====
+
+var prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+var entranceAnimated = false;
+
 // ===== WebSocket Connection =====
 
 function connectWebSocket() {
@@ -53,6 +58,19 @@ function connectWebSocket() {
     ws.onopen = function() {
         reconnectDelay = 1000;
         updateConnectionIndicator('connected');
+        if (!entranceAnimated && !prefersReducedMotion.matches) {
+            var cards = document.querySelectorAll('#page-dashboard .ve-card');
+            for (var i = 0; i < cards.length; i++) {
+                cards[i].classList.add('ve-card--entering');
+            }
+            entranceAnimated = true;
+            setTimeout(function() {
+                var entering = document.querySelectorAll('.ve-card--entering');
+                for (var j = 0; j < entering.length; j++) {
+                    entering[j].classList.remove('ve-card--entering');
+                }
+            }, 800);
+        }
     };
 
     ws.onmessage = function(event) {
@@ -141,7 +159,12 @@ function handleHistory(data) {
 
 // ===== Gauge Update =====
 
+var lastGaugePower = -1;
+var GAUGE_DEADBAND_W = 50;
+
 function updateGauge(powerW) {
+    if (lastGaugePower >= 0 && Math.abs(powerW - lastGaugePower) < GAUGE_DEADBAND_W) return;
+    lastGaugePower = powerW;
     var pct = Math.min(powerW / CAPACITY_W, 1.0);
     var arcLength = 251.3;
     var offset = arcLength * (1 - pct);
@@ -151,7 +174,6 @@ function updateGauge(powerW) {
 
     if (gaugeFill) {
         gaugeFill.style.strokeDashoffset = offset;
-        // Color: green < 50%, orange 50-80%, red > 80%
         var color = pct < 0.5 ? 'var(--ve-green)' : pct < 0.8 ? 'var(--ve-orange)' : 'var(--ve-red)';
         gaugeFill.style.stroke = color;
     }
@@ -196,25 +218,25 @@ function updateStatusPanel(inv) {
     // Temperature values
     if (tempCab) {
         var newCab = inv.temperature_cab_c != null ? inv.temperature_cab_c.toFixed(1) + ' \u00B0C' : '-- \u00B0C';
-        if (tempCab.textContent !== newCab) { tempCab.textContent = newCab; flashValue(tempCab); }
+        if (tempCab.textContent !== newCab) { tempCab.textContent = newCab; flashValue(tempCab, 'temperature'); }
     }
     if (tempSink) {
         var newSink = inv.temperature_sink_c != null ? inv.temperature_sink_c.toFixed(1) + ' \u00B0C' : '-- \u00B0C';
-        if (tempSink.textContent !== newSink) { tempSink.textContent = newSink; flashValue(tempSink); }
+        if (tempSink.textContent !== newSink) { tempSink.textContent = newSink; flashValue(tempSink, 'temperature'); }
     }
 
     // DC values
     if (dcV) {
         var newDcV = inv.dc_voltage_v != null ? inv.dc_voltage_v.toFixed(1) + ' V' : '-- V';
-        if (dcV.textContent !== newDcV) { dcV.textContent = newDcV; flashValue(dcV); }
+        if (dcV.textContent !== newDcV) { dcV.textContent = newDcV; flashValue(dcV, 'voltage'); }
     }
     if (dcA) {
         var newDcA = inv.dc_current_a != null ? inv.dc_current_a.toFixed(2) + ' A' : '-- A';
-        if (dcA.textContent !== newDcA) { dcA.textContent = newDcA; flashValue(dcA); }
+        if (dcA.textContent !== newDcA) { dcA.textContent = newDcA; flashValue(dcA, 'current'); }
     }
     if (dcW) {
         var newDcW = inv.dc_power_w != null ? (inv.dc_power_w / 1000).toFixed(2) + ' kW' : '-- kW';
-        if (dcW.textContent !== newDcW) { dcW.textContent = newDcW; flashValue(dcW); }
+        if (dcW.textContent !== newDcW) { dcW.textContent = newDcW; flashValue(dcW, 'power'); }
     }
 }
 
@@ -242,7 +264,7 @@ function updatePhaseCard(phase, voltage, current) {
         var newV = (voltage != null) ? voltage.toFixed(1) + ' V' : '-- V';
         if (voltageEl.textContent !== newV) {
             voltageEl.textContent = newV;
-            flashValue(voltageEl);
+            flashValue(voltageEl, 'voltage');
         }
     }
 
@@ -250,7 +272,7 @@ function updatePhaseCard(phase, voltage, current) {
         var newA = (current != null) ? current.toFixed(2) + ' A' : '-- A';
         if (currentEl.textContent !== newA) {
             currentEl.textContent = newA;
-            flashValue(currentEl);
+            flashValue(currentEl, 'current');
         }
     }
 
@@ -263,12 +285,31 @@ function updatePhaseCard(phase, voltage, current) {
         }
         if (powerEl.textContent !== newW) {
             powerEl.textContent = newW;
-            flashValue(powerEl);
+            flashValue(powerEl, 'power');
         }
     }
 }
 
-function flashValue(el) {
+var FLASH_THRESHOLDS = {
+    'voltage': 2,
+    'current': 0.5,
+    'power': 100,
+    'temperature': 1,
+    'default': 0
+};
+var lastFlashValues = {};
+
+function flashValue(el, metricType) {
+    var numericValue = parseFloat(el.textContent);
+    if (metricType && !isNaN(numericValue)) {
+        var threshold = FLASH_THRESHOLDS[metricType] || FLASH_THRESHOLDS['default'];
+        var key = el.id || el.textContent;
+        if (lastFlashValues[key] !== undefined && Math.abs(numericValue - lastFlashValues[key]) < threshold) {
+            lastFlashValues[key] = numericValue;
+            return;
+        }
+        lastFlashValues[key] = numericValue;
+    }
     el.classList.add('ve-value-flash');
     setTimeout(function() {
         el.classList.remove('ve-value-flash');
