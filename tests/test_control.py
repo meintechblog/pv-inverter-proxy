@@ -4,15 +4,23 @@ Tests cover:
 - WMaxLimPct validation (valid/invalid values, NaN detection)
 - SunSpec integer+SF to SolarEdge Float32 register translation
 - ControlState tracking and Model 123 readback
+- ControlState source tracking (Phase 7)
+- OverrideLog ring buffer (Phase 7)
+- EDPC refresh loop with auto-revert (Phase 7)
 """
 from __future__ import annotations
 
+import asyncio
 import struct
+import time
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from venus_os_fronius_proxy.control import (
     ControlState,
+    OverrideLog,
+    edpc_refresh_loop,
     validate_wmaxlimpct,
     wmaxlimpct_to_se_registers,
     MODEL_123_START,
@@ -155,3 +163,156 @@ class TestControlConstants:
 
     def test_se_cmd_timeout_reg(self):
         assert SE_CMD_TIMEOUT_REG == 0xF310
+
+
+# ---------- ControlState source tracking (Phase 7) ----------
+
+
+class TestControlStateSourceTracking:
+    def test_defaults(self):
+        """New ControlState has last_source='none', last_change_ts=0, no revert."""
+        cs = ControlState()
+        assert cs.last_source == "none"
+        assert cs.last_change_ts == 0.0
+        assert cs.webapp_revert_at is None
+
+    def test_set_from_webapp(self):
+        """set_from_webapp updates wmaxlimpct, ena, source, ts, revert deadline."""
+        cs = ControlState()
+        before = time.time()
+        cs.set_from_webapp(5000, 1, revert_timeout=300.0)
+        after = time.time()
+
+        assert cs.wmaxlimpct_raw == 5000
+        assert cs.wmaxlim_ena == 1
+        assert cs.last_source == "webapp"
+        assert before <= cs.last_change_ts <= after
+        assert cs.webapp_revert_at is not None
+        # monotonic deadline should be in the future
+        assert cs.webapp_revert_at > time.monotonic() - 1
+
+    def test_set_from_venus_os_cancels_revert(self):
+        """set_from_venus_os sets source, cancels webapp revert."""
+        cs = ControlState()
+        cs.set_from_webapp(5000, 1)
+        assert cs.webapp_revert_at is not None
+
+        before = time.time()
+        cs.set_from_venus_os()
+        after = time.time()
+
+        assert cs.last_source == "venus_os"
+        assert before <= cs.last_change_ts <= after
+        assert cs.webapp_revert_at is None
+
+
+# ---------- OverrideLog (Phase 7) ----------
+
+
+class TestOverrideLog:
+    def test_empty_log(self):
+        """New OverrideLog.get_all() returns empty list."""
+        log = OverrideLog()
+        assert log.get_all() == []
+
+    def test_append_and_get_all(self):
+        """Appended events appear in get_all with correct fields."""
+        log = OverrideLog()
+        log.append("webapp", "set", 50.0, "manual test")
+        events = log.get_all()
+        assert len(events) == 1
+        e = events[0]
+        assert e["source"] == "webapp"
+        assert e["action"] == "set"
+        assert e["value"] == 50.0
+        assert e["detail"] == "manual test"
+        assert "ts" in e
+
+    def test_maxlen_eviction(self):
+        """When maxlen exceeded, oldest events are evicted."""
+        log = OverrideLog(maxlen=3)
+        for i in range(5):
+            log.append("webapp", "set", float(i))
+        events = log.get_all()
+        assert len(events) == 3
+        assert events[0]["value"] == 2.0
+        assert events[2]["value"] == 4.0
+
+
+# ---------- EDPC refresh loop (Phase 7) ----------
+
+
+class TestEdpcRefreshLoop:
+    @pytest.mark.asyncio
+    async def test_refresh_writes_when_active(self):
+        """Loop calls plugin.write_power_limit when enabled and source != none."""
+        cs = ControlState()
+        cs.update_wmaxlimpct(5000)
+        cs.update_wmaxlim_ena(1)
+        cs.last_source = "webapp"
+        cs.webapp_revert_at = time.monotonic() + 9999  # far future
+
+        plugin = AsyncMock()
+        from venus_os_fronius_proxy.plugin import WriteResult
+        plugin.write_power_limit = AsyncMock(return_value=WriteResult(success=True))
+        log = OverrideLog()
+
+        task = asyncio.create_task(
+            edpc_refresh_loop(plugin, cs, log, interval=0.05)
+        )
+        await asyncio.sleep(0.15)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert plugin.write_power_limit.call_count >= 1
+        plugin.write_power_limit.assert_called_with(True, 50.0)
+
+    @pytest.mark.asyncio
+    async def test_auto_revert_on_deadline(self):
+        """Loop auto-reverts when webapp_revert_at deadline has passed."""
+        cs = ControlState()
+        cs.update_wmaxlimpct(5000)
+        cs.update_wmaxlim_ena(1)
+        cs.last_source = "webapp"
+        cs.webapp_revert_at = time.monotonic() - 1  # already passed
+
+        plugin = AsyncMock()
+        from venus_os_fronius_proxy.plugin import WriteResult
+        plugin.write_power_limit = AsyncMock(return_value=WriteResult(success=True))
+        log = OverrideLog()
+
+        task = asyncio.create_task(
+            edpc_refresh_loop(plugin, cs, log, interval=0.05)
+        )
+        await asyncio.sleep(0.15)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # Should have called write_power_limit(False, 0.0) to disable
+        plugin.write_power_limit.assert_any_call(False, 0.0)
+        assert cs.last_source == "none"
+        assert cs.webapp_revert_at is None
+        assert cs.wmaxlim_ena == 0
+        # Should have logged revert event
+        events = log.get_all()
+        assert any(e["action"] == "revert" for e in events)
+
+    @pytest.mark.asyncio
+    async def test_skip_when_disabled(self):
+        """Loop does nothing when control is disabled."""
+        cs = ControlState()  # defaults: ena=0, source="none"
+
+        plugin = AsyncMock()
+        log = OverrideLog()
+
+        task = asyncio.create_task(
+            edpc_refresh_loop(plugin, cs, log, interval=0.05)
+        )
+        await asyncio.sleep(0.15)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        plugin.write_power_limit.assert_not_called()
