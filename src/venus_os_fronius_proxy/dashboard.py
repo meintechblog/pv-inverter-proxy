@@ -245,10 +245,14 @@ class DashboardCollector:
         return (regs[0] << 16) | regs[1]
 
     def _decode_all(self, db: object) -> dict:
-        """Read all DECODE_MAP fields, apply scale factors."""
+        """Read all DECODE_MAP fields, apply scale factors.
+
+        SunSpec sentinel values (0x8000 for int16, 0xFFFF for uint16)
+        indicate "not implemented" or "not available" and are returned as None.
+        """
         # Cache scale factors (read once)
         sf_cache: dict[int, int] = {}
-        result: dict[str, float] = {}
+        result: dict[str, float | None] = {}
 
         for field_name, (addr, size, sf_addr) in DECODE_MAP.items():
             # Skip special fields handled in collect()
@@ -257,11 +261,20 @@ class DashboardCollector:
 
             raw = db.getValues(addr + _PB_OFFSET, 1)[0]
 
+            # SunSpec "Not Implemented" sentinels
+            if raw in (0x8000, 0xFFFF):
+                result[field_name] = None
+                continue
+
             if sf_addr is not None:
                 if sf_addr not in sf_cache:
                     sf_cache[sf_addr] = self._read_int16(db, sf_addr)
                 sf = sf_cache[sf_addr]
-                result[field_name] = raw * (10 ** sf)
+                # Scale factor sentinel: treat as no scaling
+                if sf in (-32768, 32768):
+                    result[field_name] = float(raw)
+                else:
+                    result[field_name] = raw * (10 ** sf)
             else:
                 result[field_name] = float(raw)
 
