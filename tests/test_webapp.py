@@ -12,7 +12,8 @@ from pymodbus.datastore import ModbusSequentialDataBlock
 
 from venus_os_fronius_proxy.config import Config, InverterConfig, WebappConfig
 from venus_os_fronius_proxy.connection import ConnectionManager, ConnectionState
-from venus_os_fronius_proxy.control import ControlState
+from venus_os_fronius_proxy.control import ControlState, OverrideLog
+from venus_os_fronius_proxy.plugin import WriteResult
 from venus_os_fronius_proxy.register_cache import RegisterCache
 from venus_os_fronius_proxy.sunspec_models import build_initial_registers, DATABLOCK_START
 
@@ -50,6 +51,7 @@ def shared_ctx():
         "cache": cache,
         "conn_mgr": conn_mgr,
         "control_state": control_state,
+        "override_log": OverrideLog(),
         "poll_counter": {"success": 50, "total": 55},
         "last_se_poll": {
             "common_registers": common_regs,
@@ -205,3 +207,94 @@ async def test_registers_no_se_poll(client, shared_ctx):
     for model in data:
         for field in model["fields"]:
             assert field["se_value"] is None
+
+
+# ---------- POST /api/power-limit ----------
+
+
+async def test_power_limit_set_valid(client, shared_ctx, mock_plugin):
+    """POST /api/power-limit with action=set, valid limit_pct returns 200."""
+    mock_plugin.write_power_limit = AsyncMock(
+        return_value=WriteResult(success=True)
+    )
+    resp = await client.post("/api/power-limit", json={
+        "action": "set",
+        "limit_pct": 50.0,
+    })
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["success"] is True
+    assert data["error"] is None
+    mock_plugin.write_power_limit.assert_called_once_with(True, 50.0)
+
+    # ControlState should be updated
+    cs = shared_ctx["control_state"]
+    assert cs.last_source == "webapp"
+    assert cs.wmaxlimpct_raw == 5000
+    assert cs.wmaxlim_ena == 1
+
+
+async def test_power_limit_set_invalid(client, mock_plugin):
+    """POST /api/power-limit with limit_pct=150 returns 400."""
+    resp = await client.post("/api/power-limit", json={
+        "action": "set",
+        "limit_pct": 150.0,
+    })
+    assert resp.status == 400
+    data = await resp.json()
+    assert data["success"] is False
+    mock_plugin.write_power_limit.assert_not_called()
+
+
+async def test_power_limit_venus_override_rejection(client, shared_ctx, mock_plugin):
+    """POST /api/power-limit returns 409 when Venus OS wrote recently."""
+    cs = shared_ctx["control_state"]
+    cs.last_source = "venus_os"
+    cs.last_change_ts = time.time()  # just now
+
+    resp = await client.post("/api/power-limit", json={
+        "action": "set",
+        "limit_pct": 50.0,
+    })
+    assert resp.status == 409
+    data = await resp.json()
+    assert data["success"] is False
+    assert "Venus OS" in data["error"]
+    mock_plugin.write_power_limit.assert_not_called()
+
+
+async def test_power_limit_enable_disable(client, shared_ctx, mock_plugin):
+    """POST /api/power-limit with action=enable and disable work."""
+    mock_plugin.write_power_limit = AsyncMock(
+        return_value=WriteResult(success=True)
+    )
+    # First set a limit to have a value
+    shared_ctx["control_state"].update_wmaxlimpct(5000)
+
+    # Enable
+    resp = await client.post("/api/power-limit", json={"action": "enable"})
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["success"] is True
+
+    # Disable
+    resp = await client.post("/api/power-limit", json={"action": "disable"})
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["success"] is True
+    assert shared_ctx["control_state"].last_source == "none"
+
+
+async def test_power_limit_feedback(client, shared_ctx, mock_plugin):
+    """POST response includes success/error from WriteResult (CTRL-07)."""
+    mock_plugin.write_power_limit = AsyncMock(
+        return_value=WriteResult(success=False, error="Inverter timeout")
+    )
+    resp = await client.post("/api/power-limit", json={
+        "action": "set",
+        "limit_pct": 50.0,
+    })
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["success"] is False
+    assert data["error"] == "Inverter timeout"

@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pymodbus.client import AsyncModbusTcpClient
+from pymodbus.datastore import ModbusSequentialDataBlock
 
 from venus_os_fronius_proxy.plugin import InverterPlugin, PollResult, WriteResult
 from venus_os_fronius_proxy.sunspec_models import (
@@ -38,6 +39,7 @@ from venus_os_fronius_proxy.proxy import (
     COMMON_CACHE_ADDR,
     INVERTER_CACHE_ADDR,
 )
+from venus_os_fronius_proxy.control import ControlState, OverrideLog
 from venus_os_fronius_proxy.register_cache import RegisterCache
 
 
@@ -408,3 +410,61 @@ class TestProxyConstants:
     def test_staleness_timeout_default(self):
         """STALENESS_TIMEOUT is 30.0 seconds."""
         assert STALENESS_TIMEOUT == 30.0
+
+
+class TestVenusOsOverrideTracking:
+    @pytest.mark.asyncio
+    async def test_venus_override_sets_source(self):
+        """After _handle_control_write for WMaxLimPct, control.last_source == 'venus_os'."""
+        plugin = _make_mock_plugin(poll_success=True)
+        initial_values = build_initial_registers()
+        datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
+        cache = RegisterCache(datablock, staleness_timeout=30.0)
+        control = ControlState()
+        override_log = OverrideLog()
+
+        # Set a webapp revert to verify it gets cancelled
+        control.set_from_webapp(5000, 1)
+        assert control.webapp_revert_at is not None
+
+        slave_ctx = StalenessAwareSlaveContext(
+            cache=cache, plugin=plugin, control_state=control, hr=datablock,
+        )
+        # Provide shared_ctx with override_log
+        slave_ctx._shared_ctx = {"override_log": override_log}
+
+        # Write WMaxLimPct (offset 5 from MODEL_123_START=40149 -> addr 40154)
+        await slave_ctx._handle_control_write(40154, [5000])
+
+        assert control.last_source == "venus_os"
+        assert control.last_change_ts > 0
+        assert control.webapp_revert_at is None  # cancelled
+
+        # Override log should have an entry
+        events = override_log.get_all()
+        assert len(events) >= 1
+        assert events[-1]["source"] == "venus_os"
+
+    @pytest.mark.asyncio
+    async def test_venus_override_ena_sets_source(self):
+        """After _handle_control_write for WMaxLim_Ena, control.last_source == 'venus_os'."""
+        plugin = _make_mock_plugin(poll_success=True)
+        initial_values = build_initial_registers()
+        datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
+        cache = RegisterCache(datablock, staleness_timeout=30.0)
+        control = ControlState()
+        override_log = OverrideLog()
+
+        slave_ctx = StalenessAwareSlaveContext(
+            cache=cache, plugin=plugin, control_state=control, hr=datablock,
+        )
+        slave_ctx._shared_ctx = {"override_log": override_log}
+
+        # Write WMaxLim_Ena (offset 9 from MODEL_123_START -> addr 40158)
+        await slave_ctx._handle_control_write(40158, [1])
+
+        assert control.last_source == "venus_os"
+        assert control.webapp_revert_at is None
+        events = override_log.get_all()
+        assert len(events) >= 1
+        assert events[-1]["source"] == "venus_os"
