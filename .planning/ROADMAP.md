@@ -4,6 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 1-4 (shipped 2026-03-18)
 - ✅ **v2.0 Dashboard & Power Control** — Phases 5-8 (shipped 2026-03-18)
+- 🚧 **v2.1 Dashboard Redesign & Polish** — Phases 9-12 (in progress)
 
 ## Phases
 
@@ -31,7 +32,80 @@ Full details: `.planning/milestones/v2.0-ROADMAP.md`
 
 </details>
 
+### 🚧 v2.1 Dashboard Redesign & Polish (In Progress)
+
+**Milestone Goal:** Alle Dashboard-Funktionen auf einer einzigen Seite vereinen, Venus OS Info anzeigen, und das Gesamterlebnis mit Animationen, Statistiken und Smart Notifications abrunden.
+
+- [ ] **Phase 9: CSS Animations & Toast System** - Animation foundation and notification infrastructure
+- [ ] **Phase 10: Peak Statistics & Smart Notifications** - Backend stats tracking and event-driven toasts
+- [ ] **Phase 11: Venus OS Widget & Lock Toggle** - Venus OS info display and control lock
+- [ ] **Phase 12: Unified Dashboard Layout** - Single-page merge of all widgets
+
+## Phase Details
+
+### Phase 9: CSS Animations & Toast System
+**Goal**: Users see smooth, performant animations throughout the dashboard and have a reliable notification system for important events
+**Depends on**: Phase 8 (existing dashboard)
+**Requirements**: ANIM-01, ANIM-02, ANIM-03, ANIM-04, NOTIF-01, NOTIF-05
+**Success Criteria** (what must be TRUE):
+  1. Power gauge arc animates smoothly when values change (no jumps or jank)
+  2. Dashboard widgets appear with staggered entrance animations on page load
+  3. Value changes in cards produce a subtle highlight flash
+  4. All animations are disabled when prefers-reduced-motion is active in the browser
+  5. Multiple toast notifications stack visually without overlapping, each dismissible by click with an exit animation
+**Plans**: TBD
+
+Plans:
+- [ ] 09-01: TBD
+- [ ] 09-02: TBD
+
+### Phase 10: Peak Statistics & Smart Notifications
+**Goal**: Users can see daily performance stats at a glance and receive automatic alerts for important inverter events
+**Depends on**: Phase 9 (toast system must exist for notification triggers)
+**Requirements**: STATS-01, STATS-02, STATS-03, NOTIF-02, NOTIF-03, NOTIF-04
+**Success Criteria** (what must be TRUE):
+  1. Dashboard shows today's peak power (kW), operating hours, and efficiency indicator -- all reset on restart
+  2. A toast appears when Venus OS overrides the power limit, showing the override value
+  3. A toast appears when the inverter reports a fault or temperature warning
+  4. A toast appears when the inverter transitions to/from night mode (sleep/wake)
+**Plans**: TBD
+
+Plans:
+- [ ] 10-01: TBD
+- [ ] 10-02: TBD
+
+### Phase 11: Venus OS Widget & Lock Toggle
+**Goal**: Users can see Venus OS connection status and control whether Venus OS is allowed to override power limits
+**Depends on**: Phase 9 (animations for toggle), Phase 10 (override toast for feedback)
+**Requirements**: VENUS-01, VENUS-02, VENUS-03, VENUS-04
+**Success Criteria** (what must be TRUE):
+  1. Dashboard shows a Venus OS widget with connection status (Online/Offline), IP address, and last contact timestamp
+  2. Widget displays current override status (whether Venus OS has control and at what value)
+  3. An Apple-style toggle allows the user to lock/unlock Venus OS control, with a confirmation dialog before locking
+  4. Lock automatically expires after max 15 minutes -- Venus OS is never permanently locked out
+**Plans**: TBD
+
+Plans:
+- [ ] 11-01: TBD
+- [ ] 11-02: TBD
+
+### Phase 12: Unified Dashboard Layout
+**Goal**: All dashboard functionality lives on a single page with no separate power control page
+**Depends on**: Phase 9, 10, 11 (all widgets must exist before layout merge)
+**Requirements**: LAYOUT-01, LAYOUT-02, LAYOUT-03
+**Success Criteria** (what must be TRUE):
+  1. Power control (slider, toggle, override log) appears inline below the power gauge -- no navigation required
+  2. All widgets (gauge, power control, 3-phase, sparkline, status, daily energy, peak stats, Venus OS) are visible in a compact grid on one page
+  3. Sidebar navigation shows only Dashboard, Config, and Registers (power control page removed)
+**Plans**: TBD
+
+Plans:
+- [ ] 12-01: TBD
+
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 9 -> 10 -> 11 -> 12
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|---------------|--------|-----------|
@@ -43,3 +117,7 @@ Full details: `.planning/milestones/v2.0-ROADMAP.md`
 | 6. Live Dashboard | v2.0 | 2/2 | Complete | 2026-03-18 |
 | 7. Power Control | v2.0 | 2/2 | Complete | 2026-03-18 |
 | 8. Inverter Details & Polish | v2.0 | 1/1 | Complete | 2026-03-18 |
+| 9. CSS Animations & Toast System | v2.1 | 0/? | Not started | - |
+| 10. Peak Statistics & Smart Notifications | v2.1 | 0/? | Not started | - |
+| 11. Venus OS Widget & Lock Toggle | v2.1 | 0/? | Not started | - |
+| 12. Unified Dashboard Layout | v2.1 | 0/? | Not started | - |

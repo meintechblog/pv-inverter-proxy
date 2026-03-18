@@ -74,31 +74,31 @@ Requirements for v2.1 Dashboard Redesign & Polish milestone.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LAYOUT-01 | TBD | Pending |
-| LAYOUT-02 | TBD | Pending |
-| LAYOUT-03 | TBD | Pending |
-| VENUS-01 | TBD | Pending |
-| VENUS-02 | TBD | Pending |
-| VENUS-03 | TBD | Pending |
-| VENUS-04 | TBD | Pending |
-| STATS-01 | TBD | Pending |
-| STATS-02 | TBD | Pending |
-| STATS-03 | TBD | Pending |
-| ANIM-01 | TBD | Pending |
-| ANIM-02 | TBD | Pending |
-| ANIM-03 | TBD | Pending |
-| ANIM-04 | TBD | Pending |
-| NOTIF-01 | TBD | Pending |
-| NOTIF-02 | TBD | Pending |
-| NOTIF-03 | TBD | Pending |
-| NOTIF-04 | TBD | Pending |
-| NOTIF-05 | TBD | Pending |
+| LAYOUT-01 | Phase 12 | Pending |
+| LAYOUT-02 | Phase 12 | Pending |
+| LAYOUT-03 | Phase 12 | Pending |
+| VENUS-01 | Phase 11 | Pending |
+| VENUS-02 | Phase 11 | Pending |
+| VENUS-03 | Phase 11 | Pending |
+| VENUS-04 | Phase 11 | Pending |
+| STATS-01 | Phase 10 | Pending |
+| STATS-02 | Phase 10 | Pending |
+| STATS-03 | Phase 10 | Pending |
+| ANIM-01 | Phase 9 | Pending |
+| ANIM-02 | Phase 9 | Pending |
+| ANIM-03 | Phase 9 | Pending |
+| ANIM-04 | Phase 9 | Pending |
+| NOTIF-01 | Phase 9 | Pending |
+| NOTIF-02 | Phase 10 | Pending |
+| NOTIF-03 | Phase 10 | Pending |
+| NOTIF-04 | Phase 10 | Pending |
+| NOTIF-05 | Phase 9 | Pending |
 
 **Coverage:**
 - v2.1 requirements: 19 total
-- Mapped to phases: 0
-- Unmapped: 19
+- Mapped to phases: 19
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-18*
-*Last updated: 2026-03-18 after v2.1 milestone start*
+*Last updated: 2026-03-18 after v2.1 roadmap creation*
