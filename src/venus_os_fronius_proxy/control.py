@@ -10,9 +10,15 @@ Constants reference SolarEdge SE30K proprietary registers
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 import struct
+import time
+from collections import deque
 
 from venus_os_fronius_proxy.sunspec_models import CONTROLS_ADDR, CONTROLS_DID, CONTROLS_LENGTH
+
+logger = logging.getLogger(__name__)
 
 # Model 123 address range in proxy register space
 MODEL_123_START = CONTROLS_ADDR      # 40149
@@ -89,6 +95,10 @@ class ControlState:
         self.wmaxlim_ena: int = 0
         self.wmaxlimpct_raw: int = 0
         self.scale_factor: int = WMAXLIMPCT_SF
+        # Phase 7: source tracking and auto-revert
+        self.last_source: str = "none"              # "none" | "venus_os" | "webapp"
+        self.last_change_ts: float = 0.0            # time.time() of last change
+        self.webapp_revert_at: float | None = None  # monotonic deadline for auto-revert
 
     @property
     def is_enabled(self) -> bool:
@@ -121,6 +131,20 @@ class ControlState:
         regs[WMAXLIM_ENA_OFFSET] = self.wmaxlim_ena
         return regs
 
+    def set_from_webapp(self, raw_value: int, ena: int, revert_timeout: float = 300.0) -> None:
+        """Update from webapp with auto-revert timer."""
+        self.update_wmaxlimpct(raw_value)
+        self.update_wmaxlim_ena(ena)
+        self.last_source = "webapp"
+        self.last_change_ts = time.time()
+        self.webapp_revert_at = time.monotonic() + revert_timeout
+
+    def set_from_venus_os(self) -> None:
+        """Mark that Venus OS just wrote a control value."""
+        self.last_source = "venus_os"
+        self.last_change_ts = time.time()
+        self.webapp_revert_at = None  # Cancel any webapp revert timer
+
     def is_model_123_address(self, address: int, count: int) -> bool:
         """Check if an address range overlaps Model 123 registers.
 
@@ -133,3 +157,73 @@ class ControlState:
             [MODEL_123_START, MODEL_123_END].
         """
         return address <= MODEL_123_END and (address + count - 1) >= MODEL_123_START
+
+
+class OverrideLog:
+    """In-memory ring buffer for control override events.
+
+    Stores the last *maxlen* events as dicts with ts/source/action/value/detail.
+    """
+
+    def __init__(self, maxlen: int = 50) -> None:
+        self._events: deque[dict] = deque(maxlen=maxlen)
+
+    def append(self, source: str, action: str, value: float | None, detail: str = "") -> None:
+        """Record a control event."""
+        self._events.append({
+            "ts": time.time(),
+            "source": source,
+            "action": action,
+            "value": value,
+            "detail": detail,
+        })
+
+    def get_all(self) -> list[dict]:
+        """Return all events as a list (oldest first)."""
+        return list(self._events)
+
+
+async def edpc_refresh_loop(
+    plugin: object,
+    control_state: ControlState,
+    override_log: OverrideLog,
+    interval: float = 30.0,
+    broadcast_fn: object | None = None,
+) -> None:
+    """Periodically refresh power limit to prevent SE30K EDPC timeout revert.
+
+    Also checks the auto-revert deadline for webapp-initiated limits.
+
+    Args:
+        plugin: InverterPlugin with write_power_limit(enable, limit_pct).
+        control_state: Shared ControlState instance.
+        override_log: Shared OverrideLog for event recording.
+        interval: Seconds between refresh cycles (default 30, = CommandTimeout/2).
+        broadcast_fn: Optional async callable to push snapshot updates.
+    """
+    while True:
+        await asyncio.sleep(interval)
+
+        if not control_state.is_enabled or control_state.last_source == "none":
+            continue
+
+        # Check auto-revert deadline
+        if (
+            control_state.webapp_revert_at is not None
+            and time.monotonic() >= control_state.webapp_revert_at
+        ):
+            await plugin.write_power_limit(False, 0.0)
+            control_state.update_wmaxlim_ena(0)
+            control_state.last_source = "none"
+            control_state.webapp_revert_at = None
+            override_log.append("system", "revert", None, "auto-revert after timeout")
+            if broadcast_fn is not None:
+                await broadcast_fn()
+            continue
+
+        # Refresh current limit
+        result = await plugin.write_power_limit(
+            True, control_state.wmaxlimpct_float,
+        )
+        if not result.success:
+            logger.warning("EDPC refresh failed: %s", result.error)
