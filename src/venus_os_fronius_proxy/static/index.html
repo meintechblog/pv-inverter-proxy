@@ -191,6 +191,29 @@
               <div><label>Efficiency</label><span class="ve-live-value" id="efficiency-pct">--%</span></div>
             </div>
           </div>
+          <div class="ve-card" id="venus-os-panel">
+            <h2 class="ve-card-title">Venus OS Control</h2>
+            <div class="ve-venus-status-row">
+              <span class="ve-status-dot" id="venus-status-dot"></span>
+              <span id="venus-status-text">--</span>
+            </div>
+            <div class="ve-kv-grid">
+              <div><label>Override</label><span class="ve-live-value" id="venus-override">--</span></div>
+              <div><label>Last Contact</label><span class="ve-live-value" id="venus-last-contact">--</span></div>
+            </div>
+            <div class="ve-venus-lock" id="venus-lock-section">
+              <div class="ve-venus-lock-row">
+                <span class="ve-venus-lock-label">Lock Venus OS</span>
+                <label class="ve-toggle" id="venus-lock-container">
+                  <input type="checkbox" id="venus-lock-toggle" disabled>
+                  <span class="ve-toggle-track"></span>
+                </label>
+              </div>
+              <div class="ve-lock-countdown" id="lock-countdown" style="display:none">
+                Auto-unlock in: <span id="lock-countdown-time">15:00</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

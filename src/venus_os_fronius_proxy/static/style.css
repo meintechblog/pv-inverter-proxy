@@ -474,6 +474,100 @@ body {
 .ve-card--entering:nth-child(7) { animation-delay: 360ms; }
 .ve-card--entering:nth-child(8) { animation-delay: 420ms; }
 
+/* ===== Apple-style Toggle ===== */
+.ve-toggle {
+    position: relative;
+    display: inline-block;
+    width: 52px;
+    height: 28px;
+}
+.ve-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+.ve-toggle-track {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--ve-border);
+    border-radius: 28px;
+    transition: background var(--ve-duration-normal) var(--ve-easing-default);
+}
+.ve-toggle-track::before {
+    content: '';
+    position: absolute;
+    height: 22px;
+    width: 22px;
+    left: 3px;
+    bottom: 3px;
+    background: var(--ve-text);
+    border-radius: 50%;
+    transition: transform var(--ve-duration-normal) cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.ve-toggle input:checked + .ve-toggle-track {
+    background: var(--ve-red);
+}
+.ve-toggle input:checked + .ve-toggle-track::before {
+    transform: translateX(24px);
+}
+.ve-toggle input:disabled + .ve-toggle-track {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ===== Venus OS Widget ===== */
+.ve-venus-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.ve-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--ve-text-dim);
+    flex-shrink: 0;
+}
+.ve-status-dot.online { background: var(--ve-green); }
+.ve-status-dot.offline { background: var(--ve-text-dim); }
+.ve-venus-lock {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--ve-border);
+}
+.ve-venus-lock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.ve-venus-lock-label {
+    font-weight: 500;
+}
+.ve-lock-countdown {
+    margin-top: 8px;
+    font-size: 0.85em;
+    color: var(--ve-red);
+    font-variant-numeric: tabular-nums;
+}
+.ve-kv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+}
+.ve-kv-grid label {
+    display: block;
+    color: var(--ve-text-dim);
+    font-size: 0.85em;
+    margin-bottom: 2px;
+}
+.ve-kv-grid span {
+    font-family: var(--ve-mono);
+    font-size: 1.1em;
+}
+
 /* ===== Responsive: Tablet (768px - 1024px) ===== */
 @media (max-width: 1024px) {
     .app-shell {

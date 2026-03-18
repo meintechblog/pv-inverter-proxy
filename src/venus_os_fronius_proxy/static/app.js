@@ -8,6 +8,9 @@ let sparklineData = [];
 const CAPACITY_W = 30000;
 var previousSnapshot = null;
 var TEMP_WARNING_C = 75; // Heatsink temperature warning threshold for SE30K
+var venusLockRemaining = null;
+var venusLockSnapshotTs = null;
+var venusCountdownInterval = null;
 
 // ===== Navigation =====
 
@@ -139,6 +142,9 @@ function handleSnapshot(data) {
     // Update power control section
     updatePowerControl(data);
 
+    // Update Venus OS info widget
+    updateVenusInfo(data);
+
     previousSnapshot = data;
 
     // Update top-bar dots from connection state
@@ -201,6 +207,13 @@ function detectEvents(prev, curr) {
     // Trigger when status transitions FROM SLEEPING to MPPT
     if (prevInv.status === 'SLEEPING' && currInv.status === 'MPPT') {
         showToast('Inverter waking up - producing power', 'success');
+    }
+
+    // Detect auto-unlock event: was locked, now unlocked
+    if (prev.venus_os && curr.venus_os) {
+        if (prev.venus_os.is_locked && !curr.venus_os.is_locked) {
+            showToast('Venus OS control auto-unlocked', 'info');
+        }
     }
 }
 
@@ -1090,6 +1103,135 @@ function handleOverrideEvent(eventData) {
 
     var toastType = eventData.source === 'venus_os' ? 'error' : 'info';
     showToast(msg, toastType);
+}
+
+// ===== Venus OS Info Widget =====
+
+function updateVenusInfo(snapshot) {
+    var venus = snapshot.venus_os;
+    if (!venus) return;
+
+    var dot = document.getElementById('venus-status-dot');
+    var statusText = document.getElementById('venus-status-text');
+    var overrideEl = document.getElementById('venus-override');
+    var lastContactEl = document.getElementById('venus-last-contact');
+    var toggle = document.getElementById('venus-lock-toggle');
+    var countdownDiv = document.getElementById('lock-countdown');
+    var countdownTime = document.getElementById('lock-countdown-time');
+
+    // Venus OS connection status: "Online" if last_source=="venus_os" AND last_change_ts within 120s
+    var isOnline = false;
+    if (venus.last_source === 'venus_os' && venus.last_change_ts > 0) {
+        var age = (snapshot.ts - venus.last_change_ts);
+        isOnline = age < 120;
+    }
+
+    dot.className = 've-status-dot ' + (isOnline ? 'online' : 'offline');
+    statusText.textContent = isOnline ? 'Online' : 'Offline';
+
+    // Override status
+    var ctrl = snapshot.control;
+    if (isOnline && ctrl && ctrl.enabled && ctrl.last_source === 'venus_os') {
+        overrideEl.textContent = ctrl.limit_pct.toFixed(1) + '%';
+    } else if (isOnline) {
+        overrideEl.textContent = 'No override';
+    } else {
+        overrideEl.textContent = '--';
+    }
+
+    // Last contact (relative time)
+    if (venus.last_change_ts > 0) {
+        var ageSec = Math.floor(snapshot.ts - venus.last_change_ts);
+        if (ageSec < 60) lastContactEl.textContent = ageSec + 's ago';
+        else if (ageSec < 3600) lastContactEl.textContent = Math.floor(ageSec / 60) + 'm ago';
+        else lastContactEl.textContent = Math.floor(ageSec / 3600) + 'h ago';
+    } else {
+        lastContactEl.textContent = 'Never';
+    }
+
+    // Lock toggle state
+    toggle.checked = venus.is_locked;
+    toggle.disabled = !isOnline && !venus.is_locked;  // Allow unlock even if offline
+
+    // Countdown
+    if (venus.is_locked && venus.lock_remaining_s != null) {
+        countdownDiv.style.display = '';
+        venusLockRemaining = venus.lock_remaining_s;
+        venusLockSnapshotTs = Date.now() / 1000;
+        updateCountdownDisplay();
+        startCountdownInterval();
+    } else {
+        countdownDiv.style.display = 'none';
+        venusLockRemaining = null;
+        stopCountdownInterval();
+    }
+}
+
+function updateCountdownDisplay() {
+    var el = document.getElementById('lock-countdown-time');
+    if (!el || venusLockRemaining == null) return;
+    var elapsed = Date.now() / 1000 - venusLockSnapshotTs;
+    var remaining = Math.max(0, venusLockRemaining - elapsed);
+    var min = Math.floor(remaining / 60);
+    var sec = Math.floor(remaining % 60);
+    el.textContent = min + ':' + (sec < 10 ? '0' : '') + sec;
+}
+
+function startCountdownInterval() {
+    if (venusCountdownInterval) return;
+    venusCountdownInterval = setInterval(updateCountdownDisplay, 1000);
+}
+
+function stopCountdownInterval() {
+    if (venusCountdownInterval) {
+        clearInterval(venusCountdownInterval);
+        venusCountdownInterval = null;
+    }
+}
+
+// --- Venus OS Lock Toggle Handler ---
+
+(function() {
+    var toggle = document.getElementById('venus-lock-toggle');
+    if (!toggle) return;
+    toggle.addEventListener('change', function(e) {
+        e.preventDefault();
+        var wantLock = toggle.checked;
+        if (wantLock) {
+            toggle.checked = false;  // Revert until confirmed
+            var unlockTime = new Date(Date.now() + 15 * 60 * 1000);
+            var timeStr = unlockTime.getHours() + ':' + (unlockTime.getMinutes() < 10 ? '0' : '') + unlockTime.getMinutes();
+            showConfirmDialog(
+                'Lock Venus OS control for <strong>15 minutes</strong>?<br>' +
+                'Venus OS will not be able to limit inverter power during this time.<br>' +
+                'Auto-unlock at ' + timeStr + '.',
+                function() { sendLockCommand(true); }
+            );
+        } else {
+            sendLockCommand(false);
+        }
+    });
+})();
+
+async function sendLockCommand(lock) {
+    try {
+        var res = await fetch('/api/venus-lock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: lock ? 'lock' : 'unlock' })
+        });
+        var data = await res.json();
+        if (data.success) {
+            showToast(
+                lock ? 'Venus OS control locked (15 min)' : 'Venus OS control unlocked',
+                lock ? 'warning' : 'success'
+            );
+        } else {
+            showToast(data.error || 'Failed to change lock state', 'error');
+        }
+    } catch (e) {
+        showToast('Request failed: ' + e.message, 'error');
+    }
 }
 
 // ===== Initialization =====
