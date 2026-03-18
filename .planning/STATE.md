@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Dashboard & Power Control
-status: completed
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-03-18T16:32:26.594Z"
-last_activity: 2026-03-18 -- Completed 06-02 live dashboard frontend
+status: in-progress
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-18T17:05:47Z"
+last_activity: 2026-03-18 -- Completed 07-01 backend power control
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_plans: 6
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-18)
 
 **Core value:** Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie einen echten Fronius-Inverter
-**Current focus:** Phase 6 - Live Dashboard
+**Current focus:** Phase 7 - Power Control
 
 ## Current Position
 
-Phase: 6 of 8 (Live Dashboard) - COMPLETE
-Plan: 2 of 2 in current phase (all plans complete)
-Status: Phase 6 complete, ready for Phase 7
-Last activity: 2026-03-18 -- Completed 06-02 live dashboard frontend
+Phase: 7 of 8 (Power Control) - IN PROGRESS
+Plan: 1 of 2 in current phase (07-01 complete)
+Status: 07-01 backend power control complete, ready for 07-02 frontend
+Last activity: 2026-03-18 -- Completed 07-01 backend power control
 
-Progress: [██████████] 100%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -46,6 +46,7 @@ Progress: [██████████] 100%
 | Phase 05 P02 | 3min | 2 tasks | 4 files |
 | 06    | 01   | 2min     | 2     | 4     |
 | Phase 06 P02 | 3min | 1 tasks | 3 files |
+| 07    | 01   | 6min     | 2     | 7     |
 
 ## Accumulated Context
 
@@ -68,6 +69,10 @@ Recent decisions affecting current work:
 - [Phase 06]: Compute per-phase power client-side (V*I) to keep snapshot lean
 - [Phase 06]: Reduce fallback polling to 10s; WebSocket provides live data
 - [Phase 06]: Register polling conditional on page being active
+- [Phase 07]: Venus OS priority window: 60s (reject webapp writes if Venus OS wrote within 60s)
+- [Phase 07]: Auto-revert timeout: 300s server-side monotonic deadline in EDPC refresh loop
+- [Phase 07]: EDPC refresh interval: 30s (CommandTimeout/2), only when limit actively set
+- [Phase 07]: OverrideLog maxlen=50, not persistent (same pattern as TimeSeriesBuffer)
 
 ### Pending Todos
 
@@ -80,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-18T16:31:51.954Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-03-18T17:05:47Z
+Stopped at: Completed 07-01-PLAN.md
 Resume file: None

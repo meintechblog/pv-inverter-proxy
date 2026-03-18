@@ -72,7 +72,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Backend: ControlState extension, OverrideLog, EDPC refresh loop, POST /api/power-limit, Venus OS override tracking
+- [x] 07-01-PLAN.md — Backend: ControlState extension, OverrideLog, EDPC refresh loop, POST /api/power-limit, Venus OS override tracking
 - [ ] 07-02-PLAN.md — Frontend: Power Control page with slider, confirmation dialog, toggle, live feedback, override log
 
 ### Phase 8: Inverter Details & Polish
@@ -99,5 +99,5 @@ Plans:
 | 4. Configuration Webapp | v1.0 | 2/2 | Complete | 2026-03-18 |
 | 5. Data Pipeline & Theme Foundation | v2.0 | 2/2 | Complete | 2026-03-18 |
 | 6. Live Dashboard | v2.0 | 2/2 | Complete | 2026-03-18 |
-| 7. Power Control | v2.0 | 0/2 | Not started | - |
+| 7. Power Control | v2.0 | 1/2 | In progress | - |
 | 8. Inverter Details & Polish | v2.0 | 0/? | Not started | - |

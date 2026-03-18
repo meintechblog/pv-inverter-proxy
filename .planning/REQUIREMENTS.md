@@ -18,13 +18,13 @@ Requirements for v2.0 Dashboard & Power Control UI milestone.
 
 ### Power Control (CTRL)
 
-- [ ] **CTRL-04**: Read-only Anzeige — aktueller Power Limit Wert + wer ihn gesetzt hat
-- [ ] **CTRL-05**: Test-Slider mit Bestätigungsdialog — 0-100% mit Confirm vor Schreiben
-- [ ] **CTRL-06**: Enable/Disable Toggle mit Bestätigung
-- [ ] **CTRL-07**: Live Feedback — Bestätigung vom SE30K dass Limit akzeptiert wurde
-- [ ] **CTRL-08**: Venus OS Override Detection — anzeigen wenn Venus OS die Kontrolle hat
-- [ ] **CTRL-09**: EDPC Refresh Loop — Backend hält Power Limit aktiv (periodic refresh)
-- [ ] **CTRL-10**: Override Log — Logbuch wer wann welchen Wert gesetzt hat
+- [x] **CTRL-04**: Read-only Anzeige — aktueller Power Limit Wert + wer ihn gesetzt hat
+- [x] **CTRL-05**: Test-Slider mit Bestätigungsdialog — 0-100% mit Confirm vor Schreiben
+- [x] **CTRL-06**: Enable/Disable Toggle mit Bestätigung
+- [x] **CTRL-07**: Live Feedback — Bestätigung vom SE30K dass Limit akzeptiert wurde
+- [x] **CTRL-08**: Venus OS Override Detection — anzeigen wenn Venus OS die Kontrolle hat
+- [x] **CTRL-09**: EDPC Refresh Loop — Backend hält Power Limit aktiv (periodic refresh)
+- [x] **CTRL-10**: Override Log — Logbuch wer wann welchen Wert gesetzt hat
 
 ### Infrastructure (INFRA)
 
@@ -72,13 +72,13 @@ Requirements for v2.0 Dashboard & Power Control UI milestone.
 | DASH-04 | Phase 8 | Pending |
 | DASH-05 | Phase 8 | Pending |
 | DASH-06 | Phase 6 | Complete |
-| CTRL-04 | Phase 7 | Pending |
-| CTRL-05 | Phase 7 | Pending |
-| CTRL-06 | Phase 7 | Pending |
-| CTRL-07 | Phase 7 | Pending |
-| CTRL-08 | Phase 7 | Pending |
-| CTRL-09 | Phase 7 | Pending |
-| CTRL-10 | Phase 7 | Pending |
+| CTRL-04 | Phase 7 | Complete |
+| CTRL-05 | Phase 7 | Complete |
+| CTRL-06 | Phase 7 | Complete |
+| CTRL-07 | Phase 7 | Complete |
+| CTRL-08 | Phase 7 | Complete |
+| CTRL-09 | Phase 7 | Complete |
+| CTRL-10 | Phase 7 | Complete |
 | INFRA-01 | Phase 6 | Complete |
 | INFRA-02 | Phase 5 | Complete |
 | INFRA-03 | Phase 5 | Complete |
