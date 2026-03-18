@@ -22,9 +22,9 @@ Requirements for v2.1 Dashboard Redesign & Polish milestone.
 
 ### Peak Statistiken (STATS)
 
-- [ ] **STATS-01**: Heutiger Peak Power (kW) wird in-memory getrackt und im Dashboard angezeigt
-- [ ] **STATS-02**: Betriebsstunden heute werden angezeigt (Stunden seit Inverter nicht im Sleep-Modus)
-- [ ] **STATS-03**: Effizienz-Indikator (aktuell vs Peak) wird angezeigt
+- [x] **STATS-01**: Heutiger Peak Power (kW) wird in-memory getrackt und im Dashboard angezeigt
+- [x] **STATS-02**: Betriebsstunden heute werden angezeigt (Stunden seit Inverter nicht im Sleep-Modus)
+- [x] **STATS-03**: Effizienz-Indikator (aktuell vs Peak) wird angezeigt
 
 ### Animations (ANIM)
 
@@ -81,9 +81,9 @@ Requirements for v2.1 Dashboard Redesign & Polish milestone.
 | VENUS-02 | Phase 11 | Pending |
 | VENUS-03 | Phase 11 | Pending |
 | VENUS-04 | Phase 11 | Pending |
-| STATS-01 | Phase 10 | Pending |
-| STATS-02 | Phase 10 | Pending |
-| STATS-03 | Phase 10 | Pending |
+| STATS-01 | Phase 10 | Complete |
+| STATS-02 | Phase 10 | Complete |
+| STATS-03 | Phase 10 | Complete |
 | ANIM-01 | Phase 9 | Complete |
 | ANIM-02 | Phase 9 | Complete |
 | ANIM-03 | Phase 9 | Complete |
