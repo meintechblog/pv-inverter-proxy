@@ -20,7 +20,8 @@ document.querySelectorAll('.nav-item').forEach(item => {
         const page = item.dataset.page;
         // Hide all pages, show selected
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        document.getElementById('page-' + page).classList.add('active');
+        var pageEl = document.getElementById('page-' + page);
+        if (pageEl) pageEl.classList.add('active');
         // Update nav active state
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
         item.classList.add('active');
@@ -1065,6 +1066,11 @@ function updateOverrideLog(events) {
     var container = document.getElementById('override-log');
     if (!container) return;
 
+    var countEl = document.getElementById('override-log-count');
+    if (countEl) {
+        countEl.textContent = (events && events.length) ? events.length : 0;
+    }
+
     if (!events || events.length === 0) {
         container.innerHTML = '<div class="ve-text-dim">No events yet</div>';
         return;
@@ -1091,6 +1097,17 @@ function updateOverrideLog(events) {
     }
     container.innerHTML = html;
 }
+
+// --- Override Log Toggle (Collapsible) ---
+(function() {
+    var toggleBtn = document.getElementById('override-log-toggle');
+    var logContainer = document.getElementById('override-log');
+    if (!toggleBtn || !logContainer) return;
+
+    toggleBtn.addEventListener('click', function() {
+        logContainer.classList.toggle('ve-override-log--collapsed');
+    });
+})();
 
 // --- Handle override_event WebSocket message ---
 
