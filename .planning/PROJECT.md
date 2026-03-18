@@ -22,13 +22,28 @@ Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern können wie ei
 
 ### Active
 
-(Defined in next milestone)
+- [ ] Venus OS Dashboard UI (exakte Venus OS Optik, Live-Leistungsdaten, 3-Phasen)
+- [ ] Power Control UI (Slider 0-100%, Enable/Disable, Live Feedback vom Inverter)
+- [ ] Venus OS Override Anzeige (wer drosselt gerade, welcher Wert)
+- [ ] Mini-Graphen für Leistungsverlauf (letzte 60 Minuten, in-memory)
+- [ ] Inverter-Info Dashboard (Spannung, Strom, Frequenz, Temperatur, Status)
+
+## Current Milestone: v2.0 Dashboard & Power Control
+
+**Goal:** Professionelles Dashboard im Venus OS Stil mit Live-Inverter-Monitoring und direkter Power-Control-Steuerung über die Webapp.
+
+**Target features:**
+- Venus OS styled Dashboard (exakte Farben, Fonts, Widgets)
+- Live-Leistungs-Dashboard mit 3-Phasen-Details
+- Power Limiting Test-UI (Slider, Toggle, Live Feedback)
+- Venus OS Override Detection (wer kontrolliert gerade)
+- Mini-Sparklines für Leistungsverlauf (60 min, in-memory Ring Buffer)
 
 ### Out of Scope
 
 - Sicherheitsfeatures (TLS, Auth) — alles im selben LAN, nicht nötig
 - Mobile App — Webapp reicht
-- Historische Datenbank / Langzeit-Logging — Venus OS macht das selbst
+- Historische Datenbank / Langzeit-Logging — Venus OS macht das, Webapp nur 60-min in-memory
 - Andere Inverter-Marken in v1 — nur SolarEdge SE30K, aber Architektur vorbereitet
 
 ## Context
@@ -66,4 +81,8 @@ Tech stack: Python 3.12, pymodbus 3.8+, aiohttp, structlog, PyYAML.
 | Single-file HTML Frontend | Kein Build-Tooling nötig | ✓ Good — importlib.resources serving |
 
 ---
-*Last updated: 2026-03-18 after v1.0 milestone*
+| Venus OS exakte UI Kopie | User will native Integration-Optik | — Pending |
+| In-Memory Ring Buffer statt DB | Einfach, kein Storage, 60 min reicht | — Pending |
+
+---
+*Last updated: 2026-03-18 after v2.0 milestone start*
