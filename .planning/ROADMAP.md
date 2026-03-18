@@ -13,7 +13,7 @@ This roadmap delivers a Modbus TCP proxy that makes a SolarEdge SE30K appear as 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Protocol Research & Validation** - Verify dbus-fronius expectations, read SolarEdge registers, produce translation spec
-- [ ] **Phase 2: Core Proxy (Read Path)** - Modbus TCP proxy that makes Venus OS discover and monitor the SolarEdge as a Fronius inverter
+- [x] **Phase 2: Core Proxy (Read Path)** - Modbus TCP proxy that makes Venus OS discover and monitor the SolarEdge as a Fronius inverter (completed 2026-03-18)
 - [ ] **Phase 3: Control Path & Production Hardening** - Power limiting write path plus systemd service, reconnection, and logging
 - [ ] **Phase 4: Configuration Webapp** - Web UI for configuration, connection status, and register inspection
 
@@ -43,7 +43,7 @@ Plans:
   3. The proxy serves a valid SunSpec model chain (Common -> Inverter 103 -> Nameplate 120 -> End) with correct Fronius manufacturer string
   4. SolarEdge registers are polled asynchronously and Venus OS reads from a local cache (not pass-through)
   5. The inverter-brand-specific code is isolated behind a plugin interface that can be swapped for other brands
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 02-01-PLAN.md — Plugin interface, SunSpec model chain builder, register cache with staleness tracking
@@ -88,6 +88,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Protocol Research & Validation | 0/2 | Planning complete | - |
-| 2. Core Proxy (Read Path) | 0/2 | Planning complete | - |
+| 2. Core Proxy (Read Path) | 2/2 | Complete   | 2026-03-18 |
 | 3. Control Path & Production Hardening | 0/? | Not started | - |
 | 4. Configuration Webapp | 0/? | Not started | - |
