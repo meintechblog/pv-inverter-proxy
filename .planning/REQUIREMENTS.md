@@ -1,0 +1,104 @@
+# Requirements: Venus OS Fronius Proxy
+
+**Defined:** 2026-03-18
+**Core Value:** Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie einen echten Fronius-Inverter
+
+## v2.1 Requirements
+
+Requirements for v2.1 Dashboard Redesign & Polish milestone.
+
+### Dashboard Layout (LAYOUT)
+
+- [ ] **LAYOUT-01**: Power Control (Slider, Toggle, Override Log) ist inline im Dashboard unter dem Power Gauge — keine separate Seite
+- [ ] **LAYOUT-02**: Kompaktes Grid-Layout mit allen Widgets auf einer Seite (Gauge, Power Control, 3-Phase, Sparkline, Status, Daily Energy, Peak Stats)
+- [ ] **LAYOUT-03**: Separate Power Control Seite ist entfernt, Sidebar-Navigation zeigt nur Dashboard/Config/Registers
+
+### Venus OS (VENUS)
+
+- [ ] **VENUS-01**: Venus OS Info Widget zeigt Connection Status (Online/Offline), IP-Adresse, und Zeitpunkt des letzten Kontakts
+- [ ] **VENUS-02**: Widget zeigt aktuellen Override-Status (ob Venus OS gerade die Kontrolle hat, welcher Wert)
+- [ ] **VENUS-03**: Apple-style Lock Toggle um Venus OS Kontrolle zu sperren/erlauben, mit Confirmation Dialog
+- [ ] **VENUS-04**: Lock Toggle hat Auto-Unlock Timer (max 15 Minuten) als Safety-Feature — Venus OS wird nie permanent ausgesperrt
+
+### Peak Statistiken (STATS)
+
+- [ ] **STATS-01**: Heutiger Peak Power (kW) wird in-memory getrackt und im Dashboard angezeigt
+- [ ] **STATS-02**: Betriebsstunden heute werden angezeigt (Stunden seit Inverter nicht im Sleep-Modus)
+- [ ] **STATS-03**: Effizienz-Indikator (aktuell vs Peak) wird angezeigt
+
+### Animations (ANIM)
+
+- [ ] **ANIM-01**: Power Gauge hat smooth animierte Arc-Transition bei Wertaenderungen
+- [ ] **ANIM-02**: Dashboard-Widgets haben staggered Entrance-Animations beim Laden
+- [ ] **ANIM-03**: Wertaenderungen in Cards haben subtle Highlight/Flash-Animation
+- [ ] **ANIM-04**: Alle Animationen respektieren prefers-reduced-motion und nutzen nur GPU-accelerated Properties (transform, opacity)
+
+### Notifications (NOTIF)
+
+- [ ] **NOTIF-01**: Toast-System mit Stacking (mehrere Toasts gleichzeitig sichtbar, nicht ueberlappend)
+- [ ] **NOTIF-02**: Toast bei Venus OS Override Event (wer hat uebernommen, welcher Wert)
+- [ ] **NOTIF-03**: Toast bei Inverter Fault oder Temperatur-Warnung
+- [ ] **NOTIF-04**: Toast bei Nachtmodus-Wechsel (Inverter geht schlafen / wacht auf)
+- [ ] **NOTIF-05**: Toasts haben Exit-Animation und Click-to-Dismiss
+
+## Future Requirements
+
+### Erweiterte Venus OS Integration
+
+- **VENUS-10**: Battery SOC und Grid Power aus Venus OS Modbus Registern lesen
+- **VENUS-11**: Venus OS Firmware-Version und Device-Typ anzeigen
+- **VENUS-12**: DVCC Status direkt aus Venus OS Registern auslesen
+
+### Multi-Inverter
+
+- **MULTI-01**: Mehrere SolarEdge-Inverter gleichzeitig proxyen
+- **MULTI-02**: Andere Inverter-Marken als Plugins (Huawei, Kostal, etc.)
+
+### Erweiterte Steuerung
+
+- **CTRL-11**: Einspeiseregelung mit konfigurierbarer Ramp-Rate
+- **CTRL-12**: Scheduled Power Limiting (zeitgesteuerte Begrenzung)
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Persistente Datenbank | Venus OS macht Langzeit-Logging, Webapp nur in-memory |
+| TLS/Auth | Alles im selben LAN, kein Internet-Exposure |
+| Mobile App | Responsive Webapp reicht |
+| Energy Flow Diagram | Proxy hat nur PV-Daten, kein Grid/Battery/Load |
+| Venus OS Modbus-Polling (Battery/Grid) | Register-Adressen MEDIUM confidence, separater Modbus-Client noetig — deferred |
+| Docker/Container | Direktes Deployment auf LXC (Debian 13) |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| LAYOUT-01 | TBD | Pending |
+| LAYOUT-02 | TBD | Pending |
+| LAYOUT-03 | TBD | Pending |
+| VENUS-01 | TBD | Pending |
+| VENUS-02 | TBD | Pending |
+| VENUS-03 | TBD | Pending |
+| VENUS-04 | TBD | Pending |
+| STATS-01 | TBD | Pending |
+| STATS-02 | TBD | Pending |
+| STATS-03 | TBD | Pending |
+| ANIM-01 | TBD | Pending |
+| ANIM-02 | TBD | Pending |
+| ANIM-03 | TBD | Pending |
+| ANIM-04 | TBD | Pending |
+| NOTIF-01 | TBD | Pending |
+| NOTIF-02 | TBD | Pending |
+| NOTIF-03 | TBD | Pending |
+| NOTIF-04 | TBD | Pending |
+| NOTIF-05 | TBD | Pending |
+
+**Coverage:**
+- v2.1 requirements: 19 total
+- Mapped to phases: 0
+- Unmapped: 19
+
+---
+*Requirements defined: 2026-03-18*
+*Last updated: 2026-03-18 after v2.1 milestone start*
