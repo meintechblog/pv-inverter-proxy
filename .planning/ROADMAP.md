@@ -36,7 +36,7 @@ Full details: `.planning/milestones/v2.0-ROADMAP.md`
 
 **Milestone Goal:** Alle Dashboard-Funktionen auf einer einzigen Seite vereinen, Venus OS Info anzeigen, und das Gesamterlebnis mit Animationen, Statistiken und Smart Notifications abrunden.
 
-- [ ] **Phase 9: CSS Animations & Toast System** - Animation foundation and notification infrastructure
+- [x] **Phase 9: CSS Animations & Toast System** - Animation foundation and notification infrastructure (completed 2026-03-18)
 - [ ] **Phase 10: Peak Statistics & Smart Notifications** - Backend stats tracking and event-driven toasts
 - [ ] **Phase 11: Venus OS Widget & Lock Toggle** - Venus OS info display and control lock
 - [ ] **Phase 12: Unified Dashboard Layout** - Single-page merge of all widgets
@@ -117,7 +117,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12
 | 6. Live Dashboard | v2.0 | 2/2 | Complete | 2026-03-18 |
 | 7. Power Control | v2.0 | 2/2 | Complete | 2026-03-18 |
 | 8. Inverter Details & Polish | v2.0 | 1/1 | Complete | 2026-03-18 |
-| 9. CSS Animations & Toast System | v2.1 | 0/2 | Planning complete | - |
+| 9. CSS Animations & Toast System | 2/2 | Complete   | 2026-03-18 | - |
 | 10. Peak Statistics & Smart Notifications | v2.1 | 0/? | Not started | - |
 | 11. Venus OS Widget & Lock Toggle | v2.1 | 0/? | Not started | - |
 | 12. Unified Dashboard Layout | v2.1 | 0/? | Not started | - |
