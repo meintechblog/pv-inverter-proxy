@@ -1,65 +1,50 @@
 # Requirements: Venus OS Fronius Proxy
 
-**Defined:** 2026-03-17
-**Core Value:** Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie einen echten Fronius-Inverter
-
-## v1 Requirements
-
-### Protocol Research & Validation
-
-- [x] **PROTO-01**: dbus-fronius Source Code analysiert -- exakte Fronius-Erwartungen (Discovery, Manufacturer-String, SunSpec Models) dokumentiert
-- [x] **PROTO-02**: SolarEdge SE30K Register-Map per Modbus TCP live ausgelesen und validiert
-- [x] **PROTO-03**: Register-Mapping-Spezifikation erstellt (SolarEdge -> Fronius SunSpec Translation Table)
-
-### Modbus Proxy Core
-
-- [x] **PROXY-01**: Modbus TCP Server laeuft und akzeptiert Verbindungen von Venus OS
-- [x] **PROXY-02**: SunSpec Common Model (Model 1) korrekt bereitgestellt mit Fronius-Manufacturer-String
-- [x] **PROXY-03**: SunSpec Inverter Model 103 (three-phase) korrekt bereitgestellt mit Live-Daten vom SE30K
-- [x] **PROXY-04**: SunSpec Nameplate Model (Model 120) korrekt bereitgestellt
-- [x] **PROXY-05**: SunSpec Model Chain korrekt aufgebaut (Header -> Common -> Inverter -> Nameplate -> End)
-- [x] **PROXY-06**: SolarEdge Register werden per Modbus TCP Client async gepollt
-- [x] **PROXY-07**: Venus OS wird aus Register-Cache bedient (nicht synchron durch-proxied)
-- [x] **PROXY-08**: Scale Factors korrekt uebersetzt zwischen SolarEdge und Fronius SunSpec-Profil
-- [x] **PROXY-09**: Venus OS erkennt und zeigt den Proxy als Fronius Inverter an
-
-### Steuerung (Control Path)
-
-- [x] **CTRL-01**: Venus OS kann Leistungsbegrenzung (Active Power Limit) setzen via SunSpec Model 123
-- [x] **CTRL-02**: Leistungsbegrenzung wird korrekt an SolarEdge SE30K weitergeleitet
-- [x] **CTRL-03**: Steuerungsbefehle werden validiert bevor sie an den Inverter gesendet werden
-
-### Webapp
-
-- [x] **WEB-01**: Webapp erreichbar ueber HTTP im LAN
-- [x] **WEB-02**: SolarEdge IP-Adresse und Modbus-Port konfigurierbar ueber UI
-- [x] **WEB-03**: Verbindungsstatus zu SolarEdge und Venus OS live angezeigt
-- [x] **WEB-04**: Service-Health-Status angezeigt (uptime, letzte erfolgreiche Polls)
-- [x] **WEB-05**: Register-Viewer zeigt Live Modbus Register (SolarEdge-Quell- und Fronius-Ziel-Register)
-
-### Deployment & Betrieb
-
-- [x] **DEPL-01**: Laeuft als systemd Service mit Auto-Start und Restart-on-Failure
-- [x] **DEPL-02**: Automatische Reconnection bei Verbindungsabbruch zum SolarEdge
-- [x] **DEPL-03**: Graceful Handling wenn Inverter offline (Nacht/Wartung) -- keine Crash-Loops
-- [x] **DEPL-04**: Strukturiertes Logging (JSON) fuer systemd Journal
-
-### Architektur
-
-- [x] **ARCH-01**: Plugin-Interface definiert fuer Inverter-Marken (SolarEdge als erstes Plugin)
-- [x] **ARCH-02**: Register-Mapping als austauschbares Modul (nicht hardcoded)
+**Defined:** 2026-03-18
+**Core Value:** Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern können wie einen echten Fronius-Inverter
 
 ## v2 Requirements
+
+Requirements for v2.0 Dashboard & Power Control UI milestone.
+
+### Dashboard (DASH)
+
+- [ ] **DASH-01**: Venus OS themed UI (exakte Farben #387DC5/#141414, Fonts, Widget-Style)
+- [ ] **DASH-02**: Live Power Gauge — zentrale Anzeige aktuelle Leistung vs 30kW Nennleistung
+- [ ] **DASH-03**: 3-Phasen Detail — L1/L2/L3 Strom, Spannung, Leistung einzeln
+- [ ] **DASH-04**: Inverter Status Panel — Operating/Sleeping/Throttled/Fault, Temperatur, DC Werte
+- [ ] **DASH-05**: Tagesertrag Anzeige — heutiger Ertrag in kWh (in-memory, reset bei Restart)
+- [ ] **DASH-06**: Mini-Sparklines — Leistungsverlauf letzte 60 Minuten (SVG, in-memory Ring Buffer)
+
+### Power Control (CTRL)
+
+- [ ] **CTRL-04**: Read-only Anzeige — aktueller Power Limit Wert + wer ihn gesetzt hat
+- [ ] **CTRL-05**: Test-Slider mit Bestätigungsdialog — 0-100% mit Confirm vor Schreiben
+- [ ] **CTRL-06**: Enable/Disable Toggle mit Bestätigung
+- [ ] **CTRL-07**: Live Feedback — Bestätigung vom SE30K dass Limit akzeptiert wurde
+- [ ] **CTRL-08**: Venus OS Override Detection — anzeigen wenn Venus OS die Kontrolle hat
+- [ ] **CTRL-09**: EDPC Refresh Loop — Backend hält Power Limit aktiv (periodic refresh)
+- [ ] **CTRL-10**: Override Log — Logbuch wer wann welchen Wert gesetzt hat
+
+### Infrastructure (INFRA)
+
+- [ ] **INFRA-01**: Real-time Updates via SSE oder WebSocket (push statt polling)
+- [ ] **INFRA-02**: DashboardCollector — decoded Inverter-Daten einmal pro Poll-Cycle
+- [ ] **INFRA-03**: TimeSeriesBuffer — 60-min Ring Buffer für Sparklines (collections.deque)
+- [ ] **INFRA-04**: 3-File Split — index.html + style.css + app.js (statt single-file)
+- [ ] **INFRA-05**: Config + Register Viewer integriert ins neue Dashboard (Tabs/Sections)
+
+## Future Requirements
 
 ### Multi-Inverter
 
 - **MULTI-01**: Mehrere SolarEdge-Inverter gleichzeitig proxyen
-- **MULTI-02**: Andere Inverter-Marken als Plugins (Huawei, SMA, etc.)
+- **MULTI-02**: Andere Inverter-Marken als Plugins (Huawei, Kostal, etc.)
 
 ### Erweiterte Steuerung
 
-- **CTRL-10**: Einspeiseregelung mit konfigurierbarer Ramp-Rate
-- **CTRL-11**: Scheduled Power Limiting (zeitgesteuerte Begrenzung)
+- **CTRL-11**: Einspeiseregelung mit konfigurierbarer Ramp-Rate
+- **CTRL-12**: Scheduled Power Limiting (zeitgesteuerte Begrenzung)
 
 ### Webapp Erweiterungen
 
@@ -71,48 +56,40 @@
 
 | Feature | Reason |
 |---------|--------|
-| TLS/Auth fuer Webapp | Alles im selben LAN, kein Sicherheits-Overhead gewuenscht |
-| Mobile App | Webapp reicht, responsive Design genuegt |
-| Historische Datenbank | Venus OS macht Langzeit-Logging selbst |
+| Persistente Datenbank | Venus OS macht Langzeit-Logging, Webapp nur 60-min in-memory |
+| TLS/Auth | Alles im selben LAN, kein Internet-Exposure |
+| Mobile App | Responsive Webapp reicht |
+| Vollständiger Energy Flow Diagram | Proxy hat nur PV-Daten, kein Grid/Battery/Load — wäre unvollständig |
 | Docker/Container-Orchestrierung | Direktes Deployment auf LXC (Debian 13) |
-| Andere Inverter-Marken in v1 | Nur SolarEdge SE30K, aber Architektur vorbereitet |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROTO-01 | Phase 1 | Complete |
-| PROTO-02 | Phase 1 | Complete |
-| PROTO-03 | Phase 1 | Complete |
-| PROXY-01 | Phase 2 | Complete |
-| PROXY-02 | Phase 2 | Complete |
-| PROXY-03 | Phase 2 | Complete |
-| PROXY-04 | Phase 2 | Complete |
-| PROXY-05 | Phase 2 | Complete |
-| PROXY-06 | Phase 2 | Complete |
-| PROXY-07 | Phase 2 | Complete |
-| PROXY-08 | Phase 2 | Complete |
-| PROXY-09 | Phase 2 | Complete |
-| CTRL-01 | Phase 3 | Complete |
-| CTRL-02 | Phase 3 | Complete |
-| CTRL-03 | Phase 3 | Complete |
-| WEB-01 | Phase 4 | Complete |
-| WEB-02 | Phase 4 | Complete |
-| WEB-03 | Phase 4 | Complete |
-| WEB-04 | Phase 4 | Complete |
-| WEB-05 | Phase 4 | Complete |
-| DEPL-01 | Phase 3 | Complete |
-| DEPL-02 | Phase 3 | Complete |
-| DEPL-03 | Phase 3 | Complete |
-| DEPL-04 | Phase 3 | Complete |
-| ARCH-01 | Phase 2 | Complete |
-| ARCH-02 | Phase 2 | Complete |
+| DASH-01 | TBD | Pending |
+| DASH-02 | TBD | Pending |
+| DASH-03 | TBD | Pending |
+| DASH-04 | TBD | Pending |
+| DASH-05 | TBD | Pending |
+| DASH-06 | TBD | Pending |
+| CTRL-04 | TBD | Pending |
+| CTRL-05 | TBD | Pending |
+| CTRL-06 | TBD | Pending |
+| CTRL-07 | TBD | Pending |
+| CTRL-08 | TBD | Pending |
+| CTRL-09 | TBD | Pending |
+| CTRL-10 | TBD | Pending |
+| INFRA-01 | TBD | Pending |
+| INFRA-02 | TBD | Pending |
+| INFRA-03 | TBD | Pending |
+| INFRA-04 | TBD | Pending |
+| INFRA-05 | TBD | Pending |
 
 **Coverage:**
-- v1 requirements: 26 total
-- Mapped to phases: 26
-- Unmapped: 0
+- v2 requirements: 18 total
+- Mapped to phases: 0
+- Unmapped: 18 ⚠️
 
 ---
-*Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after roadmap creation*
+*Requirements defined: 2026-03-18*
+*Last updated: 2026-03-18 after v2.0 milestone start*
