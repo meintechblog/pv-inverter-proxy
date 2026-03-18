@@ -14,7 +14,7 @@ import pytest
 from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.datastore import (
     ModbusSequentialDataBlock,
-    ModbusSlaveContext,
+    ModbusDeviceContext,
     ModbusServerContext,
 )
 from pymodbus.server import ModbusTcpServer
@@ -161,13 +161,13 @@ class TestWriteWMaxLimPct:
 
             # Enable power control first (write 1 to 40158)
             result_ena = await client.write_register(
-                40158, 1, slave=PROXY_UNIT_ID,
+                40158, 1, device_id=PROXY_UNIT_ID,
             )
             assert not result_ena.isError(), f"Enable write failed: {result_ena}"
 
             # Write WMaxLimPct = 5000 (50.00%) to register 40154
             result = await client.write_register(
-                40154, 5000, slave=PROXY_UNIT_ID,
+                40154, 5000, device_id=PROXY_UNIT_ID,
             )
             assert not result.isError(), f"WMaxLimPct write failed: {result}"
 
@@ -193,7 +193,7 @@ class TestWriteWMaxLimPct:
 
             # Write WMaxLimPct without enabling first
             result = await client.write_register(
-                40154, 5000, slave=PROXY_UNIT_ID,
+                40154, 5000, device_id=PROXY_UNIT_ID,
             )
             assert not result.isError(), f"WMaxLimPct write failed: {result}"
 
@@ -217,7 +217,7 @@ class TestWriteWMaxLimPct:
             from pymodbus.exceptions import ModbusIOException
             try:
                 result = await client.write_register(
-                    40154, 10001, slave=PROXY_UNIT_ID,
+                    40154, 10001, device_id=PROXY_UNIT_ID,
                 )
                 # Should get an error response
                 assert result.isError(), "Expected error for invalid WMaxLimPct"
@@ -239,13 +239,13 @@ class TestWriteWMaxLimPct:
 
             # Write WMaxLimPct = 5000
             result = await client.write_register(
-                40154, 5000, slave=PROXY_UNIT_ID,
+                40154, 5000, device_id=PROXY_UNIT_ID,
             )
             assert not result.isError()
 
             # Read back Model 123 block
             readback = await client.read_holding_registers(
-                40149, count=26, slave=PROXY_UNIT_ID,
+                40149, count=26, device_id=PROXY_UNIT_ID,
             )
             assert not readback.isError()
             assert readback.registers[0] == CONTROLS_DID     # 123
@@ -269,7 +269,7 @@ class TestWriteWMaxLimEna:
             await asyncio.sleep(0.2)
 
             result = await client.write_register(
-                40158, 1, slave=PROXY_UNIT_ID,
+                40158, 1, device_id=PROXY_UNIT_ID,
             )
             assert not result.isError(), f"Enable write failed: {result}"
 
@@ -291,7 +291,7 @@ class TestWriteWMaxLimEna:
             from pymodbus.exceptions import ModbusIOException
             try:
                 result = await client.write_register(
-                    40158, 2, slave=PROXY_UNIT_ID,
+                    40158, 2, device_id=PROXY_UNIT_ID,
                 )
                 assert result.isError(), "Expected error for invalid WMaxLim_Ena"
             except ModbusIOException:
@@ -310,12 +310,12 @@ class TestWriteWMaxLimEna:
             await asyncio.sleep(0.2)
 
             result = await client.write_register(
-                40158, 1, slave=PROXY_UNIT_ID,
+                40158, 1, device_id=PROXY_UNIT_ID,
             )
             assert not result.isError()
 
             readback = await client.read_holding_registers(
-                40149, count=26, slave=PROXY_UNIT_ID,
+                40149, count=26, device_id=PROXY_UNIT_ID,
             )
             assert not readback.isError()
             assert readback.registers[9] == 1  # WMaxLim_Ena at offset 9
@@ -337,11 +337,11 @@ class TestFullWritePath:
             await asyncio.sleep(0.2)
 
             # Step 1: Enable
-            r1 = await client.write_register(40158, 1, slave=PROXY_UNIT_ID)
+            r1 = await client.write_register(40158, 1, device_id=PROXY_UNIT_ID)
             assert not r1.isError()
 
             # Step 2: Set limit to 50%
-            r2 = await client.write_register(40154, 5000, slave=PROXY_UNIT_ID)
+            r2 = await client.write_register(40154, 5000, device_id=PROXY_UNIT_ID)
             assert not r2.isError()
 
             # Verify calls
@@ -353,7 +353,7 @@ class TestFullWritePath:
             assert calls[1].args == (True, 50.0)
 
             # Step 3: Readback full Model 123
-            rb = await client.read_holding_registers(40149, count=26, slave=PROXY_UNIT_ID)
+            rb = await client.read_holding_registers(40149, count=26, device_id=PROXY_UNIT_ID)
             assert not rb.isError()
             assert rb.registers[0] == 123    # DID
             assert rb.registers[1] == 24     # Length
@@ -361,7 +361,7 @@ class TestFullWritePath:
             assert rb.registers[9] == 1      # WMaxLim_Ena
 
             # Step 4: Disable
-            r3 = await client.write_register(40158, 0, slave=PROXY_UNIT_ID)
+            r3 = await client.write_register(40158, 0, device_id=PROXY_UNIT_ID)
             assert not r3.isError()
 
             # Third call: disable

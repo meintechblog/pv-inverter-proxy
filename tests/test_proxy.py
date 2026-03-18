@@ -127,7 +127,7 @@ async def _wait_for_cache_update(
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
         result = await client.read_holding_registers(
-            address, count=count, slave=PROXY_UNIT_ID,
+            address, count=count, device_id=PROXY_UNIT_ID,
         )
         if not result.isError():
             if any(v != 0 for v in result.registers):
@@ -193,7 +193,7 @@ class TestServerConnection:
         try:
             # Unit 126 should work
             result_126 = await client.read_holding_registers(
-                40000, count=2, slave=PROXY_UNIT_ID,
+                40000, count=2, device_id=PROXY_UNIT_ID,
             )
             assert not result_126.isError()
 
@@ -202,7 +202,7 @@ class TestServerConnection:
             from pymodbus.exceptions import ModbusIOException
             try:
                 result_1 = await client.read_holding_registers(
-                    40000, count=2, slave=1,
+                    40000, count=2, device_id=1,
                 )
                 # If we get here, it should be an error response
                 assert result_1.isError()
@@ -223,7 +223,7 @@ class TestSunSpecDiscovery:
         try:
             # SunSpec Header at 40000-40001
             header = await client.read_holding_registers(
-                40000, count=2, slave=PROXY_UNIT_ID,
+                40000, count=2, device_id=PROXY_UNIT_ID,
             )
             assert not header.isError()
             assert header.registers[0] == 0x5375  # "Su"
@@ -231,7 +231,7 @@ class TestSunSpecDiscovery:
 
             # Common Model at 40002
             common = await client.read_holding_registers(
-                40002, count=2, slave=PROXY_UNIT_ID,
+                40002, count=2, device_id=PROXY_UNIT_ID,
             )
             assert not common.isError()
             assert common.registers[0] == COMMON_DID      # 1
@@ -239,7 +239,7 @@ class TestSunSpecDiscovery:
 
             # Model 103 at 40069
             inv = await client.read_holding_registers(
-                40069, count=2, slave=PROXY_UNIT_ID,
+                40069, count=2, device_id=PROXY_UNIT_ID,
             )
             assert not inv.isError()
             assert inv.registers[0] == INVERTER_DID    # 103
@@ -247,7 +247,7 @@ class TestSunSpecDiscovery:
 
             # Model 120 at 40121
             np_regs = await client.read_holding_registers(
-                40121, count=2, slave=PROXY_UNIT_ID,
+                40121, count=2, device_id=PROXY_UNIT_ID,
             )
             assert not np_regs.isError()
             assert np_regs.registers[0] == NAMEPLATE_DID    # 120
@@ -255,7 +255,7 @@ class TestSunSpecDiscovery:
 
             # Model 123 at 40149
             ctrl = await client.read_holding_registers(
-                40149, count=2, slave=PROXY_UNIT_ID,
+                40149, count=2, device_id=PROXY_UNIT_ID,
             )
             assert not ctrl.isError()
             assert ctrl.registers[0] == CONTROLS_DID    # 123
@@ -263,7 +263,7 @@ class TestSunSpecDiscovery:
 
             # End marker at 40175
             end = await client.read_holding_registers(
-                40175, count=2, slave=PROXY_UNIT_ID,
+                40175, count=2, device_id=PROXY_UNIT_ID,
             )
             assert not end.isError()
             assert end.registers[0] == 0xFFFF
@@ -296,7 +296,7 @@ class TestCacheServing:
         try:
             # Read immediately -- may be zeros before first poll
             initial = await client.read_holding_registers(
-                40071, count=1, slave=PROXY_UNIT_ID,
+                40071, count=1, device_id=PROXY_UNIT_ID,
             )
             assert not initial.isError()
 
@@ -344,7 +344,7 @@ class TestStaleness:
 
         slave_ctx = StalenessAwareSlaveContext(cache=cache, hr=datablock)
         server_ctx = ModbusServerContext(
-            slaves={PROXY_UNIT_ID: slave_ctx}, single=False,
+            devices={PROXY_UNIT_ID: slave_ctx}, single=False,
         )
 
         await plugin.connect()
@@ -384,7 +384,7 @@ class TestStaleness:
             from pymodbus.exceptions import ModbusIOException
             try:
                 result = await client.read_holding_registers(
-                    40071, count=1, slave=PROXY_UNIT_ID,
+                    40071, count=1, device_id=PROXY_UNIT_ID,
                 )
                 assert result.isError(), "Expected Modbus error when cache is stale"
             except ModbusIOException:

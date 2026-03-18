@@ -284,7 +284,7 @@ async def config_test_handler(request: web.Request) -> web.Response:
     client = AsyncModbusTcpClient(host, port=port, timeout=5)
     try:
         await client.connect()
-        result = await client.read_holding_registers(40000, 2, slave=unit_id)
+        result = await client.read_holding_registers(40000, 2, device_id=unit_id)
         if result.isError():
             return web.json_response({
                 "success": False,

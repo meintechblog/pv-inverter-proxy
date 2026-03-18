@@ -1,0 +1,19 @@
+# Local development config (non-privileged ports)
+inverter:
+  host: "192.168.3.18"
+  port: 1502
+  unit_id: 1
+
+proxy:
+  host: "0.0.0.0"
+  port: 5020  # Non-privileged port for local testing (SE30K uses 1502)
+  poll_interval: 1.0
+  staleness_timeout: 30.0
+
+night_mode:
+  threshold_seconds: 300.0
+
+webapp:
+  port: 8080
+
+log_level: "DEBUG"

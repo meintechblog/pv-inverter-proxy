@@ -67,11 +67,11 @@ class SolarEdgePlugin(InverterPlugin):
         try:
             # Read Common Model (67 registers starting at 40002)
             common = await self._client.read_holding_registers(
-                COMMON_READ_ADDR, count=COMMON_READ_COUNT, slave=self.unit_id,
+                COMMON_READ_ADDR, count=COMMON_READ_COUNT, device_id=self.unit_id,
             )
             # Read Inverter Model 103 (52 registers starting at 40069)
             inverter = await self._client.read_holding_registers(
-                INVERTER_READ_ADDR, count=INVERTER_READ_COUNT, slave=self.unit_id,
+                INVERTER_READ_ADDR, count=INVERTER_READ_COUNT, device_id=self.unit_id,
             )
 
             if common.isError():
@@ -148,7 +148,7 @@ class SolarEdgePlugin(InverterPlugin):
         try:
             # Write enable/disable to 0xF300 (62208)
             result = await self._client.write_register(
-                0xF300, int(enable), slave=self.unit_id,
+                0xF300, int(enable), device_id=self.unit_id,
             )
             if result.isError():
                 return WriteResult(success=False, error=f"Enable write failed: {result}")
@@ -158,7 +158,7 @@ class SolarEdgePlugin(InverterPlugin):
                 packed = struct.pack(">f", limit_pct)
                 hi, lo = struct.unpack(">HH", packed)
                 result = await self._client.write_registers(
-                    0xF322, [hi, lo], slave=self.unit_id,
+                    0xF322, [hi, lo], device_id=self.unit_id,
                 )
                 if result.isError():
                     return WriteResult(success=False, error=f"Limit write failed: {result}")

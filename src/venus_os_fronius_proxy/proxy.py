@@ -13,7 +13,7 @@ import time
 
 from pymodbus.datastore import (
     ModbusSequentialDataBlock,
-    ModbusSlaveContext,
+    ModbusDeviceContext,
     ModbusServerContext,
 )
 from pymodbus.server import ModbusTcpServer
@@ -57,8 +57,8 @@ COMMON_CACHE_ADDR = 40003
 INVERTER_CACHE_ADDR = 40070
 
 
-class StalenessAwareSlaveContext(ModbusSlaveContext):
-    """ModbusSlaveContext that returns Modbus exception 0x04 when cache is stale.
+class StalenessAwareSlaveContext(ModbusDeviceContext):
+    """ModbusDeviceContext that returns Modbus exception 0x04 when cache is stale.
 
     Per locked decision: after 30s without a successful poll, start returning
     Modbus errors to Venus OS instead of serving stale data.
@@ -370,7 +370,7 @@ async def run_proxy(
         cache=cache, plugin=plugin, control_state=control_state, hr=datablock,
     )
     server_ctx = ModbusServerContext(
-        slaves={PROXY_UNIT_ID: slave_ctx},
+        devices={PROXY_UNIT_ID: slave_ctx},
         single=False,
     )
 
