@@ -17,6 +17,7 @@ from venus_os_fronius_proxy.config import (
     save_config,
     validate_inverter_config,
 )
+from venus_os_fronius_proxy.control import validate_wmaxlimpct
 
 
 # SunSpec register layout for the register viewer.
@@ -440,6 +441,91 @@ async def broadcast_to_clients(app: web.Application, snapshot: dict) -> None:
             clients.discard(ws)
 
 
+async def power_limit_handler(request: web.Request) -> web.Response:
+    """Handle power limit commands from webapp.
+
+    Actions: "set" (with limit_pct), "enable", "disable".
+    Returns 409 if Venus OS wrote within last 60s.
+    Returns 400 on invalid values.
+    Response always includes success and error fields (CTRL-07).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response(
+            {"success": False, "error": "Invalid JSON body"}, status=400,
+        )
+
+    action = body.get("action")
+    if action not in ("set", "enable", "disable"):
+        return web.json_response(
+            {"success": False, "error": f"Unknown action: {action}"}, status=400,
+        )
+
+    shared_ctx = request.app["shared_ctx"]
+    control = shared_ctx["control_state"]
+    plugin = request.app["plugin"]
+    override_log = shared_ctx.get("override_log")
+
+    # Venus OS priority check
+    if control.last_source == "venus_os":
+        age = time.time() - control.last_change_ts
+        if age < 60:
+            return web.json_response(
+                {"success": False, "error": "Venus OS is currently controlling power limit"},
+                status=409,
+            )
+
+    if action == "set":
+        try:
+            limit_pct = float(body["limit_pct"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response(
+                {"success": False, "error": "Missing or invalid limit_pct"}, status=400,
+            )
+
+        if limit_pct < 0 or limit_pct > 100:
+            return web.json_response(
+                {"success": False, "error": f"limit_pct must be 0-100, got {limit_pct}"},
+                status=400,
+            )
+
+        raw_value = int(limit_pct * 100)  # SF=-2: 50.0% -> 5000
+        error = validate_wmaxlimpct(raw_value)
+        if error:
+            return web.json_response(
+                {"success": False, "error": error}, status=400,
+            )
+
+        result = await plugin.write_power_limit(True, limit_pct)
+        if result.success:
+            control.set_from_webapp(raw_value, 1)
+            if override_log is not None:
+                override_log.append("webapp", "set", limit_pct)
+        return web.json_response({"success": result.success, "error": result.error})
+
+    elif action == "enable":
+        result = await plugin.write_power_limit(True, control.wmaxlimpct_float)
+        if result.success:
+            control.update_wmaxlim_ena(1)
+            control.last_source = "webapp"
+            control.last_change_ts = time.time()
+            control.webapp_revert_at = time.monotonic() + 300.0
+            if override_log is not None:
+                override_log.append("webapp", "enable", control.wmaxlimpct_float)
+        return web.json_response({"success": result.success, "error": result.error})
+
+    else:  # disable
+        result = await plugin.write_power_limit(False, 0.0)
+        if result.success:
+            control.update_wmaxlim_ena(0)
+            control.last_source = "none"
+            control.webapp_revert_at = None
+            if override_log is not None:
+                override_log.append("webapp", "disable", None)
+        return web.json_response({"success": result.success, "error": result.error})
+
+
 async def create_webapp(
     shared_ctx: dict,
     config: Config,
@@ -468,6 +554,7 @@ async def create_webapp(
     app.router.add_post("/api/config/test", config_test_handler)
     app.router.add_get("/api/registers", registers_handler)
     app.router.add_get("/api/dashboard", dashboard_handler)
+    app.router.add_post("/api/power-limit", power_limit_handler)
     app.router.add_get("/static/{filename}", static_handler)
 
     runner = web.AppRunner(app)

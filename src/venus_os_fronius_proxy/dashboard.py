@@ -79,6 +79,14 @@ _UNIT_SUFFIXES = {
 }
 
 
+def _revert_remaining(control_state: object) -> float | None:
+    """Return seconds until auto-revert, or None if no revert pending."""
+    deadline = getattr(control_state, "webapp_revert_at", None)
+    if deadline is not None:
+        return max(0.0, deadline - time.monotonic())
+    return None
+
+
 class DashboardCollector:
     """Decodes raw registers, updates time series buffers, produces snapshots."""
 
@@ -105,6 +113,7 @@ class DashboardCollector:
         control_state: object | None = None,
         conn_mgr: object | None = None,
         poll_counter: dict | None = None,
+        override_log: object | None = None,
     ) -> dict:
         """Decode registers, update buffers, return snapshot."""
         db = cache.datablock
@@ -142,6 +151,9 @@ class DashboardCollector:
                 "enabled": control_state.is_enabled,
                 "limit_pct": control_state.wmaxlimpct_float,
                 "wmaxlimpct_raw": control_state.wmaxlimpct_raw,
+                "last_source": getattr(control_state, "last_source", "none"),
+                "last_change_ts": getattr(control_state, "last_change_ts", 0.0),
+                "revert_remaining_s": _revert_remaining(control_state),
             }
 
         # Build connection section
@@ -157,6 +169,7 @@ class DashboardCollector:
             "inverter": inverter,
             "control": control,
             "connection": connection,
+            "override_log": override_log.get_all() if override_log else [],
         }
 
         # Feed time series buffers

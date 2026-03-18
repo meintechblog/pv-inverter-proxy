@@ -77,12 +77,14 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
         cache: RegisterCache,
         plugin: InverterPlugin | None = None,
         control_state: ControlState | None = None,
+        shared_ctx: dict | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._cache = cache
         self._plugin = plugin
         self._control = control_state
+        self._shared_ctx = shared_ctx
 
     def getValues(self, fc_as_hex, address, count=1):
         """Override to intercept reads when cache is stale.
@@ -167,6 +169,13 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
                     wmaxlimpct=values[0], enabled=False, result="stored",
                 )
 
+            # Venus OS source tracking (Phase 7)
+            self._control.set_from_venus_os()
+            if self._shared_ctx and "override_log" in self._shared_ctx:
+                self._shared_ctx["override_log"].append(
+                    "venus_os", "set", self._control.wmaxlimpct_float,
+                )
+
             # Update local readback registers
             self._update_model_123_readback()
             return
@@ -202,6 +211,14 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
                 limit_pct=self._control.wmaxlimpct_float,
                 result="ok",
             )
+
+            # Venus OS source tracking (Phase 7)
+            self._control.set_from_venus_os()
+            ena_action = "enable" if self._control.is_enabled else "disable"
+            if self._shared_ctx and "override_log" in self._shared_ctx:
+                self._shared_ctx["override_log"].append(
+                    "venus_os", ena_action, self._control.wmaxlimpct_float,
+                )
 
             self._update_model_123_readback()
             return
@@ -275,6 +292,7 @@ async def _poll_loop(
                     shared_ctx["dashboard_collector"].collect(
                         cache, shared_ctx.get("control_state"),
                         conn_mgr=conn_mgr, poll_counter=poll_counter,
+                        override_log=shared_ctx.get("override_log"),
                     )
 
                 # Broadcast latest snapshot to all WebSocket clients
@@ -380,7 +398,8 @@ async def run_proxy(
 
     # Create staleness-aware Modbus server context with unit ID 126
     slave_ctx = StalenessAwareSlaveContext(
-        cache=cache, plugin=plugin, control_state=control_state, hr=datablock,
+        cache=cache, plugin=plugin, control_state=control_state,
+        shared_ctx=shared_ctx, hr=datablock,
     )
     server_ctx = ModbusServerContext(
         devices={PROXY_UNIT_ID: slave_ctx},
