@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=exec
-ExecStart=/usr/bin/python3 -m venus_os_fronius_proxy
+ExecStart=/opt/venus-os-fronius-proxy/.venv/bin/python3 -m venus_os_fronius_proxy
 Restart=on-failure
 RestartSec=5
 User=fronius-proxy
