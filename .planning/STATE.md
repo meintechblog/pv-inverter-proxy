@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Dashboard & Power Control
-status: ready_to_plan
-stopped_at: Roadmap created for v2.0
-last_updated: "2026-03-18"
+status: planning
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-18T15:35:50.272Z"
 last_activity: 2026-03-18 -- Created v2.0 roadmap (phases 5-8)
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 2
+  completed_plans: 1
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-18)
 ## Current Position
 
 Phase: 5 of 8 (Data Pipeline & Theme Foundation)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-03-18 -- Created v2.0 roadmap (phases 5-8)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-03-18 -- Completed 05-01 data pipeline backend
 
-Progress: [..........] 0%
+Progress: [#####.....] 50%
 
 ## Performance Metrics
 
@@ -39,7 +39,10 @@ Progress: [..........] 0%
 - Average duration: 6.3min
 - Total execution time: 0.95 hours
 
-**v2.0:** No plans executed yet.
+**v2.0:**
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 05    | 01   | 4min     | 2     | 7     |
 
 ## Accumulated Context
 
@@ -53,6 +56,8 @@ Recent decisions affecting current work:
 - [v2.0 Roadmap]: Zero new dependencies -- aiohttp WebSocket + stdlib + vanilla JS
 - [v2.0 Roadmap]: 3-file split (index.html + style.css + app.js) replaces single-file HTML
 - [v2.0 Roadmap]: Power control slider requires explicit Apply confirmation (safety)
+- [Phase 05]: Store time series at 1/s poll rate (memory cheap at ~1.3MB for 6 buffers)
+- [Phase 05]: DashboardCollector import inside run_with_shutdown() to avoid circular imports
 
 ### Pending Todos
 
@@ -65,6 +70,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-18
-Stopped at: Created v2.0 roadmap
+Last session: 2026-03-18T15:35:50.268Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None

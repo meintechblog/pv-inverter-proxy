@@ -29,9 +29,9 @@ Requirements for v2.0 Dashboard & Power Control UI milestone.
 ### Infrastructure (INFRA)
 
 - [ ] **INFRA-01**: Real-time Updates via SSE oder WebSocket (push statt polling)
-- [ ] **INFRA-02**: DashboardCollector — decoded Inverter-Daten einmal pro Poll-Cycle
-- [ ] **INFRA-03**: TimeSeriesBuffer — 60-min Ring Buffer für Sparklines (collections.deque)
-- [ ] **INFRA-04**: 3-File Split — index.html + style.css + app.js (statt single-file)
+- [x] **INFRA-02**: DashboardCollector — decoded Inverter-Daten einmal pro Poll-Cycle
+- [x] **INFRA-03**: TimeSeriesBuffer — 60-min Ring Buffer für Sparklines (collections.deque)
+- [x] **INFRA-04**: 3-File Split — index.html + style.css + app.js (statt single-file)
 - [ ] **INFRA-05**: Config + Register Viewer integriert ins neue Dashboard (Tabs/Sections)
 
 ## Future Requirements
@@ -80,9 +80,9 @@ Requirements for v2.0 Dashboard & Power Control UI milestone.
 | CTRL-09 | Phase 7 | Pending |
 | CTRL-10 | Phase 7 | Pending |
 | INFRA-01 | Phase 6 | Pending |
-| INFRA-02 | Phase 5 | Pending |
-| INFRA-03 | Phase 5 | Pending |
-| INFRA-04 | Phase 5 | Pending |
+| INFRA-02 | Phase 5 | Complete |
+| INFRA-03 | Phase 5 | Complete |
+| INFRA-04 | Phase 5 | Complete |
 | INFRA-05 | Phase 6 | Pending |
 
 **Coverage:**

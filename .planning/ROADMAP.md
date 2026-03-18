@@ -97,7 +97,7 @@ Plans:
 | 2. Core Proxy (Read Path) | v1.0 | 2/2 | Complete | 2026-03-18 |
 | 3. Control Path & Production Hardening | v1.0 | 3/3 | Complete | 2026-03-18 |
 | 4. Configuration Webapp | v1.0 | 2/2 | Complete | 2026-03-18 |
-| 5. Data Pipeline & Theme Foundation | v2.0 | 0/2 | Planning complete | - |
+| 5. Data Pipeline & Theme Foundation | 1/2 | In Progress|  | - |
 | 6. Live Dashboard | v2.0 | 0/? | Not started | - |
 | 7. Power Control | v2.0 | 0/? | Not started | - |
 | 8. Inverter Details & Polish | v2.0 | 0/? | Not started | - |
