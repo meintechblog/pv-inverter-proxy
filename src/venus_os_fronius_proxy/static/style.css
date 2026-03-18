@@ -21,6 +21,11 @@
     --ve-success: var(--ve-green);
     --ve-mono: 'Courier New', monospace;
     --ve-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --ve-duration-fast: 150ms;
+    --ve-duration-normal: 300ms;
+    --ve-duration-slow: 500ms;
+    --ve-easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+    --ve-easing-out: cubic-bezier(0, 0, 0.2, 1);
 }
 
 /* Reset */
@@ -451,6 +456,24 @@ body {
     animation: ve-flash 0.5s ease-out;
 }
 
+/* ===== Entrance Animation ===== */
+@keyframes ve-slide-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.ve-card--entering {
+    animation: ve-slide-up var(--ve-duration-normal) var(--ve-easing-out) both;
+}
+.ve-card--entering:nth-child(1) { animation-delay: 0ms; }
+.ve-card--entering:nth-child(2) { animation-delay: 60ms; }
+.ve-card--entering:nth-child(3) { animation-delay: 120ms; }
+.ve-card--entering:nth-child(4) { animation-delay: 180ms; }
+.ve-card--entering:nth-child(5) { animation-delay: 240ms; }
+.ve-card--entering:nth-child(6) { animation-delay: 300ms; }
+.ve-card--entering:nth-child(7) { animation-delay: 360ms; }
+.ve-card--entering:nth-child(8) { animation-delay: 420ms; }
+
 /* ===== Responsive: Tablet (768px - 1024px) ===== */
 @media (max-width: 1024px) {
     .app-shell {
@@ -614,7 +637,8 @@ body {
 }
 
 #gauge-fill {
-    transition: stroke-dashoffset 0.8s ease-out, stroke 0.5s ease;
+    transition: stroke-dashoffset 0.5s ease-out, stroke 0.5s ease;
+    will-change: stroke-dashoffset;
 }
 
 /* Phase Cards */
@@ -993,5 +1017,15 @@ body {
 @media (max-width: 768px) {
     .ve-ctrl-readout {
         grid-template-columns: 1fr;
+    }
+}
+
+/* ===== Accessibility: Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
     }
 }
