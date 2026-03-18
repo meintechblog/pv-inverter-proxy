@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Dashboard & Power Control
-status: milestone_complete
-stopped_at: v2.0 milestone archived
-last_updated: "2026-03-18T19:53:00.000Z"
-last_activity: 2026-03-18 -- v2.0 milestone archived and tagged
+milestone: v2.1
+milestone_name: Dashboard Redesign & Polish
+status: defining_requirements
+stopped_at: null
+last_updated: "2026-03-18T20:00:00.000Z"
+last_activity: 2026-03-18 -- Milestone v2.1 started
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-18)
 
 **Core value:** Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie einen echten Fronius-Inverter
-**Current focus:** Planning next milestone
+**Current focus:** v2.1 Dashboard Redesign & Polish — defining requirements
 
 ## Current Position
 
-v2.0 Dashboard & Power Control — SHIPPED 2026-03-18
-All 8 phases (v1.0 + v2.0), 16 plans complete.
-
-Next step: /gsd:new-milestone
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-18 — Milestone v2.1 started
 
 ## Performance Metrics
 
@@ -53,5 +53,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-18
-Stopped at: v2.0 milestone archived
+Stopped at: Milestone v2.1 started — defining requirements
 Resume file: None

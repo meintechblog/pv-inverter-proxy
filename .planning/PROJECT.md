@@ -32,7 +32,12 @@ Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie ei
 
 ### Active
 
-(None — next milestone requirements TBD via /gsd:new-milestone)
+- [ ] Unified Dashboard — Power Control inline unter Power Gauge (keine separate Seite)
+- [ ] Venus OS Info Widget — Connection Status, IP, letzter Kontakt, Override-Anzeige
+- [ ] Venus OS Lock Toggle — Apple-style Slider um Venus OS Kontrolle zu sperren/erlauben
+- [ ] Peak-Statistiken — heutiger Peak (kW), Betriebsstunden, Effizienz (in-memory)
+- [ ] Smooth Animations — animierter Gauge, Transitions, Micro-Interactions
+- [ ] Smart Notifications — Toast-Alerts bei Override, Fault, Temperatur-Warnung, Nachtmodus
 
 ### Out of Scope
 
@@ -84,5 +89,16 @@ Tech stack: Python 3.12, pymodbus 3.8+, aiohttp (HTTP + WebSocket), structlog, P
 | Venus OS Priority Window 60s | Venus OS Override immer respektiert | ✓ Good — verhindert Konflikte |
 | EDPC Refresh 30s | CommandTimeout/2 haelt Limit aktiv | ✓ Good — auto-revert nach 300s |
 
+## Current Milestone: v2.1 Dashboard Redesign & Polish
+
+**Goal:** Alle Dashboard-Funktionen (inkl. Power Control) auf einer einzigen Seite vereinen, Venus OS Instanz-Info anzeigen, und das Gesamterlebnis mit Animationen, Statistiken und Smart Notifications abrunden.
+
+**Target features:**
+- Power Control inline im Dashboard (kompakte Section unter Power Gauge)
+- Venus OS Info Widget (Connection, Control Status, Apple-style Lock Toggle)
+- Peak-Statistiken (Peak kW, Betriebsstunden, Effizienz)
+- Smooth CSS Animations und Micro-Interactions
+- Smart Toast-Notifications bei wichtigen Events
+
 ---
-*Last updated: 2026-03-18 after v2.0 milestone*
+*Last updated: 2026-03-18 after v2.1 milestone start*
