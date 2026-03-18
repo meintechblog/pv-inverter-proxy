@@ -9,9 +9,9 @@ Requirements for v2.1 Dashboard Redesign & Polish milestone.
 
 ### Dashboard Layout (LAYOUT)
 
-- [ ] **LAYOUT-01**: Power Control (Slider, Toggle, Override Log) ist inline im Dashboard unter dem Power Gauge — keine separate Seite
-- [ ] **LAYOUT-02**: Kompaktes Grid-Layout mit allen Widgets auf einer Seite (Gauge, Power Control, 3-Phase, Sparkline, Status, Daily Energy, Peak Stats)
-- [ ] **LAYOUT-03**: Separate Power Control Seite ist entfernt, Sidebar-Navigation zeigt nur Dashboard/Config/Registers
+- [x] **LAYOUT-01**: Power Control (Slider, Toggle, Override Log) ist inline im Dashboard unter dem Power Gauge — keine separate Seite
+- [x] **LAYOUT-02**: Kompaktes Grid-Layout mit allen Widgets auf einer Seite (Gauge, Power Control, 3-Phase, Sparkline, Status, Daily Energy, Peak Stats)
+- [x] **LAYOUT-03**: Separate Power Control Seite ist entfernt, Sidebar-Navigation zeigt nur Dashboard/Config/Registers
 
 ### Venus OS (VENUS)
 
@@ -74,9 +74,9 @@ Requirements for v2.1 Dashboard Redesign & Polish milestone.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LAYOUT-01 | Phase 12 | Pending |
-| LAYOUT-02 | Phase 12 | Pending |
-| LAYOUT-03 | Phase 12 | Pending |
+| LAYOUT-01 | Phase 12 | Complete |
+| LAYOUT-02 | Phase 12 | Complete |
+| LAYOUT-03 | Phase 12 | Complete |
 | VENUS-01 | Phase 11 | Complete |
 | VENUS-02 | Phase 11 | Complete |
 | VENUS-03 | Phase 11 | Complete |

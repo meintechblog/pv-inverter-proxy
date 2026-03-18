@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Dashboard Redesign & Polish
 status: completed
-stopped_at: Phase 12 context gathered
-last_updated: "2026-03-18T21:32:52.594Z"
-last_activity: 2026-03-18 — Completed 11-02 Venus OS widget & lock toggle frontend
+stopped_at: Completed 12-01-PLAN.md — v2.1 DONE
+last_updated: "2026-03-18T21:47:00.000Z"
+last_activity: 2026-03-18 — Completed 12-01 Unified dashboard layout (v2.1 DONE)
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
+  completed_phases: 4
+  total_plans: 7
+  completed_plans: 7
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-18)
 
 **Core value:** Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie einen echten Fronius-Inverter
-**Current focus:** Phase 11 — Venus OS Widget & Lock Toggle
+**Current focus:** v2.1 Milestone Complete
 
 ## Current Position
 
-Phase: 11 of 12 (Venus OS Widget & Lock Toggle)
-Plan: 2 of 2 (complete)
-Status: Phase Complete
-Last activity: 2026-03-18 — Completed 11-02 Venus OS widget & lock toggle frontend
+Phase: 12 of 12 (Unified Dashboard Layout)
+Plan: 1 of 1 (complete)
+Status: Milestone Complete
+Last activity: 2026-03-18 — Completed 12-01 Unified dashboard layout (v2.1 DONE)
 
 Progress: [██████████] 100%
 
@@ -36,6 +36,7 @@ Progress: [██████████] 100%
 
 **v1.0:** 4 phases, 9 plans, ~1 hour
 **v2.0:** 4 phases, 7 plans, ~3 hours
+**v2.1:** 4 phases, 7 plans
 
 ## Accumulated Context
 
@@ -56,6 +57,9 @@ Progress: [██████████] 100%
 - [Phase 11]: Toggle disabled when Venus OS offline but enabled for unlock even if offline (11-02)
 - [Phase 11]: Countdown interpolated client-side between snapshots for smooth mm:ss display (11-02)
 - [Phase 11]: Auto-unlock detected by diffing previous vs current snapshot is_locked field (11-02)
+- [Phase 12]: Power control elements keep identical IDs after move — JS bindings work unchanged via getElementById (12-01)
+- [Phase 12]: Override log collapsed by default with event count badge for compact layout (12-01)
+- [Phase 12]: Navigation null-guarded against removed pages for forward safety (12-01)
 
 ### Pending Todos
 
@@ -68,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T21:32:52.589Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-unified-dashboard-layout/12-CONTEXT.md
+Last session: 2026-03-18T21:47:00.000Z
+Stopped at: Completed 12-01-PLAN.md — v2.1 Milestone DONE
+Resume file: .planning/phases/12-unified-dashboard-layout/12-01-SUMMARY.md

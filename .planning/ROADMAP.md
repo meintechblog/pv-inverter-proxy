@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 1-4 (shipped 2026-03-18)
 - ✅ **v2.0 Dashboard & Power Control** — Phases 5-8 (shipped 2026-03-18)
-- 🚧 **v2.1 Dashboard Redesign & Polish** — Phases 9-12 (in progress)
+- ✅ **v2.1 Dashboard Redesign & Polish** — Phases 9-12 (shipped 2026-03-18)
 
 ## Phases
 
@@ -32,14 +32,14 @@ Full details: `.planning/milestones/v2.0-ROADMAP.md`
 
 </details>
 
-### 🚧 v2.1 Dashboard Redesign & Polish (In Progress)
+### ✅ v2.1 Dashboard Redesign & Polish (SHIPPED 2026-03-18)
 
 **Milestone Goal:** Alle Dashboard-Funktionen auf einer einzigen Seite vereinen, Venus OS Info anzeigen, und das Gesamterlebnis mit Animationen, Statistiken und Smart Notifications abrunden.
 
 - [x] **Phase 9: CSS Animations & Toast System** - Animation foundation and notification infrastructure (completed 2026-03-18)
 - [x] **Phase 10: Peak Statistics & Smart Notifications** - Backend stats tracking and event-driven toasts (completed 2026-03-18)
 - [x] **Phase 11: Venus OS Widget & Lock Toggle** - Venus OS info display and control lock (completed 2026-03-18)
-- [ ] **Phase 12: Unified Dashboard Layout** - Single-page merge of all widgets
+- [x] **Phase 12: Unified Dashboard Layout** - Single-page merge of all widgets (completed 2026-03-18)
 
 ## Phase Details
 
@@ -100,7 +100,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 12-01-PLAN.md — Merge Power Control inline into Dashboard, 2-row bottom grid, remove Power Control page and nav item
+- [x] 12-01-PLAN.md — Merge Power Control inline into Dashboard, 2-row bottom grid, remove Power Control page and nav item
 
 ## Progress
 
@@ -120,4 +120,4 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12
 | 9. CSS Animations & Toast System | 2/2 | Complete   | 2026-03-18 | - |
 | 10. Peak Statistics & Smart Notifications | 2/2 | Complete    | 2026-03-18 | - |
 | 11. Venus OS Widget & Lock Toggle | 2/2 | Complete    | 2026-03-18 | - |
-| 12. Unified Dashboard Layout | v2.1 | 0/1 | Not started | - |
+| 12. Unified Dashboard Layout | v2.1 | 1/1 | Complete | 2026-03-18 |
