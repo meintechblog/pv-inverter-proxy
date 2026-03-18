@@ -708,14 +708,64 @@ function showConfirmDialog(message, onConfirm) {
 
 // --- Toast Notifications ---
 
+var toastContainer = null;
+var MAX_TOASTS = 4;
+
+function getToastContainer() {
+    if (!toastContainer) {
+        toastContainer = document.getElementById('toast-container');
+    }
+    return toastContainer;
+}
+
 function showToast(message, type) {
+    var container = getToastContainer();
+    if (!container) return;
+
+    // Duplicate suppression: skip if same message already showing
+    var existing = container.querySelectorAll('.ve-toast:not(.ve-toast--exiting)');
+    for (var i = 0; i < existing.length; i++) {
+        if (existing[i].textContent === message) return;
+    }
+
+    // Enforce max visible: dismiss oldest non-error toast
+    while (container.querySelectorAll('.ve-toast:not(.ve-toast--exiting)').length >= MAX_TOASTS) {
+        var toasts = container.querySelectorAll('.ve-toast:not(.ve-toast--exiting)');
+        var oldest = null;
+        for (var k = toasts.length - 1; k >= 0; k--) {
+            if (!toasts[k].classList.contains('ve-toast--error')) { oldest = toasts[k]; break; }
+        }
+        if (!oldest) oldest = toasts[toasts.length - 1];
+        dismissToast(oldest);
+    }
+
+    // Tiered auto-dismiss duration by severity
+    var duration = (type === 'error') ? 8000 : (type === 'warning') ? 5000 : 3000;
+
     var toast = document.createElement('div');
     toast.className = 've-toast ve-toast--' + (type || 'info');
     toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(function() {
+    toast.setAttribute('role', 'alert');
+
+    // Newest at top (prepend)
+    container.prepend(toast);
+
+    // Auto-dismiss timer
+    var timer = setTimeout(function() { dismissToast(toast); }, duration);
+
+    // Click to dismiss
+    toast.addEventListener('click', function() {
+        clearTimeout(timer);
+        dismissToast(toast);
+    });
+}
+
+function dismissToast(toast) {
+    if (!toast || toast.classList.contains('ve-toast--exiting')) return;
+    toast.classList.add('ve-toast--exiting');
+    toast.addEventListener('animationend', function() {
         toast.remove();
-    }, 3000);
+    });
 }
 
 // --- Slider Preview ---
