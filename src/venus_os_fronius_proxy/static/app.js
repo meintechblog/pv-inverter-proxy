@@ -91,6 +91,10 @@ function handleSnapshot(data) {
     updateGauge(inv.ac_power_w || 0);
     updateGaugeStatus(inv.status || '--');
 
+    // Update inverter status panel and daily energy
+    updateStatusPanel(inv);
+    updateDailyEnergy(inv);
+
     // Update phase cards
     updatePhaseCard('l1', inv.ac_voltage_an_v, inv.ac_current_l1_a);
     updatePhaseCard('l2', inv.ac_voltage_bn_v, inv.ac_current_l2_a);
@@ -162,6 +166,69 @@ function updateGauge(powerW) {
 function updateGaugeStatus(status) {
     var el = document.getElementById('gauge-status');
     if (el) el.textContent = status;
+}
+
+// ===== Inverter Status Panel =====
+
+function updateStatusPanel(inv) {
+    var dot = document.getElementById('inv-status-dot');
+    var text = document.getElementById('inv-status-text');
+    var tempCab = document.getElementById('inv-temp-cab');
+    var tempSink = document.getElementById('inv-temp-sink');
+    var dcV = document.getElementById('inv-dc-voltage');
+    var dcA = document.getElementById('inv-dc-current');
+    var dcW = document.getElementById('inv-dc-power');
+
+    // Status with color mapping
+    var status = inv.status || '--';
+    if (text) text.textContent = status;
+
+    if (dot) {
+        var statusMap = {
+            'MPPT': 'operating', 'OFF': 'off', 'SLEEPING': 'sleeping',
+            'STARTING': 'starting', 'THROTTLED': 'throttled',
+            'SHUTTING_DOWN': 'off', 'FAULT': 'fault', 'STANDBY': 'sleeping'
+        };
+        var mod = statusMap[status] || '';
+        dot.className = 've-status-indicator' + (mod ? ' ve-status-indicator--' + mod : '');
+    }
+
+    // Temperature values
+    if (tempCab) {
+        var newCab = inv.temperature_cab_c != null ? inv.temperature_cab_c.toFixed(1) + ' \u00B0C' : '-- \u00B0C';
+        if (tempCab.textContent !== newCab) { tempCab.textContent = newCab; flashValue(tempCab); }
+    }
+    if (tempSink) {
+        var newSink = inv.temperature_sink_c != null ? inv.temperature_sink_c.toFixed(1) + ' \u00B0C' : '-- \u00B0C';
+        if (tempSink.textContent !== newSink) { tempSink.textContent = newSink; flashValue(tempSink); }
+    }
+
+    // DC values
+    if (dcV) {
+        var newDcV = inv.dc_voltage_v != null ? inv.dc_voltage_v.toFixed(1) + ' V' : '-- V';
+        if (dcV.textContent !== newDcV) { dcV.textContent = newDcV; flashValue(dcV); }
+    }
+    if (dcA) {
+        var newDcA = inv.dc_current_a != null ? inv.dc_current_a.toFixed(2) + ' A' : '-- A';
+        if (dcA.textContent !== newDcA) { dcA.textContent = newDcA; flashValue(dcA); }
+    }
+    if (dcW) {
+        var newDcW = inv.dc_power_w != null ? (inv.dc_power_w / 1000).toFixed(2) + ' kW' : '-- kW';
+        if (dcW.textContent !== newDcW) { dcW.textContent = newDcW; flashValue(dcW); }
+    }
+}
+
+// ===== Daily Energy =====
+
+function updateDailyEnergy(inv) {
+    var el = document.getElementById('daily-energy');
+    if (!el) return;
+    var wh = inv.daily_energy_wh || 0;
+    var kwh = (wh / 1000).toFixed(1);
+    if (el.textContent !== kwh) {
+        el.textContent = kwh;
+        flashValue(el);
+    }
 }
 
 // ===== Phase Card Update =====

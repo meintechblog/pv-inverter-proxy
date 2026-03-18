@@ -107,6 +107,10 @@
               <text x="100" y="122" text-anchor="middle" fill="var(--ve-text-dim)"
                     font-size="11" id="gauge-status">--</text>
             </svg>
+            <div class="ve-daily-energy">
+              <span class="ve-daily-energy-value ve-live-value" id="daily-energy">0.0</span>
+              <span class="ve-daily-energy-unit">kWh today</span>
+            </div>
           </div>
 
           <div class="ve-card ve-phase-card" id="phase-l1">
@@ -139,8 +143,22 @@
           </div>
         </div>
 
-        <!-- Row 3: Connection Status + Health -->
+        <!-- Row 3: Inverter Status + Connection + Health -->
         <div class="ve-dashboard-bottom">
+          <div class="ve-card" id="inverter-status-panel">
+            <h2 class="ve-card-title">Inverter Status</h2>
+            <div class="ve-status-row">
+              <span class="ve-status-indicator" id="inv-status-dot"></span>
+              <span class="ve-live-value" id="inv-status-text">--</span>
+            </div>
+            <div class="ve-grid">
+              <div><label>Cabinet Temp</label><span class="ve-live-value" id="inv-temp-cab">--</span></div>
+              <div><label>Heatsink Temp</label><span class="ve-live-value" id="inv-temp-sink">--</span></div>
+              <div><label>DC Voltage</label><span class="ve-live-value" id="inv-dc-voltage">--</span></div>
+              <div><label>DC Current</label><span class="ve-live-value" id="inv-dc-current">--</span></div>
+              <div><label>DC Power</label><span class="ve-live-value" id="inv-dc-power">--</span></div>
+            </div>
+          </div>
           <div class="ve-card" id="status-panel">
             <h2 class="ve-card-title">Connection</h2>
             <div class="ve-status-row">

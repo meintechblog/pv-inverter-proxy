@@ -348,6 +348,22 @@ body {
     margin: 6px 0;
 }
 
+/* Inverter Status Indicator */
+.ve-status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--ve-text-dim);
+    flex-shrink: 0;
+}
+.ve-status-indicator--operating { background: var(--ve-green); }
+.ve-status-indicator--sleeping { background: var(--ve-text-dim); }
+.ve-status-indicator--throttled { background: var(--ve-orange); }
+.ve-status-indicator--fault { background: var(--ve-red); }
+.ve-status-indicator--off { background: var(--ve-border); }
+.ve-status-indicator--starting { background: var(--ve-blue); }
+
 /* ===== Register Viewer ===== */
 .ve-model-group {
     margin: 8px 0;
@@ -555,7 +571,7 @@ body {
 
 .ve-dashboard-bottom {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 1rem;
 }
 
@@ -578,6 +594,23 @@ body {
 .ve-gauge-svg {
     width: 100%;
     max-width: 280px;
+}
+
+/* Daily Energy Widget */
+.ve-daily-energy {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 8px;
+}
+.ve-daily-energy-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--ve-green);
+}
+.ve-daily-energy-unit {
+    font-size: 0.85rem;
+    color: var(--ve-text-dim);
 }
 
 #gauge-fill {
