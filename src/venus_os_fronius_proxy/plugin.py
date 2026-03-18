@@ -74,5 +74,13 @@ class InverterPlugin(ABC):
         """
 
     @abstractmethod
+    async def reconfigure(self, host: str, port: int, unit_id: int) -> None:
+        """Reconfigure connection parameters for hot-reload.
+
+        Closes existing connection and updates host/port/unit_id.
+        Does NOT reconnect -- the poll loop's ConnectionManager handles that.
+        """
+
+    @abstractmethod
     async def close(self) -> None:
         """Clean up connection resources."""

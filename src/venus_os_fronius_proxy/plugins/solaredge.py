@@ -167,6 +167,14 @@ class SolarEdgePlugin(InverterPlugin):
         except Exception as e:
             return WriteResult(success=False, error=str(e))
 
+    async def reconfigure(self, host: str, port: int, unit_id: int) -> None:
+        """Reconfigure connection parameters. Closes existing connection."""
+        await self.close()
+        self.host = host
+        self.port = port
+        self.unit_id = unit_id
+        logger.info("Reconfigured SolarEdge to %s:%d unit=%d", host, port, unit_id)
+
     async def close(self) -> None:
         if self._client is not None:
             self._client.close()
