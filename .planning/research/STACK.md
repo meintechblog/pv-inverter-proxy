@@ -1,193 +1,257 @@
-# Technology Stack
+# Technology Stack: v2.0 Dashboard & Power Control
 
-**Project:** Venus OS Fronius Proxy (SolarEdge -> Fronius Modbus TCP translation)
-**Researched:** 2026-03-17
-**Overall Confidence:** MEDIUM (versions verified via PyPI, some architectural claims from training data only)
+**Project:** Venus OS Fronius Proxy
+**Researched:** 2026-03-18
+**Focus:** Stack additions for Venus OS styled dashboard, real-time charts, power control UI
+**Overall Confidence:** HIGH
 
-## Recommended Stack
+## Existing Stack (DO NOT CHANGE)
 
-**Language: Python 3.12+** -- Debian 13 (Trixie) ships Python 3.12 or 3.13. Python is the dominant language for Modbus/industrial automation, has the best library support (pymodbus), and matches the skill level needed for this kind of infrastructure glue code. No reason to consider Go, Rust, or Node for this project.
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| Python 3.12 | 3.12 | Runtime |
+| pymodbus | 3.8+ | Modbus TCP client/server |
+| aiohttp | 3.x | HTTP server + WebSocket support (built-in) |
+| structlog | latest | Structured logging |
+| PyYAML | latest | Configuration |
 
-### Core: Modbus TCP
+The v1.0 stack is validated and shipped. The entire v2.0 dashboard requires **zero new Python or JavaScript dependencies**.
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| **pymodbus** | 3.8.x (latest: 3.8.6) | Modbus TCP client AND server | The only mature Python Modbus library that supports both async client (reading SolarEdge) and async server (emulating Fronius for Venus OS) in a single package. Built on asyncio. Has dedicated `ModbusTcpServer` for exactly our use case. | HIGH (verified PyPI) |
-| **pysunspec2** | 1.3.x (latest: 1.3.3) | SunSpec model definitions and register mapping | Official SunSpec Alliance library. Contains JSON model definitions for all SunSpec models (inverter, nameplate, settings, controls). Use it for register layout reference, NOT as the runtime Modbus layer -- pymodbus handles the wire protocol. | MEDIUM (verified PyPI, but need to validate how well it integrates) |
+## New Stack Additions
 
-**Why NOT other Modbus libraries:**
-- `modbus-tk`: Synchronous only, no async server, unmaintained since 2021
-- `umodbus`: Minimal, no built-in server capability, not actively developed
-- `minimalmodbus`: Serial only, no TCP support
-- Raw sockets: Unnecessary complexity when pymodbus handles framing, unit IDs, and function codes
+### Real-Time Updates: aiohttp WebSocket (ZERO new dependencies)
 
-### Web Framework (Config UI)
+**Decision:** Use aiohttp's built-in `WebSocketResponse`. No new Python packages needed.
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| **FastAPI** | 0.128.x (latest: 0.128.8) | REST API + serves config webapp | Async-native (shares event loop with pymodbus), auto-generates OpenAPI docs, lightweight enough for a config UI, excellent Pydantic integration for config validation. | HIGH (verified PyPI) |
-| **uvicorn** | 0.39.x (latest: 0.39.0) | ASGI server | Standard FastAPI deployment server. In this project, embed it programmatically (not CLI) so the proxy process manages both Modbus and HTTP. | HIGH (verified PyPI) |
-| **Jinja2** | 3.1.x (latest: 3.1.6) | Server-side HTML templates | For the config UI pages. No need for a full SPA framework -- this is a simple settings page with connection status. | HIGH (verified PyPI) |
-| **htmx** (CDN) | 2.x | Dynamic UI updates without JS framework | Enables live connection status updates, form submissions without page reload, and WebSocket status feeds -- all without writing a React/Vue app. Served from CDN or bundled as a single .js file. | MEDIUM (version from training data) |
+**Why WebSocket over SSE (Server-Sent Events):**
+- Bidirectional: Power control commands (slider changes, enable/disable) go client-to-server; live data goes server-to-client. SSE is unidirectional (server-to-client only), so you would still need separate POST endpoints for commands. WebSocket handles both in one connection.
+- aiohttp has first-class WebSocket support via `web.WebSocketResponse()`. SSE requires manual `StreamResponse` with keep-alive hacks.
+- Lower overhead: single TCP connection vs HTTP polling or SSE + separate POST requests.
 
-**Why NOT other web approaches:**
-- `Flask`: Synchronous by default, would need threading/Celery -- unnecessary complexity alongside async pymodbus
-- `Django`: Massively overkill for a config page with 5 fields
-- `React/Vue/Svelte SPA`: Overkill. This is a config page, not an application. htmx + Jinja2 gives dynamic behavior with zero build step
-- `Bottle/Starlette raw`: FastAPI adds type safety and auto-docs for almost no overhead over raw Starlette
+**Why WebSocket over current HTTP polling:**
+- Current frontend polls `/api/status`, `/api/health`, `/api/registers` every 2 seconds -- three HTTP requests per cycle. WebSocket replaces all three with a single pushed JSON message.
+- Slider feedback needs sub-200ms round trips. HTTP polling at 2s intervals cannot provide responsive power control UX.
+- Server pushes only when data changes, reducing unnecessary traffic.
 
-### Configuration
+**Pattern:** Server-push broadcast from poller loop to all connected WebSocket clients.
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| **TOML** (stdlib `tomllib`) | Python 3.12 stdlib | Config file format | Human-readable, supports comments (unlike JSON), Python 3.11+ has it in stdlib (`tomllib` for reading). Use `tomli-w` (1.2.0) for writing. Better than YAML (no implicit type coercion footguns). | HIGH |
-| **Pydantic** | 2.12.x (latest: 2.12.5) | Config validation and typed settings | Validates config on load, provides clear error messages, integrates with FastAPI for API models. Single source of truth for config schema. | HIGH (verified PyPI) |
-| **tomli-w** | 1.2.x (latest: 1.2.0) | Write TOML files | Companion to stdlib `tomllib` (read-only). Needed for saving config changes from the webapp. | HIGH (verified PyPI) |
+```python
+# In webapp.py -- no new imports beyond aiohttp.web
+import weakref
 
-### Logging and Observability
+# On app startup:
+app["ws_clients"] = weakref.WeakSet()
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| **structlog** | 25.x (latest: 25.5.0) | Structured logging | JSON-structured logs for systemd journal integration. Contextual logging (attach inverter_id, register_address to log entries). Much better than stdlib `logging` for debugging Modbus translation issues. | HIGH (verified PyPI) |
+# WebSocket handler:
+async def ws_handler(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    request.app["ws_clients"].add(ws)
+    async for msg in ws:
+        if msg.type == aiohttp.WSMsgType.TEXT:
+            # Handle power control commands from UI
+            data = json.loads(msg.data)
+            await handle_ws_command(request.app, data)
+    return ws
 
-### Process Management
+# Broadcast from poller (called every poll cycle):
+async def broadcast_state(app, state_dict):
+    payload = json.dumps(state_dict)
+    for ws in set(app["ws_clients"]):
+        try:
+            await ws.send_str(payload)
+        except Exception:
+            pass  # dead connections auto-removed by WeakSet
+```
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| **systemd** | OS-provided | Service management | Native on Debian 13. Handles restart-on-failure, logging to journal, boot startup. No need for supervisord or PM2. | HIGH |
-| **asyncio** | Python stdlib | Async runtime | Single event loop runs pymodbus server, pymodbus client, and uvicorn concurrently. No threads, no multiprocessing -- everything is I/O-bound. | HIGH |
+**Confidence:** HIGH -- verified against [aiohttp 3.13.3 official docs](https://docs.aiohttp.org/en/stable/web_quickstart.html). WebSocket support is stable, well-documented, and already a dependency.
 
-### Testing
+### Charting: Inline SVG Sparklines (ZERO new dependencies)
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| **pytest** | 8.4.x (latest: 8.4.2) | Test runner | Standard Python testing. | HIGH (verified PyPI) |
-| **pytest-asyncio** | 1.2.x (latest: 1.2.0) | Async test support | Required for testing async pymodbus and FastAPI code. | HIGH (verified PyPI) |
-| **ruff** | 0.15.x (latest: 0.15.6) | Linter + formatter | Replaces flake8, black, isort in one fast tool. | HIGH (verified PyPI) |
+**Decision:** Hand-rolled SVG sparklines in vanilla JavaScript. No charting library.
 
-### Packaging and Deployment
+**Why no library at all:**
+- The requirement is 60-minute mini-sparklines for power/voltage/frequency. This is a polyline in an SVG element -- roughly 15 lines of JavaScript.
+- Adding even a tiny library (fnando/sparkline at ~1KB gzipped, or mitjafelicijan/sparklines via CDN) creates an external dependency for a single-file HTML app served from `importlib.resources`. CDN means internet dependency on a LAN-only device. Bundling means build tooling or inlining third-party code.
+- The existing frontend already uses vanilla JS with zero external dependencies. Keep it that way.
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| **uv** | 0.10.x (latest: 0.10.11) | Package manager and venv | 10-100x faster than pip, handles venvs, lockfiles, and Python version management. Install via `curl` on the LXC container. | HIGH (verified PyPI) |
+**Implementation approach:**
+```javascript
+function drawSparkline(svgEl, data, color) {
+    const w = svgEl.clientWidth, h = svgEl.clientHeight;
+    const max = Math.max(...data), min = Math.min(...data);
+    const range = max - min || 1;
+    const points = data.map((v, i) =>
+        `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`
+    ).join(' ');
+    svgEl.innerHTML = `<polyline points="${points}" fill="none"
+        stroke="${color}" stroke-width="1.5"/>`;
+}
+```
 
-## Architecture-Relevant Stack Decisions
+That is the entire charting "library." It renders a smooth sparkline that updates every poll cycle by rewriting the SVG polyline. No canvas, no library, no build step.
 
-### Single-Process Design
-The proxy runs as ONE Python process with ONE asyncio event loop handling:
-1. **Modbus TCP Client** -- polls SolarEdge registers on a configurable interval (e.g., every 1s)
-2. **Modbus TCP Server** -- responds to Venus OS Modbus TCP requests with translated Fronius-compatible register values
-3. **HTTP Server** -- serves the config webapp (uvicorn embedded)
+**Ring buffer (Python side):** `collections.deque(maxlen=3600)` at 1 sample/second = 60 minutes. One deque per metric (AC Power, Phase A/B/C current, voltage, frequency, temperature). Serialized as a JSON array in the WebSocket broadcast -- send only every 10th sample or on initial connect to avoid bloating every message.
 
-This avoids IPC complexity, shared state problems, and simplifies deployment to a single systemd unit.
+**Confidence:** HIGH -- pure SVG/JS, no external verification needed. The pattern is well-established.
 
-### Why NOT multi-process:
-- Modbus polling is I/O-bound (network reads), not CPU-bound
-- HTTP config UI has near-zero traffic (one user, occasionally)
-- A single asyncio loop handles all three workloads trivially
-- No need for Redis, message queues, or socket files
+### Venus OS Theme: CSS Custom Properties (ZERO new dependencies)
 
-### Register Translation Layer
-- Use pysunspec2 model definitions as a **reference** to build the register mapping tables
-- Implement the actual register datastore using pymodbus's `ModbusSlaveContext` / `ModbusServerContext`
-- The mapping is a Python dict/class that translates between SolarEdge register addresses and Fronius/SunSpec model register addresses
-- Plugin architecture: each inverter brand is a Python module that implements a `RegisterTranslator` interface
+**Decision:** Extract Venus OS gui-v2 color palette into CSS custom properties. No CSS framework.
+
+**Why not Tailwind/Bootstrap/etc:**
+- Single-file HTML frontend constraint. CSS frameworks require build tooling or massive CDN includes.
+- The existing CSS is already clean custom properties. Just swap the color values to match Venus OS.
+- Venus OS gui-v2 uses QML, not CSS. We translate the color tokens, not import a framework.
+
+**Official Venus OS gui-v2 Dark Theme Colors** (extracted from `victronenergy/gui-v2/themes/color/ColorDesign.json` and `Dark.json`):
+
+```css
+:root {
+    /* Venus OS Core Palette */
+    --ve-blue: #387DC5;
+    --ve-blue-light: #73A2D3;
+    --ve-blue-dim: #27588A;
+    --ve-orange: #F0962E;
+    --ve-red: #F35C58;
+    --ve-green: #72B84C;
+
+    /* Venus OS Dark Theme Backgrounds */
+    --ve-bg-primary: #141414;      /* Gray 1 - deepest background */
+    --ve-bg-surface: #272622;      /* Gray 2 - card/panel background */
+    --ve-bg-elevated: #504F4B;     /* Gray 3 - elevated elements */
+    --ve-border: #64635F;          /* Gray 4 - borders */
+
+    /* Venus OS Text */
+    --ve-text: #FAF9F5;            /* Gray 9 - primary text */
+    --ve-text-secondary: #DCDBD7;  /* Gray 6 - secondary text */
+    --ve-text-dim: #969591;         /* Gray 5 - dim/muted text */
+
+    /* Venus OS Specific UI */
+    --ve-settings-bg: #11253B;     /* Settings breadcrumb background */
+    --ve-toast-info: #295C91;      /* Informative toast */
+    --ve-toast-warning: #BD7624;   /* Warning toast */
+    --ve-toast-error: #BF4845;     /* Error toast */
+    --ve-critical-bg: #AA403E;     /* Critical background */
+    --ve-slider-handle: #1D1D1B;   /* Slider handle background */
+    --ve-slider-handle-border: #FAF9F5; /* Slider handle border */
+    --ve-slider-separator: #C3D8EE; /* Slider track separator */
+}
+```
+
+**Migration from current theme:** The existing `index.html` uses `--bg: #1a1a2e` (dark blue-purple) and `--accent: #e94560` (pinkish red). These shift to Venus OS's warm grays (`#141414`, `#272622`) and Victron blue (`#387DC5`). The overall feel changes from "generic dark tech" to "authentic Victron dashboard."
+
+**Confidence:** HIGH -- colors extracted directly from the official `victronenergy/gui-v2` repository.
+
+### Power Control UI: Native HTML Range + Toggle (ZERO new dependencies)
+
+**Decision:** Use native HTML `<input type="range">` for the power limit slider, styled with CSS to match Venus OS. Use a CSS-only toggle switch for enable/disable.
+
+**Why not a UI component library:**
+- Single-file HTML constraint. No React, no Web Components library.
+- Native range inputs are styleable with `-webkit-slider-*` and `::-moz-range-*` pseudo-elements. The Venus OS slider style (dark handle, light track) is achievable with ~20 lines of CSS.
+- The toggle is a `<label>` wrapping a hidden checkbox with CSS pseudo-elements.
+
+**Implementation sketch:**
+```html
+<!-- Power limit slider -->
+<input type="range" id="power-limit" min="0" max="100" step="1"
+    class="ve-slider" value="100">
+<span id="power-limit-value">100%</span>
+
+<!-- Enable/disable toggle -->
+<label class="ve-toggle">
+    <input type="checkbox" id="power-enable">
+    <span class="ve-toggle-track"></span>
+</label>
+```
+
+Commands sent via WebSocket (not REST POST), so the slider can send updates as the user drags (debounced at ~200ms) with immediate visual feedback. The WebSocket message format:
+
+```json
+{"cmd": "set_power_limit", "value": 75}
+{"cmd": "set_power_enable", "value": true}
+```
+
+**Confidence:** HIGH -- standard HTML/CSS patterns.
+
+## What NOT To Add
+
+| Temptation | Why Not |
+|------------|---------|
+| Chart.js / D3.js / Plotly | Overkill for sparklines. 200KB+ for what 15 lines of SVG code does. Breaks single-file constraint. |
+| Socket.io (python-socketio) | aiohttp has native WebSocket support. Socket.io adds protocol overhead, client library dependency, and complexity for zero benefit. |
+| Tailwind CSS / Bootstrap | Requires CDN (no internet on LAN) or build tooling. Existing CSS custom properties work fine. |
+| React / Vue / Svelte | Single-file HTML constraint. Vanilla JS is sufficient for this UI complexity. Would require build tooling. |
+| Flask-SocketIO | Wrong framework. Already using aiohttp. |
+| Any Python dashboard library (Dash, Streamlit, Panel) | These replace the entire web stack. We have a working aiohttp server. |
+| External CDN for anything | LXC container is on a LAN. No guaranteed internet access. All assets must be self-contained. |
+| SSE (Server-Sent Events) | Unidirectional. Would still need POST endpoints for power control commands. WebSocket is cleaner for bidirectional. |
+| websockets package | aiohttp already includes WebSocket support. Adding `websockets` package would be redundant. |
+| fnando/sparkline | ~1KB gzipped, nice API, but adds a dependency for something trivially implementable in 15 LOC. |
+| mitjafelicijan/sparklines | Zero-dep library with CDN at `cdn.jsdelivr.net`, but CDN is unreliable on LAN-only device. |
 
 ## Alternatives Considered
 
 | Category | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| Language | Python 3.12+ | Go | No mature Modbus server library equivalent to pymodbus. Would need to implement SunSpec framing from scratch. |
-| Language | Python 3.12+ | Node.js | `jsmodbus` exists but far less mature than pymodbus. No SunSpec library. |
-| Modbus | pymodbus | modbus-tk | Synchronous only, unmaintained, no async server |
-| Web | FastAPI + Jinja2 + htmx | Flask | Sync-first design conflicts with async Modbus loop |
-| Web | FastAPI + Jinja2 + htmx | React SPA | Massive overkill for a config page. Adds build toolchain, node_modules, complexity. |
-| Config | TOML | YAML | YAML has implicit type coercion bugs (e.g., `NO` -> `false`). TOML is explicit. |
-| Config | TOML | JSON | JSON has no comments. Config files need comments. |
-| Deployment | systemd + uv | Docker | Project constraint: no Docker in LXC. Also unnecessary abstraction for a single service. |
-| Deployment | systemd + uv | supervisord | systemd is already on Debian, handles everything supervisord does and more |
-| Logging | structlog | stdlib logging | stdlib logging is painful for structured context. structlog integrates better with systemd journal. |
-
-## Python Version Note
-
-Debian 13 (Trixie) is expected to ship Python 3.12 or 3.13. The stack requires Python 3.11+ minimum (for `tomllib` in stdlib). Pin to `>=3.12` in `pyproject.toml`.
-
-**Validation needed:** Confirm exact Python version on the target LXC container (`python3 --version`).
+| Real-time transport | aiohttp WebSocket (built-in) | SSE via StreamResponse | SSE is unidirectional; power control needs bidirectional |
+| Real-time transport | aiohttp WebSocket (built-in) | HTTP polling (current) | 2s polling is too slow for slider feedback; wastes bandwidth with 3 requests per cycle |
+| Charting | Inline SVG polyline (15 LOC) | @fnando/sparkline (~1KB) | External dependency for trivial functionality; CDN not available on LAN |
+| Charting | Inline SVG polyline (15 LOC) | mitjafelicijan/sparklines (CDN) | CDN dependency on LAN-only device |
+| CSS theme | Venus OS custom properties | Tailwind CSS | Build tooling required; overkill for single-file HTML |
+| UI controls | Native HTML range/checkbox | shoelace Web Components | Dependency; build tooling; overkill |
 
 ## Installation
 
 ```bash
-# On the Debian 13 LXC container:
-
-# Install uv (package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Initialize project
-uv init venus-os-fronius-proxy
-cd venus-os-fronius-proxy
-
-# Core dependencies
-uv add pymodbus>=3.8.0
-uv add pysunspec2>=1.3.0
-uv add fastapi>=0.128.0
-uv add uvicorn[standard]>=0.39.0
-uv add jinja2>=3.1.0
-uv add pydantic>=2.12.0
-uv add tomli-w>=1.2.0
-uv add structlog>=25.0.0
-
-# Dev dependencies
-uv add --dev pytest>=8.4.0
-uv add --dev pytest-asyncio>=1.2.0
-uv add --dev ruff>=0.15.0
+# No new packages needed. Zero additions to requirements.
+# Everything is built with existing aiohttp + vanilla JS/CSS/SVG.
 ```
 
-## systemd Unit File (Template)
+## Python-Side Additions (no new packages)
 
-```ini
-[Unit]
-Description=Venus OS Fronius Proxy (SolarEdge Modbus TCP Translation)
-After=network-online.target
-Wants=network-online.target
+| Component | Implementation | Module |
+|-----------|---------------|--------|
+| Ring buffer for sparkline data | `collections.deque(maxlen=3600)` | `collections` (stdlib) |
+| WebSocket broadcast | `aiohttp.web.WebSocketResponse` | already installed |
+| JSON serialization of state | `json.dumps()` | `json` (stdlib) |
+| Timestamp tracking | `time.monotonic()` | `time` (stdlib) |
+| Client tracking | `weakref.WeakSet()` | `weakref` (stdlib) |
 
-[Service]
-Type=exec
-User=venusproxy
-Group=venusproxy
-WorkingDirectory=/opt/venus-os-fronius-proxy
-ExecStart=/opt/venus-os-fronius-proxy/.venv/bin/python -m venus_os_fronius_proxy
-Restart=on-failure
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-# Hardening
-NoNewPrivileges=yes
-ProtectSystem=strict
-ReadWritePaths=/opt/venus-os-fronius-proxy/config
+## Integration with Existing Architecture
 
-[Install]
-WantedBy=multi-user.target
-```
+The existing `webapp.py` creates an `aiohttp.web.Application` with REST endpoints. The WebSocket additions integrate cleanly:
 
-## Debian 13 System Dependencies
+1. **Add route:** `app.router.add_get("/ws", ws_handler)` alongside existing REST routes
+2. **Store clients:** `app["ws_clients"] = weakref.WeakSet()` in `create_webapp()`
+3. **Broadcast hook:** The existing poller loop in `proxy.py` calls `broadcast_state()` after each successful poll, pushing fresh data to all connected WebSocket clients
+4. **Fallback:** Keep existing REST endpoints (`/api/status`, `/api/health`, `/api/registers`) for backward compatibility and initial page load. WebSocket takes over for live updates after connection.
+5. **Ring buffers:** Add to `shared_ctx` dict alongside existing `cache` and `poll_counter`
 
-```bash
-# Minimal system packages needed
-apt update && apt install -y python3 python3-venv git
+The single-process asyncio architecture means WebSocket broadcast happens in the same event loop as Modbus polling -- no IPC, no threads, no race conditions.
 
-# No C compilation needed -- all Python packages are pure Python or have wheels
-```
+## Summary
+
+**Zero new Python dependencies. Zero new JavaScript dependencies. Zero CDN includes. Zero build tooling.**
+
+The entire v2.0 dashboard is achievable by:
+1. Adding a WebSocket endpoint to the existing aiohttp webapp (built-in capability)
+2. Adding CSS custom properties with Venus OS official color palette
+3. Writing ~15 lines of SVG sparkline code in JavaScript
+4. Styling native HTML range/checkbox inputs to match Venus OS
+5. Using `collections.deque` for 60-minute ring buffers
+
+This keeps the single-file HTML architecture, zero-dependency philosophy, and LAN-only deployment constraint fully intact.
 
 ## Sources
 
-- pymodbus 3.8.6: PyPI (verified via `pip3 index versions`)
-- FastAPI 0.128.8: PyPI (verified via `pip3 index versions`)
-- uvicorn 0.39.0: PyPI (verified via `pip3 index versions`)
-- pysunspec2 1.3.3: PyPI (verified via `pip3 index versions`)
-- Pydantic 2.12.5: PyPI (verified via `pip3 index versions`)
-- structlog 25.5.0: PyPI (verified via `pip3 index versions`)
-- pytest 8.4.2: PyPI (verified via `pip3 index versions`)
-- ruff 0.15.6: PyPI (verified via `pip3 index versions`)
-- uv 0.10.11: PyPI (verified via `pip3 index versions`)
-
-**Note:** Web search was unavailable during research. Library capability claims (e.g., pymodbus async server features, pysunspec2 model definitions) are based on training data and should be validated against current documentation during implementation.
+- [aiohttp WebSocket docs (v3.13.3)](https://docs.aiohttp.org/en/stable/web_quickstart.html) -- HIGH confidence
+- [aiohttp Web Server Advanced -- WebSocket broadcast pattern](https://docs.aiohttp.org/en/stable/web_advanced.html) -- HIGH confidence
+- [aiohttp multiple WebSocket clients (Issue #2940)](https://github.com/aio-libs/aiohttp/issues/2940) -- HIGH confidence
+- [Venus OS gui-v2 theme directory](https://github.com/victronenergy/gui-v2/tree/main/themes/color) -- HIGH confidence
+- [Venus OS gui-v2 ColorDesign.json (raw)](https://raw.githubusercontent.com/victronenergy/gui-v2/main/themes/color/ColorDesign.json) -- HIGH confidence, direct source
+- [Venus OS gui-v2 Dark.json (raw)](https://raw.githubusercontent.com/victronenergy/gui-v2/main/themes/color/Dark.json) -- HIGH confidence, direct source
+- [Victron blue color (RAL5012 / ~#00539B)](https://communityarchive.victronenergy.com/questions/75079/victron-blue-color-code.html) -- MEDIUM confidence, community source
+- [fnando/sparkline (evaluated, rejected)](https://github.com/fnando/sparkline) -- ~1KB gzipped, MIT license
+- [mitjafelicijan/sparklines (evaluated, rejected)](https://github.com/mitjafelicijan/sparklines) -- CDN at jsdelivr, BSD license

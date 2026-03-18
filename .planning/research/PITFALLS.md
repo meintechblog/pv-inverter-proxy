@@ -1,280 +1,296 @@
-# Domain Pitfalls
+# Domain Pitfalls: v2.0 Dashboard & Power Control UI
 
-**Domain:** Modbus TCP proxy / Solar inverter protocol translation (SolarEdge to Fronius SunSpec for Venus OS)
-**Researched:** 2026-03-17
-**Overall Confidence:** MEDIUM (based on training data -- web search/fetch unavailable for live verification)
+**Domain:** Real-time dashboard + power control UI for solar inverter Modbus proxy
+**Researched:** 2026-03-18
+**Overall Confidence:** MEDIUM-HIGH (verified against codebase, web research, aiohttp issue tracker)
+**Scope:** Pitfalls specific to ADDING dashboard UI, charts, and power control to an existing working Modbus proxy controlling a real 30kW SolarEdge SE30K inverter.
+
+---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, hardware miscommunication, or Venus OS rejection.
+Mistakes that could damage hardware, cause safety incidents, or require significant rewrites.
 
-### Pitfall 1: SunSpec Model Discovery Sequence Must Be Exact
+### Pitfall 1: Accidental Power Limit via UI Misclick or Slider Drift
 
-**What goes wrong:** Venus OS (via `dbus-fronius`) does not just read arbitrary Modbus registers. It performs SunSpec model discovery: it reads the "SunS" marker at register 40000 (or 0), then walks the model chain (Common Model 1 -> Inverter Model 101/102/103 -> etc.) by reading each model's ID and length to find the next. If the model chain is malformed, has wrong lengths, or is missing expected models, Venus OS will not recognize the device at all.
+**What goes wrong:** A user opens the webapp, accidentally drags the power limit slider to 0%, and the proxy immediately writes `WMaxLimPct=0` to the SolarEdge inverter via the EDPC registers (0xF322). The 30kW inverter drops to zero output. If this happens during peak production, the system loses significant generation. Worse: the SolarEdge inverter persists the last power reduction state in its memory -- even if the proxy restarts or loses connection, the inverter stays throttled until AC power cycle or next morning sunrise.
 
-**Why it happens:** Developers focus on getting individual register values right but neglect the discovery walk. SunSpec model discovery is a linked-list-like structure where each model header declares its length, and the next model starts at `offset + length + 2`. Off-by-one errors in model lengths break the entire chain.
+**Why it happens:** Developers treat power control sliders like volume knobs -- instant feedback, no consequences. But writing to a real inverter is a physical actuator command, not a UI preference. The existing `control.py` validates the range (0-100%) but has no protection against rapid unintended changes.
 
-**Consequences:** Venus OS silently ignores the device. No error in proxy logs because the proxy served data -- it just served a broken model chain. Debugging is painful because you don't know which model header broke the walk.
+**Consequences:**
+- Immediate loss of up to 30kW generation from a single misclick
+- SolarEdge retains the limit even if proxy disconnects (SE command timeout fallback behavior)
+- Venus OS may also be sending its own power limit commands simultaneously, creating a conflict
 
 **Prevention:**
-- Implement the SunSpec model chain as a first-class data structure, not ad-hoc register mapping
-- The chain MUST start with `0x53756e53` ("SunS") at the base register (typically 40000 or 40001 depending on convention)
-- Common Model (ID 1, length 65 or 66) must be first after the marker
-- Inverter model (101 for single-phase, 103 for three-phase) must follow
-- End-of-models marker (model ID 0xFFFF, length 0) must terminate the chain
-- Write a validator that walks your own model chain and verifies the math before serving it
+- **Confirmation dialog** for any power limit change below current output level (e.g., "Reduce from 85% to 10%? This will cut 22.5kW of production.")
+- **Debounce slider input** -- do not send Modbus writes on every `oninput` event. Use `onchange` (mouseup/touchend) with a 500ms debounce minimum
+- **Two-step activation**: slider sets the value, separate "Apply" button sends the write
+- **Visual danger zone**: red coloring below 20%, amber below 50%
+- **Undo button with timeout**: after applying, show "Undo (15s)" that reverts to previous value
 
-**Detection:** Use `mbpoll` or a SunSpec validation tool to walk the model chain from the proxy's TCP port. If the walk breaks, fix the lengths before testing with Venus OS.
+**Detection:** Log every power limit write with timestamp, source (webapp vs Venus OS), old value, new value. Alert if more than 3 writes per minute from webapp.
 
-**Phase:** Must be correct in the very first phase (core proxy). This is day-one architecture, not a later refinement.
+**Phase:** Power Control UI phase -- this is the FIRST thing to get right before any slider is exposed.
+
+**Confidence:** HIGH -- based on codebase analysis of `control.py` and SolarEdge EDPC behavior from [SolarEdge Power Control documentation](https://knowledge-center.solaredge.com/sites/kc/files/application_note_power_control_configuration.pdf) and [community reports of power limits reverting](https://github.com/binsentsu/home-assistant-solaredge-modbus/issues/232).
 
 ---
 
-### Pitfall 2: Venus OS dbus-fronius Expects Fronius-Specific Behavior, Not Just Generic SunSpec
+### Pitfall 2: Race Condition Between Venus OS and Webapp Power Control
 
-**What goes wrong:** Developers assume "if I serve valid SunSpec, Venus OS will accept it." Venus OS's `dbus-fronius` driver is not a generic SunSpec client. It has Fronius-specific expectations: particular manufacturer string matching, specific SunSpec model IDs, possibly Fronius-proprietary register extensions for power limiting, and specific discovery behavior (it scans for Fronius devices via Fronius Solar API on port 80 OR Modbus TCP, depending on version).
+**What goes wrong:** Venus OS writes `WMaxLimPct=50%` via Modbus (for ESS feed-in limiting). Milliseconds later, the webapp user sets `WMaxLimPct=100%` via the REST API. The proxy forwards 100% to SolarEdge, overriding Venus OS's safety limit. Now the inverter produces full power while Venus OS believes it is throttled to 50%.
 
-**Why it happens:** The SunSpec standard is well-documented, but `dbus-fronius` is Victron's proprietary integration code. Its exact matching logic for manufacturer strings, model names, and supported feature set is only documented in its source code.
+This is not theoretical -- the existing codebase in `proxy.py` line 102-124 (`async_setValues`) processes Venus OS Modbus writes, while `webapp.py` would add a separate REST endpoint for the same control path. Both go through `ControlState` but there is no arbitration.
 
-**Consequences:** The proxy serves perfectly valid SunSpec but Venus OS still refuses to recognize it, or recognizes it but cannot control it. Power limiting commands may use Fronius-specific mechanisms (e.g., Fronius Solar API HTTP endpoints rather than SunSpec Model 123/124 for power control).
+**Why it happens:** The proxy has two control interfaces (Modbus from Venus OS, HTTP from webapp) but no concept of "who owns the power limit right now." Both can write independently.
+
+**Consequences:**
+- Venus OS ESS feed-in limiting bypassed -- potential grid compliance violation
+- Venus OS displays "Throttled" but inverter runs at full power
+- Ping-pong effect: Venus OS re-writes its limit, webapp re-writes its limit, rapid oscillation of inverter output
 
 **Prevention:**
-- Read the `dbus-fronius` source code on GitHub (victronenergy/dbus-fronius) before writing a single line of proxy code. This is the actual specification.
-- Pay particular attention to: manufacturer string matching (must contain "Fronius"), model string expectations, which SunSpec models are queried, and how power limiting commands are sent
-- Venus OS may also use the Fronius Solar API (HTTP JSON on port 80) for some operations, not just Modbus. If so, the proxy may need an HTTP endpoint too.
-- Test against the actual Venus OS version you're running, not assumptions
+- **Implement control source arbitration** with clear priority: Venus OS > Webapp (always)
+- **Override detection**: Track the last writer and timestamp. If Venus OS wrote within the last N seconds, the webapp should show "Venus OS is controlling power limit" and DISABLE the slider
+- **Read-only mode by default**: Power control slider starts disabled, requires explicit "Take Manual Control" toggle
+- **Venus OS override indicator**: The `shared_ctx["control_state"]` already tracks `wmaxlim_ena` -- extend it with `last_writer: "venus_os" | "webapp"` and `last_write_time`
+- **Auto-relinquish**: If webapp takes control, auto-revert to Venus OS control after a configurable timeout (e.g., 5 minutes)
 
-**Detection:** Enable verbose logging on Venus OS (`dbus-fronius` logs) and watch what it queries. Compare against what your proxy serves.
+**Detection:** Log every control write with source tag. Dashboard shows "Control Source: Venus OS (auto)" vs "Control Source: Manual (webapp) -- reverts in 4:32".
 
-**Phase:** Research phase -- must be understood before any code is written. The entire register mapping depends on this.
+**Phase:** Power Control UI phase -- must be designed BEFORE the slider endpoint exists.
+
+**Confidence:** HIGH -- based on direct codebase analysis of `proxy.py` `StalenessAwareSlaveContext.async_setValues()` and `webapp.py` architecture.
 
 ---
 
-### Pitfall 3: Modbus TCP Unit ID / Slave ID Confusion
+### Pitfall 3: SolarEdge Command Timeout Causes Silent Revert to Fallback
 
-**What goes wrong:** The proxy binds to a TCP port and serves Modbus responses, but uses the wrong Unit ID (also called Slave ID in Modbus RTU heritage). Venus OS queries a specific Unit ID (often 1 for Fronius, but could be configurable). If the proxy responds to the wrong Unit ID or responds to ALL Unit IDs indiscriminately, Venus OS may either not get responses or get confused by multiple "devices."
+**What goes wrong:** The webapp user sets a power limit of 70%. The proxy writes this to SolarEdge register 0xF322. The SolarEdge EDPC protocol requires periodic refresh of dynamic power commands -- if the inverter does not receive a command update within the "Command Timeout" period (register 0xF310), it reverts to its fallback active power limit (which may be 100% or 0%, depending on configuration).
 
-**Why it happens:** Modbus TCP carries a Unit ID in every request frame (MBAP header byte 6). Many simple Modbus implementations ignore it and respond to everything. SolarEdge uses Unit ID 1 for the inverter and Unit ID 2 for the meter -- these must NOT be mixed up. The proxy must route Unit IDs correctly: Venus OS queries Unit ID X -> proxy responds as Unit ID X but internally queries SolarEdge on the correct Unit ID.
+The current proxy code in `control.py` writes the limit ONCE when Venus OS commands it. It does not periodically refresh. If Venus OS stops sending commands (e.g., because production is stable), the SolarEdge timeout expires and the limit reverts.
 
-**Consequences:** Wrong data served (meter data instead of inverter data), Venus OS sees phantom devices, or complete communication failure.
+**Why it happens:** Developers treat Modbus writes as "set and forget." SolarEdge's EDPC protocol is a watchdog-based system -- it requires the command to be refreshed at least every `CommandTimeout/2` seconds.
+
+**Consequences:**
+- Power limit silently reverts to fallback value
+- Dashboard shows 70% but inverter is actually at 100% (or 0%)
+- Venus OS ESS feed-in limiting breaks because the inverter ignores stale commands
 
 **Prevention:**
-- Explicitly handle the Unit ID in the MBAP header of every Modbus TCP request
-- Map: Venus OS queries Unit ID N on proxy -> proxy queries SolarEdge Unit ID 1 (inverter) -> proxy responds with Unit ID N
-- Never use a "respond to any Unit ID" shortcut
-- SolarEdge convention: Unit ID 1 = inverter, Unit ID 2 = meter. Verify for SE30K.
+- **Implement a periodic command refresh loop**: If a power limit is active, re-write the current limit value to SolarEdge every `CommandTimeout/2` seconds (typically every 30s if timeout is 60s)
+- **Read back the actual inverter power limit** from SolarEdge registers and compare to commanded value. Display discrepancy in dashboard as "Commanded: 70% / Actual: 100% -- MISMATCH"
+- **Set CommandTimeout register (0xF310) to a known value** on proxy startup (e.g., 120 seconds) so the refresh interval is predictable
+- **Dashboard warning**: If command refresh fails 2+ times, show "Power limit may have reverted -- check inverter"
 
-**Detection:** Capture Modbus TCP frames with Wireshark between Venus OS and proxy, verify Unit IDs match expectations.
+**Detection:** Poll SolarEdge power output and compare to expected output under the current limit. If output exceeds limit by >10%, the command has likely reverted.
 
-**Phase:** Core proxy implementation. Must be correct from the start.
+**Phase:** Power Control backend phase -- this is infrastructure, not UI. Must be implemented before the slider is useful.
+
+**Confidence:** MEDIUM -- SolarEdge EDPC timeout behavior confirmed via [community discussion](https://github.com/WillCodeForCats/solaredge-modbus-multi/discussions/207) and [SolarEdge power control documentation](https://knowledge-center.solaredge.com/sites/kc/files/application_note_power_control_configuration.pdf). Exact register behavior for SE30K needs field verification.
 
 ---
 
-### Pitfall 4: Endianness and Register Word Order Mismatch
+### Pitfall 4: WebSocket Memory Leak on Long-Running Connections
 
-**What goes wrong:** SolarEdge and Fronius may use different byte/word ordering for multi-register values (32-bit integers, floats). SunSpec specifies big-endian for 16-bit registers, and for 32-bit values the high word comes first (registers N, N+1 = high, low). But SolarEdge has been known to deviate, particularly with their proprietary extensions. A proxy that does a naive register-copy without byte-swapping will produce garbage values (e.g., power reading of 1,966,080 W instead of 30,000 W).
+**What goes wrong:** The dashboard opens a WebSocket for live data streaming (1-second updates). The browser tab stays open for days. The aiohttp server accumulates memory because: (a) send buffers grow when the browser tab is backgrounded (browser throttles WebSocket processing), (b) disconnected clients are not detected promptly, (c) each WebSocket connection holds references to message history.
 
-**Why it happens:** SunSpec says big-endian, most implementations follow it, but some SolarEdge firmware versions have had byte-order inconsistencies in certain registers. Developers test with small values that happen to look correct in either byte order, then deploy and get wrong readings at higher values.
+On the LXC container (limited RAM), this eventually causes OOM and the entire proxy service crashes -- including the Modbus proxy that Venus OS depends on.
 
-**Consequences:** Wildly incorrect power/energy readings in Venus OS. Can cause incorrect grid feed-in limiting (Venus OS tells inverter to limit to wrong power level), which can have real electrical consequences.
+**Why it happens:** aiohttp WebSocket has known issues with memory accumulation on long-running connections. Multiple open GitHub issues document this: [#2309 (abrupt disconnect detection)](https://github.com/aio-libs/aiohttp/issues/2309), [#6325 (memory not released after disconnect)](https://github.com/aio-libs/aiohttp/issues/6325), [#10528 (memory leak on server)](https://github.com/aio-libs/aiohttp/issues/10528). The send buffer grows when the consumer (browser) is slower than the producer (server pushing updates every second).
 
-**Prevention:**
-- Read the SolarEdge SunSpec Implementation Technical Note for the exact byte order of each register type
-- Test with known values: read a register when the inverter reports a known power output and verify the decoded value matches
-- Implement explicit conversion functions for each data type (int16, uint16, int32, uint32, float32, string, scale-factor-adjusted values)
-- Never assume two manufacturers use the same byte order without verifying
-
-**Detection:** Compare proxy-decoded values against the SolarEdge monitoring portal or the inverter's own display. If they diverge, byte order is wrong.
-
-**Phase:** Core register mapping. Must be tested with real values early.
-
----
-
-### Pitfall 5: SunSpec Scale Factor Mishandling
-
-**What goes wrong:** SunSpec encodes many values with separate scale factor registers. For example, AC Power might be in register 40084 with a scale factor in register 40085. The actual value is `raw_value * 10^scale_factor`. The scale factor is a signed int16, typically negative (e.g., -2 means divide by 100). Developers either forget scale factors entirely, apply them in the wrong direction, or apply the SolarEdge scale factors when they should be presenting Fronius-expected scale factors.
-
-**Why it happens:** The proxy must do a double translation: (1) read SolarEdge raw value + SolarEdge scale factor -> compute real value, (2) encode real value into Fronius raw value + Fronius scale factor. If Fronius uses different scale factors than SolarEdge for the same measurement, a naive register copy produces values that are off by factors of 10, 100, or 1000.
-
-**Consequences:** Venus OS displays power as 30 W instead of 30,000 W, or energy as 100,000 kWh instead of 100 kWh. Power limiting calculations go catastrophically wrong.
+**Consequences:**
+- Proxy process memory grows unbounded
+- OOM kill takes down the entire service (Modbus proxy + webapp)
+- Venus OS loses its "Fronius inverter" until systemd restarts the service
 
 **Prevention:**
-- Always decode SolarEdge values to real physical units (Watts, Volts, Amps, Wh) as an intermediate step
-- Then re-encode to Fronius's expected scale factors
-- Document the expected scale factor for every register in the Fronius profile
-- Unit test every conversion with boundary values
+- **Use Server-Sent Events (SSE) instead of WebSocket** for the live data feed. SSE is unidirectional (server-to-client only, which is all we need for dashboard updates), has simpler lifecycle management, built-in browser reconnection, and lower memory footprint. Power control commands go via normal HTTP POST, not through the data stream
+- **If WebSocket is required**: configure heartbeat with `ws_response = web.WebSocketResponse(heartbeat=10.0)` to detect dead connections within 20 seconds
+- **Limit concurrent connections**: Maximum 5 WebSocket connections (it's a single-user LAN tool). Reject with 503 if exceeded
+- **Bound the send buffer**: If a message cannot be sent within 5 seconds (client is backlogged), drop the message rather than buffering it. For dashboard data, a dropped frame is better than OOM
+- **Monitor connection count and memory**: Add `/api/health` fields for `websocket_connections` and `process_memory_mb`
 
-**Detection:** Display proxy's decoded intermediate values in the web UI. Compare against inverter display. If they match, the decode is correct; then verify the re-encode by checking Venus OS displays.
+**Detection:** Add process memory to health endpoint. Alert (log warning) if memory exceeds 100MB or connection count exceeds 5.
 
-**Phase:** Core register mapping, same phase as the Modbus proxy itself.
+**Phase:** Dashboard live data phase -- architectural decision (SSE vs WebSocket) must be made before implementation.
 
----
-
-### Pitfall 6: Connection Management -- Single Modbus TCP Client Limitation
-
-**What goes wrong:** SolarEdge inverters typically allow only ONE concurrent Modbus TCP connection (some firmware allows 2-3). If the proxy holds a persistent connection, and a user also tries to connect with a monitoring tool or SetApp, either the proxy or the other client gets disconnected. Worse: if the proxy's connection drops and it doesn't reconnect cleanly, Venus OS shows stale data indefinitely.
-
-**Why it happens:** Modbus TCP on inverters is a secondary interface, not designed for multi-client access. SolarEdge's Modbus TCP implementation is particularly restrictive. Developers build the proxy assuming reliable persistent connections, then discover connections drop after firmware updates, Wi-Fi hiccups, or inverter sleep cycles (nighttime).
-
-**Consequences:** Proxy serves stale data (last-known values from hours ago), Venus OS makes control decisions based on stale data, or the proxy blocks other tools from accessing the inverter.
-
-**Prevention:**
-- Implement robust reconnection logic with exponential backoff
-- Use short-lived connections (connect, read, disconnect) if the inverter supports it, or keep-alive with heartbeat polling
-- Mark data as stale after a configurable timeout (e.g., 30 seconds without fresh data) and serve error responses to Venus OS rather than stale values
-- The proxy should be the ONLY Modbus TCP client to the SolarEdge -- document this requirement
-- Handle the SolarEdge inverter going to sleep at night (no solar production -> inverter may close Modbus TCP or return zero/error)
-
-**Detection:** Monitor connection state in the web UI. Log every disconnect/reconnect event. Alert if data age exceeds threshold.
-
-**Phase:** Core proxy implementation. Reconnection logic must be built in from the start, not bolted on.
-
----
-
-### Pitfall 7: Venus OS Power Limiting Uses Non-SunSpec Fronius Mechanisms
-
-**What goes wrong:** Developers assume Venus OS sends power limit commands via SunSpec Model 123 (Immediate Controls) or Model 124 (Storage). In reality, Venus OS may control Fronius inverters via the Fronius Solar API (HTTP REST) rather than Modbus write commands. If the proxy only implements Modbus and Venus OS expects to send HTTP commands to a Fronius API endpoint, power limiting will silently fail.
-
-**Why it happens:** Fronius has a dual-interface design: Modbus for monitoring, HTTP Solar API for control. Venus OS's `dbus-fronius` implementation may use different interfaces for different operations. This is not documented in SunSpec -- it's a Fronius/Victron-specific integration detail.
-
-**Consequences:** Monitoring works perfectly but power limiting does nothing. The user thinks the system is working but feed-in limiting is not active, potentially causing grid compliance issues.
-
-**Prevention:**
-- Read `dbus-fronius` source to determine exactly how power limiting commands are sent
-- If HTTP Solar API is required, the proxy must also implement relevant Fronius HTTP API endpoints (typically `/solar_api/v1/SetPowerFlowRealtimeData` or similar)
-- This could significantly expand scope -- identify it early
-- If SunSpec Model 123 write commands ARE used, verify which registers Venus OS writes and map those writes to SolarEdge's power limiting mechanism (which may also be non-standard)
-
-**Detection:** Attempt a power limit command from Venus OS and capture all network traffic (Modbus AND HTTP) between Venus OS and the proxy.
-
-**Phase:** Must be researched before architecture is finalized. This determines whether the proxy is Modbus-only or Modbus+HTTP.
+**Confidence:** HIGH -- verified against aiohttp GitHub issues and real-world memory leak reports.
 
 ---
 
 ## Moderate Pitfalls
 
-### Pitfall 8: SolarEdge Nighttime Behavior / Sleep Mode
+### Pitfall 5: Ring Buffer Overflow / Memory Growth for Sparkline Data
 
-**What goes wrong:** SolarEdge inverters enter a sleep state when there is no solar production (typically at night). In this state, they may close the Modbus TCP port entirely, return all-zero registers, or return error codes. The proxy must handle all three scenarios gracefully.
+**What goes wrong:** The 60-minute sparkline requires storing ~3,600 data points (1 per second) per metric. With multiple metrics (total power, 3x phase power, voltage, current, frequency, temperature = ~10 metrics), that is 36,000 data points in memory. Using Python dicts with timestamps, this can consume significantly more memory than expected due to Python object overhead (~200 bytes per dict vs ~16 bytes for a raw tuple).
+
+**Why it happens:** Developers use `collections.deque(maxlen=3600)` which is correct for bounding, but store rich objects (`{"timestamp": ..., "power": ..., "voltage": ...}`) instead of compact tuples or numpy arrays. Python object overhead is 5-10x the raw data size.
 
 **Prevention:**
-- Detect inverter sleep state and serve appropriate values to Venus OS (zero power, but maintain the device presence so Venus OS doesn't "lose" the inverter)
-- Do NOT serve Modbus errors to Venus OS during inverter sleep -- serve zero-power readings instead
-- Implement a "last known good" state for static values (serial number, model, ratings) that don't change during sleep
-- Test at night, not just during the day
+- Use `collections.deque(maxlen=3600)` -- this IS the right approach for this scale
+- Store tuples `(timestamp, value)` not dicts -- 3x more memory efficient
+- One deque per metric, not one deque of dicts containing all metrics
+- For 10 metrics x 3,600 points x ~100 bytes/tuple = ~3.6MB. Acceptable for LXC, but monitor it
+- Do NOT use numpy (adds dependency for minimal benefit at this scale)
+- **Thread safety**: `deque.append()` is thread-safe in CPython (GIL), but if using asyncio (no threads), this is not a concern. Do NOT add unnecessary locking
 
-**Detection:** Run the proxy overnight and check Venus OS in the morning. If the inverter "disappeared" from Venus OS, sleep handling is broken.
+**Detection:** Include ring buffer size and approximate memory in health endpoint.
 
-**Phase:** Should be addressed in the core proxy phase, but can be refined later. At minimum, the proxy must not crash when the inverter sleeps.
+**Phase:** Sparkline/chart phase.
+
+**Confidence:** HIGH -- Python memory model well understood, `deque(maxlen=N)` behavior verified.
 
 ---
 
-### Pitfall 9: Modbus TCP Transaction ID Mismatch
+### Pitfall 6: Venus OS UI Color/Style Mismatch Breaks User Trust
 
-**What goes wrong:** Modbus TCP uses transaction IDs in the MBAP header to match requests to responses. The proxy receives a request from Venus OS with transaction ID X, queries SolarEdge (which assigns its own transaction ID Y), gets a response, and must respond to Venus OS with the original transaction ID X. If the proxy naively forwards SolarEdge's transaction ID back to Venus OS, the responses get mismatched.
+**What goes wrong:** The dashboard claims to replicate "Venus OS style" but uses wrong colors, wrong fonts, wrong widget proportions. The user (who sees the real Venus OS daily) immediately notices the mismatch, perceives the tool as unprofessional, and loses trust in the data it displays.
+
+**Why it happens:** Developers pick "close enough" dark theme colors instead of extracting exact values from Venus OS. Venus OS uses a very specific design language (Victron's GUI-V2 framework based on Qt/QML) with specific color codes, border radii, typography, and widget spacing.
+
+The current `index.html` already has a custom dark theme (`--bg: #1a1a2e`, `--accent: #e94560`) that does NOT match Venus OS. Venus OS uses different blues, different greens for "OK" status, different gauge styles.
 
 **Prevention:**
-- Maintain a mapping of Venus OS transaction IDs to SolarEdge transaction IDs
-- Or better: use independent Modbus TCP sessions. The proxy decodes the Venus OS request, makes its own request to SolarEdge (with its own transaction ID management), decodes the response, and builds a fresh response for Venus OS
-- Never forward raw Modbus TCP frames between the two sides
+- **Extract exact colors from Venus OS screenshots** or the [Venus OS GUI source](https://github.com/victronenergy/gui-v2). Key colors to match:
+  - Background: Venus OS dark navy, not generic dark blue
+  - Accent/highlight: Venus OS uses specific teal/cyan tones for active elements
+  - Status green: Venus OS's "running" green is a specific shade
+  - Warning amber and error red: must match exactly
+- **Match widget patterns**: Venus OS uses specific tile/card layouts with rounded corners, specific padding, specific header bar style
+- **Do NOT try to be pixel-perfect** -- match the feel, not the pixels. Use the same color palette, similar spacing, same information hierarchy
+- **Side-by-side comparison test**: Open Venus OS remote console and webapp side by side. If they feel like different products, iterate
 
-**Detection:** Wireshark capture showing transaction ID mismatches will manifest as Venus OS receiving "wrong" data or timeout errors.
+**Detection:** User feedback. Side-by-side screenshot comparison during review.
 
-**Phase:** Core proxy implementation.
+**Phase:** Dashboard UI phase -- colors and layout should be defined in a CSS variables file BEFORE building widgets.
+
+**Confidence:** MEDIUM -- Venus OS visual style known from screenshots and GUI source repo, but exact color extraction not performed in this research.
 
 ---
 
-### Pitfall 10: Register Address Offset Conventions (0-based vs 1-based)
+### Pitfall 7: Dashboard Update Rate Causes Browser Performance Issues
 
-**What goes wrong:** Modbus has a long-standing confusion between register addresses and register numbers. Register number 40001 is actually protocol address 0 in Holding Registers (function code 3). SunSpec documentation uses 40001-based numbering. The Modbus TCP wire protocol uses 0-based addressing. SolarEdge documentation may use either convention. If the proxy is off by one, every single register read returns the wrong value.
+**What goes wrong:** The dashboard receives 1-second updates and re-renders the entire DOM on each update. With sparkline charts (Canvas/SVG redraws), multiple gauges, 3-phase detail tables, and status indicators all updating simultaneously, the browser struggles. Mobile browsers and older tablets (common for solar monitoring) drop frames, causing laggy interaction and high CPU usage.
+
+**Why it happens:** Developers build the dashboard on a fast desktop browser and don't test on the actual viewing device. Single-file HTML (the current architecture) means no framework-level optimization (virtual DOM, batched updates).
+
+**Consequences:**
+- Dashboard feels sluggish and unresponsive
+- Browser tab consumes excessive CPU/battery on always-on monitoring displays
+- Power control slider becomes unresponsive during chart redraws
 
 **Prevention:**
-- Choose one convention internally and document it explicitly
-- Use 0-based addressing on the wire and SunSpec 40001-based in configuration/documentation
-- Conversion: wire_address = sunspec_register - 40001
-- Test by reading the "SunS" marker: if you read register 40000 (SunSpec) = wire address 39999 (or 40000 depending on convention) and get 0x53756e53, your addressing is correct
-- Be aware that some Modbus libraries auto-convert and some don't
+- **Throttle visual updates to 2-second intervals** even if data arrives every second. Human perception of power changes does not require sub-second resolution
+- **Only update changed values**: Compare new data to displayed data, skip DOM updates for unchanged fields
+- **Use CSS transforms for animations** (hardware accelerated) instead of DOM manipulation
+- **Sparkline chart**: Use a single Canvas element with incremental draw (shift pixels left, draw new point) instead of full redraw. Pre-allocate the pixel buffer
+- **Lazy render off-screen sections**: If the inverter detail panel is collapsed, do not update its DOM
+- **Test on a Raspberry Pi browser** (Chromium on RPi4) since that is a realistic Venus OS companion device
 
-**Detection:** If the SunS marker read fails, addressing is wrong. This should be the first thing tested.
+**Detection:** Use browser Performance tab to measure frame times. Target: <16ms per frame (60fps) or at worst <50ms (20fps).
 
-**Phase:** Core proxy, first thing to validate.
+**Phase:** Dashboard UI phase -- must be considered during chart library selection and update architecture.
+
+**Confidence:** HIGH -- standard web performance knowledge, applicable to single-file HTML architecture.
 
 ---
 
-### Pitfall 11: Polling Rate and Venus OS Timeout Expectations
+### Pitfall 8: Power Control UI Shows Stale State After Network Interruption
 
-**What goes wrong:** Venus OS expects responses within a certain timeout. If the proxy has to query SolarEdge, translate, and respond, the total latency might exceed Venus OS's expectations. Also, if Venus OS polls frequently (every 1-2 seconds) and the proxy polls SolarEdge at the same rate, you can overwhelm SolarEdge's Modbus TCP implementation.
+**What goes wrong:** The user has the dashboard open, sets power limit to 60%. The LAN has a brief interruption (5 seconds). The WebSocket/SSE reconnects, but the dashboard still shows "Power Limit: 60%" from its local state. Meanwhile, during the disconnection, Venus OS overwrote the limit to 30% for ESS feed-in control. The user sees 60% but the inverter is at 30%.
+
+**Why it happens:** Client-side state diverges from server-side state during disconnections. The reconnection logic restores the data stream but does not force a full state reconciliation.
+
+**Consequences:**
+- User makes decisions based on stale control state
+- User tries to "increase" from 60% to 80%, not knowing actual state is 30% -- this doubles the output unexpectedly
 
 **Prevention:**
-- Cache SolarEdge register values in the proxy. Serve Venus OS from cache, update cache asynchronously
-- Cache TTL should be short (1-5 seconds for power values, longer for static values like serial number)
-- Respond to Venus OS immediately from cache, never synchronously proxy each request to SolarEdge
-- Monitor round-trip times and log warnings if they approach timeout thresholds
+- **On every reconnect, force a full state fetch** via HTTP GET before resuming the live stream. The reconnection handler should: (1) fetch `/api/control-state`, (2) update all UI elements, (3) then subscribe to live stream
+- **Server-side authoritative state**: The dashboard should ALWAYS show server state, never cached client state. Every live update should include control state, not just sensor data
+- **Visual "reconnecting" indicator**: While disconnected, grey out the entire dashboard and show "Reconnecting..." -- do NOT show stale data as if it were live
+- **Timestamp on every data frame**: Include `server_time` in every update. If `server_time` is >5 seconds old, show a staleness warning
 
-**Detection:** Venus OS logs showing communication timeouts or stale data indicators.
+**Detection:** Deliberately disconnect WiFi for 10 seconds during testing. Verify dashboard state matches server state after reconnection.
 
-**Phase:** Core proxy architecture. The caching layer is a fundamental design decision, not an optimization.
+**Phase:** Dashboard live data phase -- reconnection logic is part of the data streaming architecture.
+
+**Confidence:** HIGH -- standard real-time UI pattern.
 
 ---
 
-### Pitfall 12: Three-Phase vs Single-Phase Model Confusion
+### Pitfall 9: Single-File HTML Becomes Unmaintainable at Dashboard Scale
 
-**What goes wrong:** The SE30K is a three-phase inverter. The proxy must serve SunSpec Model 103 (three-phase inverter), not Model 101 (single-phase). Venus OS will read phase-specific registers (L1/L2/L3 voltage, current, power). If the wrong model is served, Venus OS either gets no per-phase data or reads garbage from wrong register offsets.
+**What goes wrong:** The v1.0 architecture uses a single `index.html` file (currently ~200 lines for a simple config UI). The v2.0 dashboard adds: Venus OS styled layout, live data widgets, sparkline charts, power control panel, 3-phase detail view, register viewer (existing), configuration panel (existing). This easily reaches 2,000-4,000 lines in a single file with inline CSS and JavaScript.
+
+**Why it happens:** "No build tooling" was a good v1.0 decision for a simple config page. But a full dashboard with charts, live data, and interactive controls exceeds the complexity threshold where single-file HTML becomes a maintenance burden.
+
+**Consequences:**
+- CSS conflicts between sections (global styles leak)
+- JavaScript global scope pollution
+- Impossible to test individual components
+- Merge conflicts on every change
+- Developer productivity drops as the file grows
 
 **Prevention:**
-- Verify SE30K serves SunSpec Model 103 (or 113 for float variant)
-- The Fronius profile must also be three-phase (Model 103/113)
-- Map all three phases correctly -- SolarEdge and Fronius may order the per-phase registers differently
-- Test with actual three-phase readings, not just total power
+- **Keep single-file HTML** (no build tooling constraint is valid) but use disciplined organization:
+  - CSS: Use BEM naming convention or CSS custom properties scoped by section
+  - JavaScript: Use IIFE modules `(function() { /* chart code */ })()`  or ES module pattern with `<script type="module">`
+  - Structure: Clear section comments, consistent ordering (CSS -> HTML -> JS)
+- **Extract chart rendering** into a separate inline `<script>` block with a clean API: `SparklineChart.init(canvas, options)`, `SparklineChart.addPoint(value)`
+- **Consider loading separate JS files** via `importlib.resources` (serve `/static/dashboard.js`, `/static/chart.js`) without needing npm/webpack. This keeps "no build tooling" while allowing file separation
+- **Component pattern**: Each dashboard widget is a function that creates its DOM subtree and returns an update function: `const widget = createPowerGauge(container); widget.update(newValue);`
 
-**Detection:** Check if Venus OS shows per-phase data. If it shows single-phase or garbled phase data, the model ID or per-phase register mapping is wrong.
+**Detection:** If any single section of the HTML file exceeds 500 lines, it should be extracted.
 
-**Phase:** Core register mapping.
+**Phase:** Dashboard UI phase -- file organization decision should be made at the START, not after the file is already 3,000 lines.
+
+**Confidence:** HIGH -- based on current codebase architecture in `webapp.py` (serves from `importlib.resources`).
 
 ---
 
 ## Minor Pitfalls
 
-### Pitfall 13: String Register Encoding
+### Pitfall 10: Sparkline Y-Axis Scale Jumps Confuse Users
 
-**What goes wrong:** SunSpec string fields (manufacturer, model, serial number) are encoded as fixed-length ASCII in Modbus registers (2 characters per register, big-endian). Incorrect padding, wrong byte order within registers, or truncation causes Venus OS to display garbled device names.
+**What goes wrong:** The sparkline chart auto-scales the Y-axis. During a cloud passing, power drops from 25kW to 5kW. The chart rescales, making the 5kW reading look like it fills the same visual space as the previous 25kW. The user glances at the chart and thinks power is still high.
 
 **Prevention:**
-- Encode strings as SunSpec specifies: each register holds 2 ASCII characters, padded with null bytes, big-endian within each register
-- The manufacturer string must read "Fronius" (padded to the field length) for Venus OS to recognize it
-- Test string fields specifically -- they're easy to get wrong and painful to debug
+- **Fixed Y-axis maximum** based on inverter nameplate rating (30kW for SE30K). The chart always shows 0-30kW range
+- Show the numeric value alongside the chart, not embedded in it
+- Use a subtle horizontal line at the current value's position to anchor perception
 
-**Phase:** Register mapping, but lower priority than numeric values.
+**Phase:** Chart/sparkline phase.
 
 ---
 
-### Pitfall 14: Systemd Service Restart Behavior
+### Pitfall 11: Temperature and Status Registers Misinterpreted
 
-**What goes wrong:** The proxy crashes (OOM, unhandled exception, SolarEdge firmware update restarts Modbus) and systemd restarts it. If the proxy doesn't cleanly re-establish its Modbus TCP listener and SolarEdge connection on restart, Venus OS may hold a stale TCP connection to the proxy's old port and fail to reconnect.
+**What goes wrong:** The dashboard displays raw register values for temperature (e.g., "3420") instead of applying the scale factor (SF=-1, actual = 342.0 C -- still wrong, probably 34.2 C with SF=-2). The `register_cache.py` stores raw uint16 values. The webapp must apply scale factors correctly for display.
 
 **Prevention:**
-- Use `SO_REUSEADDR` on the listening socket
-- Implement graceful shutdown (close connections, release ports)
-- systemd unit file: `Restart=always`, `RestartSec=5`, `WatchdogSec=30`
-- The proxy should log its startup state clearly (listening port, SolarEdge connection status)
+- Create a display decoder layer that applies scale factors from the SunSpec model definitions
+- Temperature: raw value * 10^(Temp SF). SF is in register 40106
+- Status: map numeric status codes to human-readable strings ("1=OFF, 2=SLEEPING, 3=STARTING, 4=MPPT, 5=THROTTLED, 6=SHUTTING_DOWN, 7=FAULT")
+- Unit test every display conversion
 
-**Phase:** Deployment/service configuration phase.
+**Phase:** Dashboard data display phase.
 
 ---
 
-### Pitfall 15: SolarEdge Firmware Update Changes Register Map
+### Pitfall 12: No Visual Distinction Between "No Data" and "Zero Production"
 
-**What goes wrong:** SolarEdge occasionally changes Modbus register behavior with firmware updates. Registers that worked on one firmware version may return different values or errors on another. The proxy breaks after an inverter firmware update with no changes to proxy code.
+**What goes wrong:** At night, the inverter produces 0W. The dashboard shows "0 W". During a connection failure, the dashboard also shows "0 W" (or the last cached value, which might be 0W from night mode). The user cannot distinguish "inverter is fine, no sun" from "proxy lost connection, data is stale."
 
 **Prevention:**
-- Log the SolarEdge firmware version (available via Modbus register) at startup
-- Document tested firmware versions
-- Make the register mapping configurable or at least easy to update
-- Monitor for unexpected errors or value range changes after firmware updates
+- **Always show data age**: "0 W (2s ago)" vs "0 W (stale -- 45s ago)"
+- **Use the existing `cache.is_stale` flag** from `register_cache.py` to visually differentiate: fresh data = normal styling, stale data = dimmed with warning icon
+- **Show connection state prominently**: The existing `/api/status` endpoint returns `solaredge` connection state -- display it as a persistent header badge
+- **Night mode indicator**: When `ConnectionState.NIGHT_MODE` is active (from `connection.py`), show a moon icon and "Night Mode" label instead of zero values
 
-**Detection:** Sudden value errors or communication failures after a firmware update.
-
-**Phase:** Plugin architecture design -- making register maps easily updatable is part of the maintainability story.
+**Phase:** Dashboard UI phase -- visual state indicators should be designed with the initial layout.
 
 ---
 
@@ -282,30 +298,30 @@ Mistakes that cause rewrites, hardware miscommunication, or Venus OS rejection.
 
 | Phase Topic | Likely Pitfall | Mitigation |
 |-------------|---------------|------------|
-| Research / Requirements | Not reading `dbus-fronius` source code | Read the source before designing anything. It IS the spec. |
-| Research / Requirements | Assuming Modbus-only (missing HTTP Solar API) | Capture traffic from a real Fronius + Venus OS setup if possible, or read dbus-fronius source |
-| Core Proxy (Modbus TCP server) | Unit ID mishandling, transaction ID forwarding, address off-by-one | Validate with `mbpoll` tool before connecting Venus OS |
-| Register Mapping | Scale factor errors, byte order issues, wrong SunSpec model | Test with known values from inverter display; unit test all conversions |
-| Venus OS Integration | SunSpec model chain broken, manufacturer string wrong | Walk the model chain with a SunSpec validator before Venus OS testing |
-| Power Control | Wrong mechanism (Modbus vs HTTP), wrong SolarEdge write registers | Research dbus-fronius control path first; test with low limit values |
-| Reliability | Connection drops at night, no reconnection, stale data served | Test overnight; implement staleness detection from day one |
-| Plugin Architecture | Over-engineering abstractions before first integration works | Get SolarEdge -> Fronius working end-to-end FIRST, then extract plugin interface |
-
-## Key Research Gaps (could not verify online)
-
-These items need validation with current documentation:
-
-1. **Venus OS Fronius discovery mechanism** -- Does current Venus OS use Fronius Solar API HTTP scanning, Modbus TCP port scanning, or mDNS/SSDP? This fundamentally affects what the proxy must implement. LOW confidence on training data alone.
-2. **Venus OS power limiting mechanism** -- HTTP Solar API vs SunSpec Model 123 Modbus writes? Must be verified from `dbus-fronius` source. MEDIUM confidence that HTTP Solar API is involved.
-3. **SolarEdge SE30K concurrent Modbus TCP connection limit** -- Training data says 1-3 connections. Must verify for specific model/firmware. LOW confidence.
-4. **SolarEdge SE30K power limiting via Modbus** -- Whether SolarEdge supports active power limiting via Modbus TCP writes, and which registers. MEDIUM confidence it's possible but register addresses need verification.
+| Dashboard Layout (CSS/HTML) | Venus OS color mismatch (#6) | Extract exact Venus OS color palette FIRST, define as CSS variables |
+| Dashboard Layout (CSS/HTML) | Single file unmaintainability (#9) | Decide file organization pattern before writing widgets |
+| Live Data Streaming | WebSocket memory leak (#4) | Use SSE instead of WebSocket; bound connections |
+| Live Data Streaming | Stale state after reconnect (#8) | Full state fetch on every reconnect |
+| Sparkline Charts | Browser performance (#7) | Throttle to 2s updates, incremental canvas draw |
+| Sparkline Charts | Y-axis auto-scale confusion (#10) | Fixed 0-30kW Y-axis |
+| Ring Buffer Backend | Memory growth (#5) | Tuple-based deques, monitor in health endpoint |
+| Power Control UI | Accidental power change (#1) | Confirmation dialog, debounced slider, two-step apply |
+| Power Control UI | Venus OS race condition (#2) | Source arbitration, Venus OS always wins |
+| Power Control Backend | SE command timeout revert (#3) | Periodic command refresh loop |
+| Inverter Detail View | Scale factor misinterpretation (#11) | Display decoder layer with unit tests |
+| All Dashboard Phases | No data vs zero distinction (#12) | Data age display, connection state badge |
 
 ## Sources
 
-- SunSpec Alliance Modbus specification (training data, published standard)
-- SolarEdge SunSpec Implementation Technical Note (training data reference -- should be re-fetched)
-- Victron Energy `dbus-fronius` repository (GitHub -- should be read directly)
-- Modbus TCP/IP specification (Modbus Organization, well-established standard)
-- Training data from community forums (Victron Community, SolarEdge forums) -- LOW confidence, needs verification
-
-**Note:** Web search and web fetch tools were unavailable during this research session. All findings are based on training data (cutoff ~May 2025). Critical items flagged above should be verified against current documentation before implementation begins.
+- [aiohttp WebSocket disconnect detection issue #2309](https://github.com/aio-libs/aiohttp/issues/2309)
+- [aiohttp memory not released after WebSocket disconnect #6325](https://github.com/aio-libs/aiohttp/issues/6325)
+- [aiohttp memory leak on server #10528](https://github.com/aio-libs/aiohttp/issues/10528)
+- [aiohttp growing memory in web_protocol.py #10671](https://github.com/aio-libs/aiohttp/issues/10671)
+- [SolarEdge Power Control Options Application Note](https://knowledge-center.solaredge.com/sites/kc/files/application_note_power_control_configuration.pdf)
+- [SolarEdge power limit overruled community report](https://github.com/binsentsu/home-assistant-solaredge-modbus/issues/232)
+- [SolarEdge power control functions discussion](https://github.com/WillCodeForCats/solaredge-modbus-multi/discussions/207)
+- [Victron dbus-fronius driver](https://github.com/victronenergy/dbus-fronius)
+- [SSE vs WebSocket comparison (2026)](https://www.nimbleway.com/blog/server-sent-events-vs-websockets-what-is-the-difference-2026-guide)
+- [WebSocket heartbeat/ping-pong configuration guide](https://oneuptime.com/blog/post/2026-01-24-websocket-heartbeat-ping-pong/view)
+- [Energy dashboard UX best practices](https://www.aufaitux.com/blog/energy-management-dashboard-design/)
+- Project codebase: `control.py`, `proxy.py`, `register_cache.py`, `webapp.py`, `connection.py`, `static/index.html`

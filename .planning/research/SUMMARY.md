@@ -1,83 +1,91 @@
-# Research Summary: Venus OS Fronius Proxy
+# Research Summary: Venus OS Fronius Proxy v2.0 Dashboard & Power Control
 
-**Domain:** Modbus TCP Proxy -- Inverter Protocol Translation (SolarEdge -> Fronius SunSpec emulation for Venus OS)
-**Researched:** 2026-03-17
-**Overall confidence:** MEDIUM
+**Domain:** Solar inverter monitoring dashboard with power control, Venus OS visual identity
+**Researched:** 2026-03-18 (v2.0 milestone research, updating v1.0 research from 2026-03-17)
+**Overall confidence:** HIGH
 
 ## Executive Summary
 
-This project builds a Modbus TCP translation proxy that makes a SolarEdge SE30K three-phase inverter appear as a Fronius inverter to Venus OS (Victron). Venus OS natively supports Fronius inverters via its `dbus-fronius` driver, which expects SunSpec-compliant Modbus TCP communication. The proxy reads SolarEdge registers, translates them to Fronius-compatible SunSpec register layout, and serves them to Venus OS. It also handles the reverse path: power limiting commands from Venus OS are translated back to SolarEdge commands.
+The v2.0 milestone adds a Venus OS styled dashboard, live sparkline charts, and power control sliders to the existing Modbus proxy webapp. The critical finding is that **zero new dependencies are needed** -- every capability required (WebSocket, SVG sparklines, ring buffers, styled sliders) is achievable with the existing aiohttp stack plus stdlib modules and vanilla JavaScript.
 
-The stack is Python 3.12+ with pymodbus (3.8.x) for both Modbus TCP client and server, FastAPI + Jinja2 + htmx for a lightweight config webapp, and systemd for process management. All components run in a single asyncio event loop within one process -- appropriate for the I/O-bound, low-traffic nature of this workload. The architecture uses a polling model (not pass-through proxy) because SolarEdge and Fronius use different SunSpec register layouts that cannot be transparently relayed.
+The Venus OS gui-v2 color palette has been extracted directly from the official Victron repository (`victronenergy/gui-v2/themes/color/`), providing HIGH confidence color tokens: Victron blue `#387DC5`, dark backgrounds `#141414`/`#272622`, warm gray text `#FAF9F5`/`#969591`, and accent colors for status indicators. This replaces the current generic dark theme with an authentic Victron look.
 
-The most critical risk is that Venus OS's `dbus-fronius` driver may have Fronius-specific expectations beyond standard SunSpec compliance -- including manufacturer string matching, specific SunSpec model ordering, or reliance on the Fronius Solar API (HTTP) for power control instead of Modbus TCP. This must be verified by reading the `dbus-fronius` source code before any implementation begins. All library versions have been verified via PyPI.
+For real-time communication, WebSocket (built into aiohttp) is recommended over SSE. While the v1.0 architecture research recommended SSE for its simplicity, v2.0's power control slider requires bidirectional communication (slider values client-to-server, live feedback server-to-client). Using WebSocket for both directions in a single connection is cleaner than SSE + separate POST endpoints.
+
+Sparkline charts are trivially implementable as inline SVG polylines (~15 lines of JavaScript), backed by `collections.deque` ring buffers on the server side. No charting library is needed or appropriate for the single-file HTML constraint.
 
 ## Key Findings
 
-**Stack:** Python 3.12+ / pymodbus 3.8.x / FastAPI 0.128.x / uvicorn / Pydantic / TOML / systemd / uv. Single-process async architecture.
+**Stack:** Zero new dependencies. aiohttp WebSocket (built-in) + inline SVG sparklines + Venus OS CSS custom properties + native HTML range/checkbox. All self-contained in single-file HTML.
 
-**Architecture:** Polling proxy (not pass-through). Three async subsystems on one event loop: Modbus client (polls SolarEdge), Modbus server (serves Venus OS), HTTP server (config webapp). Plugin interface for future inverter brands.
+**Architecture:** WebSocket endpoint added to existing aiohttp webapp. DashboardCollector decodes registers once per poll cycle. TimeSeriesBuffer stores 60-min history via `collections.deque`. Broadcast to all WebSocket clients after each poll.
 
-**Critical pitfall:** Venus OS `dbus-fronius` may require Fronius-specific behavior beyond SunSpec compliance. Must read `dbus-fronius` source code before writing any proxy code. This is the single biggest schedule/scope risk.
+**Critical pitfall:** Power control slider UX must have explicit "Apply" confirmation and revert timeouts. Accidental slider drags on a 30kW inverter have real consequences. Debouncing and safety constraints are mandatory.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure:
+Based on research, suggested phase structure for v2.0:
 
-1. **Phase 1: Research and Validation** - Verify critical unknowns before writing production code
-   - Addresses: dbus-fronius discovery protocol, power control mechanism (Modbus vs HTTP), SolarEdge register map validation
-   - Avoids: Building on wrong assumptions (Pitfalls 2, 7)
-   - Output: Validated register mapping specification, confirmed discovery protocol
+1. **Phase 1: Venus OS Theme + Dashboard Data Layer** - CSS swap + backend data pipeline
+   - Addresses: Venus OS color scheme (CSS only), parsed inverter API endpoint, TimeSeriesBuffer + DashboardCollector
+   - Avoids: Building frontend before data pipeline is solid
+   - Rationale: Theme is purely visual (zero risk), data layer is testable without frontend
 
-2. **Phase 2: Core Proxy (Read Path)** - Config + Modbus client + register translation + Modbus server
-   - Addresses: All table-stakes features for monitoring (read path only)
-   - Avoids: SunSpec model chain errors (Pitfall 1), address offset bugs (Pitfall 10), endianness issues (Pitfall 4)
-   - Milestone: Venus OS discovers and monitors the SolarEdge inverter through the proxy
+2. **Phase 2: WebSocket + Live Dashboard UI** - Real-time push + frontend widgets
+   - Addresses: WebSocket endpoint, live power display, per-phase breakdown, status indicator, sparklines
+   - Avoids: Polling overhead of current approach
+   - Rationale: WebSocket infrastructure enables all live features; build widgets on verified data pipeline
 
-3. **Phase 3: Control Path** - Power limiting write path from Venus OS through proxy to SolarEdge
-   - Addresses: Power curtailment feature (model 123 or HTTP, depending on Phase 1 findings)
-   - Avoids: Wrong control mechanism (Pitfall 7), scale factor errors on writes (Pitfall 5)
-   - Milestone: Venus OS can throttle SolarEdge output
+3. **Phase 3: Power Control UI** - Slider, toggle, override detection
+   - Addresses: Power control slider + toggle, override detection, revert timeout display, feedback loop
+   - Avoids: Shipping power control without safety constraints
+   - Rationale: Most dangerous feature -- needs safety design, confirmation UX, and thorough testing
 
-4. **Phase 4: Operational** - Config webapp, health monitoring, systemd hardening, nighttime handling
-   - Addresses: Differentiator features (webapp, status display, register viewer)
-   - Avoids: Stale data at night (Pitfall 8), restart issues (Pitfall 14)
-   - Milestone: Production-ready with web-based configuration
-
-5. **Phase 5: Extensibility** - Plugin architecture formalization, documentation for adding inverter brands
-   - Addresses: Future brand support requirement
-   - Avoids: Over-engineering before first integration works (per Pitfalls phase warning)
+4. **Phase 4: Polish** - Detail panel, daily energy, edge cases
+   - Addresses: Inverter detail panel (V/A/Hz/Temp), daily energy tracking, empty states, error handling
+   - Rationale: Nice-to-have features that round out the dashboard
 
 **Phase ordering rationale:**
-- Phase 1 (research) first because the entire architecture depends on knowing what `dbus-fronius` actually expects. Building before verifying risks rewrites.
-- Phase 2 before Phase 3 because the read path is simpler and validates the entire translation approach before adding the more dangerous write path.
-- Phase 4 after core functionality because the config webapp is not needed for initial validation (TOML + SSH suffice).
-- Phase 5 last because the plugin interface should be extracted from a working implementation, not designed in the abstract.
+- Theme first because it is zero-risk CSS changes with maximum visual impact
+- Data pipeline before frontend because it is testable independently (curl, unit tests)
+- WebSocket before power control because power control feedback depends on the WebSocket infrastructure
+- Power control last among core features because it requires the most safety validation
 
 **Research flags for phases:**
-- Phase 1: REQUIRES deep research -- reading dbus-fronius source code, capturing Modbus traffic from real Fronius if possible
-- Phase 2: Standard patterns once Phase 1 questions are answered. pymodbus docs will be needed.
-- Phase 3: Likely needs research -- SolarEdge power limiting via Modbus may have quirks
-- Phase 4: Standard patterns, unlikely to need additional research
-- Phase 5: Low research needs, mostly design work
+- Phase 1: Standard patterns, no additional research needed
+- Phase 2: Standard patterns, aiohttp WebSocket docs sufficient
+- Phase 3: Needs careful safety design for slider UX. Review SolarEdge EDPC timeout behavior.
+- Phase 4: Standard patterns, unlikely to need research
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All versions verified via PyPI. pymodbus is the undisputed Python Modbus library. FastAPI + Jinja2 is well-proven for config UIs. |
-| Features | HIGH | SunSpec models are standardized. Table-stakes features are clear from the project requirements. |
-| Architecture | MEDIUM | Single-process async design is sound. Register translation approach is correct. But the exact SunSpec model expectations of dbus-fronius are unverified. |
-| Pitfalls | MEDIUM | Training-data-based knowledge of SolarEdge/Fronius quirks. Most pitfalls are well-known in the Modbus community, but Fronius-specific behaviors need verification. |
+| Stack | HIGH | Zero new dependencies. All capabilities verified against official docs. |
+| Features | HIGH | Requirements clear from PROJECT.md. Venus OS colors from official repository. |
+| Architecture | HIGH | Additive changes to existing v1.0 architecture. WebSocket pattern well-documented. |
+| Pitfalls | MEDIUM | Power control safety is well-understood in principle but UX details need iteration. |
+
+## SSE vs WebSocket Decision Update
+
+The v1.0 architecture research recommended SSE. For v2.0, WebSocket is recommended instead because:
+- Power control slider sends values client-to-server (bidirectional need)
+- Single connection handles both directions (simpler than SSE + POST endpoints)
+- aiohttp has equally first-class support for both
+- No additional dependencies either way
+
+The ARCHITECTURE.md SSE recommendation was correct for a monitoring-only dashboard. v2.0's power control changes the calculus.
 
 ## Gaps to Address
 
-- **dbus-fronius source code review** -- Must happen before Phase 2. Determines: manufacturer string requirements, SunSpec model expectations, discovery protocol (Modbus only vs HTTP Solar API), power control mechanism
-- **SolarEdge SE30K register verification** -- Read actual registers from the inverter and compare against documentation. Especially important for scale factors and three-phase register layout
-- **Venus OS version-specific behavior** -- The exact Venus OS version on 192.168.3.146 may affect which dbus-fronius features are present
-- **SolarEdge concurrent connection limit** -- Need to verify how many Modbus TCP connections the SE30K firmware allows
-- **htmx version** -- Version claimed from training data, should verify latest stable when building the webapp
+- Power control slider debounce strategy (200ms recommended, needs UX testing)
+- SolarEdge EDPC revert behavior when proxy restarts mid-timeout
+- Venus OS flow-style layout deferred to v2.x (complex, diminishing returns without full system data)
 
 ## Sources
 
-All package versions verified via PyPI (`pip3 index versions`). Architecture and domain knowledge from training data (cutoff ~May 2025). Web search and web fetch were unavailable during this research session, so dbus-fronius source code review and Fronius-specific integration details could not be verified live.
+- [aiohttp WebSocket docs (v3.13.3)](https://docs.aiohttp.org/en/stable/web_quickstart.html)
+- [Venus OS gui-v2 theme colors](https://github.com/victronenergy/gui-v2/tree/main/themes/color)
+- [Venus OS gui-v2 ColorDesign.json](https://raw.githubusercontent.com/victronenergy/gui-v2/main/themes/color/ColorDesign.json)
+- [Venus OS gui-v2 Dark.json](https://raw.githubusercontent.com/victronenergy/gui-v2/main/themes/color/Dark.json)
+- Existing codebase: `webapp.py`, `proxy.py`, `control.py`, `static/index.html`

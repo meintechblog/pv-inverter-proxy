@@ -1,333 +1,258 @@
-# Feature Research
+# Feature Landscape: Venus OS Dashboard & Power Control UI (v2.0)
 
-**Domain:** Modbus TCP proxy for solar inverter integration (SolarEdge to Fronius emulation for Venus OS)
-**Researched:** 2026-03-17
-**Confidence:** HIGH (based on direct source code analysis of `victronenergy/dbus-fronius`)
+**Domain:** Solar inverter monitoring dashboard with power control, Venus OS visual identity
+**Researched:** 2026-03-18
+**Confidence:** HIGH (Venus OS gui-v2 source inspected, existing codebase analyzed)
 
-## Critical Discovery: Venus OS Already Supports SolarEdge Natively
+**Scope note:** This research covers NEW features for the v2.0 milestone only. Already shipped in v1.0: config editor, connection status dots, health metrics, register viewer (side-by-side SE30K/Fronius). Those are not repeated here.
 
-**Important finding:** Venus OS's `dbus-fronius` already supports SolarEdge inverters natively via Sunspec Modbus TCP. It reads Sunspec models 1, 101/103, 120, 123/704, and 160 directly from SolarEdge inverters. It also has a dedicated `SolarEdgeLimiter` class using SolarEdge's proprietary EDPC registers (0xF300+) for power limiting.
+## Venus OS Visual Identity Reference
 
-**This changes the project's value proposition.** The proxy is NOT needed to make Venus OS "see" a SolarEdge inverter -- `dbus-fronius` already does this by scanning all IPs in the LAN and probing for Sunspec at unit ID 126.
+Extracted from `victronenergy/gui-v2` repository `themes/color/Dark.json` and `themes/color/ColorDesign.json` (HIGH confidence -- direct source).
 
-**Revised value proposition options:**
-1. The proxy is needed if the SolarEdge is on a different network/port that Venus OS cannot reach directly
-2. The proxy is needed to present the SolarEdge as a *Fronius-branded* inverter (to unlock Fronius-specific features like forced limiter enabling)
-3. The proxy is needed to work around SolarEdge's single-TCP-connection limitation (port 502 allows only one client)
-4. The proxy adds register caching, connection multiplexing, or protocol translation not available natively
+### Core Color Palette
 
-**Recommendation:** Validate with the user which of these use cases is the actual driver. The features below are written assuming use case 3 (connection multiplexing) and/or use case 2 (Fronius identity emulation) are the primary drivers.
+| Token | Hex | Purpose |
+|-------|-----|---------|
+| `color_blue` (primary) | `#387DC5` | Buttons, active states, "OK" status |
+| `color_blue_light` | `#73A2D3` | Hover states, secondary emphasis |
+| `color_blue_dim` | `#27588A` | Pressed/down states |
+| `color_orange` | `#F0962E` | Warnings, caution states |
+| `color_green` | `#72B84C` | Positive indicators (regen, boat page) |
+| `color_red` | `#F35C58` | Critical/error states |
+| `color_black` (background primary) | `#000000` | Main background |
+| `color_gray1` | `#141414` | Widget/card backgrounds |
+| `color_gray2` | `#272622` | Surface/panel backgrounds |
+| `color_gray9` (font primary) | `#FAF9F5` | Primary text |
+| `color_gray5` (font secondary) | `#969591` | Secondary/dimmed text |
+| `color_gray4` (font disabled) | `#64635F` | Disabled elements, borders |
+| `color_darkBlue` | `#11263B` | Widget backgrounds on overview page |
+| `color_darkishBlue` | `#1B3B5C` | Button pressed state |
+| `color_critical_background` | `#AA403E` | Error backgrounds |
+| `color_dimRed` | `#592220` | Dimmed red indicator |
+| `color_dimGreen` | `#508135` | Dimmed green indicator |
 
-## How Venus OS Discovery Actually Works (Source Code Analysis)
+### Design Principles (from gui-v2 architecture)
 
-**Confidence: HIGH** -- derived directly from `dbus-fronius` source code.
+- **Layout:** Generation left, conversion/storage center, consumption right (flow diagram)
+- **Technology:** Qt6/QML natively, WebAssembly for browser -- we replicate look only
+- **Widget style:** Dark blue cards (`#11263B`) on black background, rounded corners
+- **Typography:** Custom Victron fonts (we approximate with system sans-serif)
+- **Animations:** Multi-dot flow animations between components (Venus OS signature)
+- **Gauges:** Vertical fill gauges with wave animation effect
 
-### Discovery Mechanism
+### Mapping to Our CSS Variables
 
-1. **UDP broadcast** on port 50049 with `{"GetFroniusLoggerInfo":"all"}` -- Fronius-specific, responses on port 50050. SolarEdge inverters do NOT respond to this.
-2. **IP sweep** -- scans ALL IPs in the LAN (or configured/known IPs first), attempting Modbus TCP connection on port 502 (default) with unit ID 126 (default).
-3. **Sunspec header check** -- reads 2 registers at offsets 40000, 50000, then 0, looking for the "SunS" magic bytes.
-4. **Model enumeration** -- walks the Sunspec model chain: Model 1 (Common) -> 101/102/103/111/112/113 or 701 (Inverter) -> 120 or 702 (Nameplate) -> 123 or 704 (Controls) -> 160 (MPPT Trackers) -> 0xFFFF (End).
+The existing webapp uses `--bg: #1a1a2e` and `--surface: #16213e` which are already close to Venus OS's dark blue palette. Recommended changes:
 
-### What dbus-fronius Reads from Model 1 (Common)
+| Current | Venus OS Equivalent | New Value |
+|---------|---------------------|-----------|
+| `--bg: #1a1a2e` | `color_black` | `#000000` or `#0D1117` (slightly softer) |
+| `--surface: #16213e` | `color_darkBlue` | `#11263B` |
+| `--border: #0f3460` | `color_darkishBlue` | `#1B3B5C` |
+| `--accent: #e94560` | `color_blue` | `#387DC5` |
+| `--green: #00c853` | `color_green` | `#72B84C` |
+| `--red: #ff1744` | `color_red` | `#F35C58` |
+| `--yellow: #ffab00` | `color_orange` | `#F0962E` |
 
-From registers at offset +2 through +65 of Model 1:
-- Manufacturer string (offset 2, 16 registers) -- used to determine product ID
-- Model string (offset 18, 16 registers) -- combined with manufacturer for product name
-- Options string (offset 34, 8 registers) -- Fronius uses for data manager version
-- Firmware version (offset 42, 8 registers)
-- Serial number (offset 50, 16 registers) -- used as unique ID
+---
 
-**Manufacturer matching:**
-- "Fronius" -> `VE_PROD_ID_PV_INVERTER_FRONIUS` (0xA142)
-- "SMA" -> 0xA143
-- "ABB" or "FIMER" -> 0xA145
-- starts with "SolarEdge" -> `VE_PROD_ID_PV_INVERTER_SOLAREDGE` (0xA146)
-- anything else -> `VE_PROD_ID_PV_INVERTER_SUNSPEC` (0xA144)
+## Table Stakes
 
-### What dbus-fronius Reads for Power Data
+Features users expect from a solar monitoring dashboard. Missing = feels like a toy.
 
-**Models 101/102/103 (integer+scale factor format):** 52 registers
-- AC Current (offset 2, scale at 6)
-- AC Voltage phase 1 (offset 10, scale at 13)
-- AC Power (offset 14, scale at 15) -- signed
-- Total Energy (offset 24, 2 registers, scale at 26)
-- Operating State (offset 38)
-- Per-phase currents at offsets 3,4,5; per-phase voltages at 10,11,12
+| Feature | Why Expected | Complexity | Dependencies | Notes |
+|---------|--------------|------------|--------------|-------|
+| **Live power display (total + per-phase)** | Core purpose of a monitoring dashboard. Every solar app shows current W. | LOW | API endpoint exposing parsed Model 103 data | Large number (e.g. "12,450 W"), prominent placement. Update every 1s via WebSocket. |
+| **Per-phase breakdown (L1/L2/L3)** | SE30K is 3-phase. Users need to see balance across phases. | LOW | Model 103 registers already cached (offsets 3-5 for current, 10-12 for voltage) | Three columns or bars showing W/A/V per phase. |
+| **Operating status indicator** | Users need to know: producing, sleeping, throttled, error. | LOW | Status register already mapped (offset 38 in Model 103) | Text + color badge. Map Sunspec states: 4=MPPT (green), 5=Throttled (orange), 7=Fault (red), 2/6/8=Standby (dim). |
+| **Daily energy production** | "How much did I make today?" is the most common user question. | MEDIUM | Needs delta tracking -- Model 103 only has lifetime total (WH at offset 24). Must track midnight reset in-memory. | Store WH at midnight (or service start), show delta. Resets on service restart -- acceptable for in-memory. |
+| **Total energy (lifetime)** | Context for daily number. Already available from registers. | LOW | Model 103 WH field (offset 24-25, uint32 + scale) | Display as MWh with one decimal. |
+| **Venus OS color scheme** | User explicitly requested "exakte Venus OS Optik." | LOW | CSS variable changes only | Apply the color mapping table above. Biggest visual impact for least effort. |
+| **Dark theme** | Venus OS is dark-themed. Current webapp already dark. Matches. | DONE | Already implemented | Just align colors more precisely to Venus OS palette. |
 
-**Models 111/112/113 (float format):** 62 registers
-- AC Current (offset 2, float)
-- AC Voltage (offset 16, float)
-- AC Power (offset 22, float)
-- Total Energy (offset 32, float)
-- Operating State (offset 48)
+## Differentiators
 
-### D-Bus Paths Published
+Features that set this dashboard apart. Not expected, but specifically requested or high-value.
 
-The inverter service registers as `com.victronenergy.pvinverter.[id]` with these paths:
-- `/Ac/Power` (W)
-- `/Ac/Energy/Forward` (kWh)
-- `/Ac/L1/Power`, `/Ac/L1/Current`, `/Ac/L1/Voltage`, `/Ac/L1/Energy/Forward`
-- `/Ac/L2/...`, `/Ac/L3/...` (same structure)
-- `/Ac/MaxPower` (W)
-- `/Ac/PowerLimit` (W) -- writable, triggers power limiting
-- `/Ac/NumberOfPhases`
-- `/StatusCode` (0-12, Fronius-style codes)
-- `/ErrorCode`
-- `/ProductName`, `/ProductId`, `/Serial`, `/FirmwareVersion`
-- `/Position` (0=Input1, 1=Output, 2=Input2)
-- `/CustomName` -- writable
-- `/Pv/0/V`, `/Pv/0/P`, `/Pv/1/V`, `/Pv/1/P` ... (tracker data)
+| Feature | Value Proposition | Complexity | Dependencies | Notes |
+|---------|-------------------|------------|--------------|-------|
+| **Power Control Slider (0-100%)** | Direct power limiting from webapp without Venus OS menu navigation. The whole point of v2.0. | HIGH | Backend: write to ControlState, translate to SE EDPC registers. Frontend: slider + feedback loop. | See "Power Control Safety Design" section below. |
+| **Power Control Enable/Disable Toggle** | Must be able to enable/disable power limiting independently of percentage. Maps to WMaxLim_Ena register. | MEDIUM | ControlState.update_wmaxlim_ena() already exists | Toggle switch. When disabled, slider should be visually dimmed. |
+| **Venus OS Override Detection** | Show WHEN Venus OS is actively controlling power limit (vs. user manual control). "Who is throttling?" | HIGH | Must detect writes from Venus OS to Model 123 registers vs. writes from webapp API. Need write-source tracking in ControlState. | Key differentiator: no other tool shows this. Display: "Venus OS: 70%" or "Manual: 50%" or "No limit active". |
+| **Mini-sparklines (60-min power history)** | Visual trend without leaving the page. Requested in PROJECT.md. | MEDIUM | In-memory ring buffer (backend). SVG sparkline rendering (frontend). WebSocket initial history message. | 3,600 samples (1/sec, downsampled to 360 for display) in a deque. Render as inline SVG polyline (~15 lines JS). |
+| **Inverter detail panel (V/A/Hz/Temp)** | Full electrical picture: voltage, current, frequency, temperature per phase. Beyond just power. | LOW | All data already in Model 103 cache (offsets 6-13 for V/A, offset 14-15 for Hz, offsets 32-36 for temp) | Grid layout. Mono font. Update via WebSocket. |
+| **Live power limit feedback** | After sending a power limit command, show what the inverter actually accepted. Closed-loop confirmation. | MEDIUM | Read back EDPC registers from SolarEdge after write. Compare commanded vs. actual. | Essential for trust. Show: "Commanded: 70% | Actual: 71.2% | Applied: 0.8s ago". |
+| **Power limit revert timeout display** | SunSpec Model 123 has WMaxLimPct_RvrtTms (revert timeout). Show countdown. | LOW | Already in register map at offset 40156. | "Reverts in: 45s" countdown. Important for safety -- users know the limit is temporary. |
 
-## Feature Landscape
+## Anti-Features
 
-### Table Stakes (Must Have or It Does Not Work)
+Features to explicitly NOT build in v2.0.
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Sunspec Model 1 (Common) response | dbus-fronius reads manufacturer, model, serial, firmware from this model first. Without it, detection fails completely. | MEDIUM | Must respond with "Fronius" as manufacturer if goal is Fronius identity emulation. 66+ registers. |
-| Sunspec Model 103 (3-phase inverter) response | Venus OS needs an inverter measurement model (101/102/103). SE30K is 3-phase, so 103. Without this, `checkDone()` fails (`phaseCount` stays 0). | MEDIUM | 52 registers including AC current, voltage, power, energy, and operating state with scale factors. |
-| Sunspec header at register 40000 | dbus-fronius checks offsets 40000, 50000, 0 for "SunS" magic. Must respond at one of these. | LOW | Just 2 registers returning 0x5375 0x6E53 ("SunS"). |
-| Sunspec model chain with 0xFFFF terminator | dbus-fronius walks model headers (ID + length pairs) sequentially. Chain must be: Header -> Model 1 -> Model 103 -> ... -> 0xFFFF. | MEDIUM | Each model header is 2 registers: model ID + body length. |
-| Modbus TCP server on port 502 | Default port that Venus OS scans. Must accept connections on this port with unit ID 126 (default). | LOW | Standard Modbus TCP listener. |
-| Unit ID 126 | dbus-fronius uses unit ID 126 by default for Sunspec detection. Hardcoded unless user configures alternative. | LOW | Just respond to the correct unit ID. |
-| SolarEdge register reading (upstream client) | Must connect to actual SE30K at 192.168.3.18:1502 and read real Sunspec registers to get live data. | MEDIUM | SolarEdge allows only one TCP connection on port 502. The SE30K uses port 1502 which may be different. |
-| Register value translation (SE -> proxy format) | SolarEdge and the proxy response format must align. Manufacturer string, product IDs, and potentially register offsets differ. Must translate. | HIGH | Core complexity of the proxy. Scale factors, data types, and model layouts may differ between what SE returns and what proxy serves. |
-| Operating state mapping | Sunspec operating states must be mapped to the integer codes dbus-fronius expects. | LOW | dbus-fronius maps: Off=0, Sleeping/Shutdown/Standby=8, Starting=3, MPPT=11, Throttled=12, Fault=10. |
-| Sunspec Model 120 (Nameplate) response | dbus-fronius reads max power from model 120 offset 3 (WRtg + scale at offset 4). Required for power limiting to work (denominator for percentage). | MEDIUM | Without maxPower, limiter detection fails. At minimum registers for WRtg and its scale factor. |
-| Connection stability / reconnection | Venus OS rescans every 60 seconds. The proxy must stay responsive and handle disconnects gracefully. | MEDIUM | Must handle multiple sequential connections from dbus-fronius. |
-| TOML/YAML config file | IP addresses, ports, polling interval, identity settings. | LOW | Foundation everything else needs. |
-| systemd service | Runs on boot in LXC container, restarts on crash. | LOW | Standard unit file. |
+| Anti-Feature | Why Tempting | Why Avoid | What to Do Instead |
+|--------------|-------------|-----------|-------------------|
+| **Historical database / persistent logging** | "Show me yesterday's production" | PROJECT.md explicitly out of scope. Venus OS + VRM already handles this. In-memory 60-min ring buffer is the right scope. Storage in LXC adds complexity and maintenance. | 60-min in-memory sparklines only. Link to VRM for history. |
+| **Full Venus OS flow diagram replica** | Looks impressive, matches Venus OS exactly | gui-v2 flow diagram requires complex SVG path animations, multi-component layout (battery, grid, loads, PV). Our proxy only knows about PV -- no battery, no grid, no loads data. Building half a flow diagram looks worse than a focused power dashboard. | Focused power-centric dashboard with Venus OS colors/widgets, not a flow replica. |
+| **Multi-inverter dashboard** | Future-proofing | v2.0 is single SE30K. Multi-inverter adds tab/grid UI complexity, backend routing, data multiplexing. Architecture supports plugins but UI should not prematurely abstract. | Single inverter view. Design CSS grid to not preclude future expansion. |
+| **Battery/grid/load monitoring** | "Complete energy picture" | Proxy only has PV inverter data via Modbus. No access to battery BMS, grid meter, or load data. Would require separate D-Bus or MQTT connections to Venus OS itself. | Show only what we have: PV inverter data. Label clearly as "PV Inverter Dashboard". |
+| **Configurable dashboard widgets** | "Let users arrange their view" | Massive frontend complexity for a single-file HTML app. Drag-and-drop, layout persistence, responsive breakpoints for custom layouts. | Fixed layout, well-designed. One good layout beats infinite bad ones. |
+| **Power scheduling / automation** | "Limit power at peak hours" | Turns a monitoring tool into an automation platform. Venus OS + Node-RED already handles scheduling. Proxy should be a manual override / testing tool. | Manual slider only. Point users to Venus OS for automation. |
+| **Export/CSV download** | "Download my data" | In-memory only, 60 minutes max. CSV of 60 data points is trivial but sets wrong expectations about data retention. | If asked, a simple "copy to clipboard" for current values. No file downloads. |
+| **External charting library** | "Use Chart.js for prettier graphs" | Breaks single-file HTML constraint. CDN not available on LAN. 200KB+ for sparklines achievable in 15 LOC. | Inline SVG polyline sparklines. ~15 lines of vanilla JS. |
+| **CSS framework (Tailwind/Bootstrap)** | "Faster styling" | Requires CDN (no internet on LAN) or build tooling. Overkill for a focused dashboard. | CSS custom properties with Venus OS palette. Already the existing pattern. |
 
-### Differentiators (Competitive Advantage)
+## Power Control Safety Design
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Connection multiplexing | SolarEdge port 502 allows only one TCP connection. Proxy can hold one persistent upstream connection and serve multiple downstream clients (Venus OS, monitoring tools). | HIGH | This is likely the primary technical reason for the proxy's existence. |
-| Sunspec Model 123 (Immediate Controls) for power limiting | Enables Venus OS power limiting through standard Sunspec WMaxLimPct. Translates to SolarEdge EDPC registers (0xF300+) upstream. | HIGH | dbus-fronius writes WMaxLimPct at model 123 offset +5 (5 registers: pct, unused, timeout, unused, enable). Proxy must translate to SE EDPC DynamicActivePowerLimit at 0xF322. |
-| Fronius identity emulation (manufacturer = "Fronius") | When identified as Fronius, dbus-fronius force-enables the limiter (`LimiterForcedEnabled`). SolarEdge identity requires user to manually enable limiting in Venus OS settings. | LOW | Just change the manufacturer string in Model 1 from "SolarEdge" to "Fronius". Risk: may cause issues if Venus OS expects Fronius-specific behaviors (null-frame filtering). |
-| Configuration webapp | Simple web UI to configure upstream SolarEdge IP/port, view connection status, see register mapping, adjust settings. | MEDIUM | Useful for debugging and initial setup. Not needed for core proxy function. |
-| Sunspec Model 160 (MPPT tracker data) | Exposes per-tracker (per-string) voltage and power data in Venus OS. SE30K likely has multiple MPPT inputs. | MEDIUM | 20 registers per tracker. dbus-fronius reads voltage at offset +10 and power at +11 per tracker block. |
-| Register caching with configurable poll interval | Reduces load on SolarEdge inverter by caching upstream reads. Serves cached values to Venus OS with configurable staleness. | MEDIUM | SolarEdge inverters can be slow to respond. Caching improves responsiveness. |
-| Graceful degradation on upstream disconnect | If SolarEdge is unreachable, serve last-known values with appropriate status codes rather than disappearing from Venus OS entirely. | MEDIUM | Prevents Venus OS from losing the inverter and re-scanning unnecessarily. |
-| Diagnostic logging / register dump | Log all register reads/writes for debugging Sunspec compatibility issues. Exportable from webapp. | LOW | Very useful during development and for troubleshooting. |
-| Live register viewer in webapp | Table showing SolarEdge raw values vs translated proxy values side by side. | MEDIUM | Debugging aid for register translation validation. |
-| Hot config reload | Change config without restarting service. | LOW | Watch config file or API endpoint to trigger reload. |
+**This is the most critical UX feature in v2.0.** Sending wrong power limits to a 30kW inverter has real consequences (grid violations, revenue loss, equipment stress).
 
-### Anti-Features (Commonly Requested, Often Problematic)
+### Safety Principles
 
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| Historical data storage / database | Users want to see production history | Venus OS already stores and graphs historical data via VRM portal. Duplicating creates data inconsistency and storage burden in LXC container. | Let Venus OS handle all data storage and visualization. |
-| Solar API emulation (Fronius HTTP/JSON) | Fronius uses Solar API for older models; some think it is needed | dbus-fronius prefers Sunspec over Solar API. Solar API is legacy and adds massive complexity (HTTP server, JSON parsing, device type mapping). | Only implement Sunspec Modbus TCP. |
-| Multi-inverter support in v1 | Users with multiple SolarEdge inverters | Dramatically increases complexity (multiple upstream connections, unit ID routing, model chain per device). | Support one inverter in v1. Architecture should allow adding more later via plugin pattern. |
-| TLS/authentication on Modbus TCP | Security-minded users | Modbus TCP has no native security. All devices are on same LAN. Adding TLS breaks compatibility with Venus OS which expects plain Modbus TCP. | Rely on network-level security (LAN isolation). Bind to LAN interface only. |
-| Direct D-Bus integration (bypass Modbus) | Seems more efficient than proxying Modbus | Requires modifying Venus OS or running custom code on the Venus OS device. Breaks the "no Venus OS modifications" constraint. Tight coupling to Venus OS internals. | Keep Modbus TCP as the integration layer -- it is the supported interface. |
-| Fronius UDP broadcast emulation | Fronius uses UDP broadcast on port 50049 for fast discovery | Only works for Fronius-branded devices. dbus-fronius also does IP sweep fallback which works for any Sunspec device. Shaving 5 seconds off discovery is not worth the complexity. | Let Venus OS discover via IP sweep or configure the proxy IP manually in Venus OS settings. |
-| Reactive power control | Some grid codes require reactive power management | SE30K reactive power control uses different SolarEdge registers. Venus OS pvinverter service does not expose reactive power paths. Zero benefit. | Out of scope entirely. |
-| Firmware update passthrough | Forward firmware commands to SolarEdge | Extremely dangerous. SolarEdge firmware updates use proprietary protocol. Bricking risk. | Never proxy firmware operations. |
-| MQTT/API integration | Alternative monitoring protocols | Venus OS communicates via Modbus TCP. No need for another protocol. Adds complexity with no benefit for the core use case. | Modbus TCP only. |
-| Auto-discovery of inverters | Find SolarEdge automatically | Adds mDNS/broadcast complexity, error-prone. User knows their inverter IP. | Manual IP config in config file/webapp. |
+1. **Confirmation before action** -- Never apply power limit on slider drag. Require explicit "Apply" button press.
+2. **Visual feedback loop** -- Show commanded value, actual inverter response, and any discrepancy.
+3. **Timeout-based revert** -- Always send WMaxLimPct_RvrtTms with power limit. If webapp crashes or user forgets, inverter reverts to 100% after timeout.
+4. **Enable/disable separation** -- Toggle to enable limiting is separate from percentage slider. Prevents accidental limit application.
+5. **Clear state indication** -- Always show who is currently controlling: Venus OS, manual, or nobody.
+
+### Recommended UI Flow
+
+```
++--------------------------------------------------+
+|  POWER CONTROL                                    |
+|                                                   |
+|  Status: [Venus OS controlling: 85%]  (blue)      |
+|     -or- [Manual limit: 70%]          (orange)    |
+|     -or- [No limit active]            (green)     |
+|                                                   |
+|  [x] Enable Power Limiting                        |
+|                                                   |
+|  Power Limit: [=====>-----------] 50%             |
+|               0%              100%                |
+|                                                   |
+|  Revert Timeout: [300] seconds                    |
+|                                                   |
+|  [ Apply ]  [ Reset to 100% ]                     |
+|                                                   |
+|  Last command: 70% -> Applied (71.2% actual)      |
+|  Reverts in: 4:32                                 |
++--------------------------------------------------+
+```
+
+### Safety Constraints
+
+| Constraint | Implementation | Rationale |
+|------------|----------------|-----------|
+| Minimum revert timeout | 60 seconds floor | Prevents "permanent" limits from manual UI. Venus OS can set its own timeouts. |
+| Maximum revert timeout | 3600 seconds (1 hour) | Prevents forgotten limits running overnight. |
+| Default revert timeout | 300 seconds (5 minutes) | Reasonable test window. |
+| Slider step size | 5% increments | Prevents accidental micro-adjustments. Fine control via number input. |
+| Confirmation dialog for < 20% | "Are you sure? This limits a 30kW inverter to < 6kW." | Unusually low limits likely unintentional. |
+| Confirmation dialog for 0% | "This will STOP power production entirely." | Zero-power is effectively an off switch. |
+| Reset button always visible | Single click to restore 100% | Panic button. No confirmation needed for restoring full power. |
+| Disable on disconnect | If SolarEdge connection drops, grey out controls | Cannot verify command delivery. |
 
 ## Feature Dependencies
 
 ```
-[Config File (TOML/YAML)]
-    +--foundation--> [Everything else]
+[Venus OS Color Scheme]  (CSS only, no backend)
+    +--independent
 
-[Sunspec Header (40000)]
-    +--requires--> [Model 1 (Common)]
-                       +--requires--> [Model 103 (Inverter)]
-                       |                   +--enables--> [Operating State Mapping]
-                       +--requires--> [Model 120 (Nameplate)]
-                       |                   +--enables--> [Model 123 (Controls)]
-                       |                                     +--enables--> [Power Limiting]
-                       +--enables----> [Model 160 (MPPT Trackers)]
-                       +--terminates-> [0xFFFF End Model]
+[Live Power Display]
+    +--requires--> [DashboardCollector + WebSocket endpoint]
+    +--enhances--> [Per-Phase Breakdown] (same data, different view)
+    +--enhances--> [Operating Status] (same snapshot)
 
-[SolarEdge Upstream Client]
-    +--enables--> [Register Value Translation]
-                       +--enables--> [All downstream Sunspec models]
+[Inverter Detail Panel]
+    +--requires--> [DashboardCollector]
+    +--same-data--> [Live Power Display]
 
-[Connection Multiplexing]
-    +--enhances--> [SolarEdge Upstream Client]
+[Daily Energy]
+    +--requires--> [Ring Buffer Backend] (midnight delta tracking)
+    +--requires--> [DashboardCollector]
 
-[Register Caching]
-    +--enhances--> [Connection Multiplexing]
-    +--enhances--> [Graceful Degradation]
+[Mini-Sparklines]
+    +--requires--> [TimeSeriesBuffer Backend]
+    +--requires--> [WebSocket history message on connect]
 
-[Configuration Webapp]
-    +--enhances--> [SolarEdge Upstream Client] (IP/port config)
-    +--enhances--> [Diagnostic Logging]
-    +--enhances--> [Live Register Viewer]
+[Power Control Slider]
+    +--requires--> [WebSocket command handler]
+    +--requires--> [ControlState backend] (already exists)
+    +--requires--> [SolarEdge EDPC write path] (already exists)
+    +--enhances--> [Power Limit Feedback] (read-back loop)
+    +--enhances--> [Revert Timeout Display]
 
-[Power Limiting]
-    +--requires--> [Model 120 (maxPower known)]
-    +--requires--> [Model 123 or 704 (control interface)]
-    +--requires--> [SolarEdge EDPC registers (0xF300+) upstream write]
+[Venus OS Override Detection]
+    +--requires--> [Write-source tracking in ControlState]
+    +--requires--> [WebSocket snapshot includes control.source]
+
+[Power Limit Feedback]
+    +--requires--> [EDPC register read-back from SolarEdge]
+    +--requires--> [WebSocket power_ack message]
 ```
 
 ### Dependency Notes
 
-- **Model 103 requires Model 1:** dbus-fronius reads Model 1 first; if `productName` is empty AND another Model 1 appears, detection is aborted. Model 1 must come first in the chain.
-- **Power Limiting requires Model 120:** Without `maxPower` from Model 120, the limiter percentage calculation has no denominator. Limiter detection returns `false`.
-- **Power Limiting requires upstream EDPC writes:** The proxy must translate Sunspec Model 123 writes (WMaxLimPct as percentage with scale factor) to SolarEdge proprietary registers (DynamicActivePowerLimit at 0xF322 as float32 percentage 0-100).
-- **Fronius identity enhances Power Limiting:** When manufacturer is "Fronius", dbus-fronius force-enables limiter (`LimiterForcedEnabled`). When manufacturer is "SolarEdge", user must manually enable it in Venus OS settings.
+- **DashboardCollector:** Central new component. Decodes raw registers into physical values (applying scale factors). Called every poll cycle. Feeds TimeSeriesBuffers and WebSocket broadcast. Foundation for all dashboard widgets.
+- **TimeSeriesBuffer:** `collections.deque(maxlen=3600)` per metric. 6 buffers total. ~1.3 MB total memory.
+- **ControlState already exists:** `control.py` has `ControlState` class with `update_wmaxlimpct()` and `update_wmaxlim_ena()`. Power control UI is wiring these to WebSocket commands and frontend.
+- **EDPC write path exists:** `wmaxlimpct_to_se_registers()` translates SunSpec to SolarEdge Float32. Backend plumbing largely done.
 
-## MVP Definition
+## MVP Recommendation for v2.0
 
-### Launch With (v1)
+### Phase 1: Foundation (must ship together)
 
-- [ ] Config file (TOML) with SolarEdge IP/port/unit ID and proxy listen settings
-- [ ] Modbus TCP server on port 502, unit ID 126 -- the listening endpoint for Venus OS
-- [ ] Sunspec model chain: Header + Model 1 + Model 103 + Model 120 + 0xFFFF -- minimum for detection
-- [ ] SolarEdge upstream Modbus TCP client -- connects to SE30K at configured IP:port
-- [ ] Register translation: read SE30K Sunspec registers, translate to proxy responses
-- [ ] Operating state mapping (Sunspec state enum to codes 0-12)
-- [ ] systemd service for LXC container deployment
-- [ ] Basic structured logging
+1. **Venus OS color scheme** -- CSS variable swap, biggest visual impact, zero backend work
+2. **DashboardCollector + TimeSeriesBuffer** -- Foundation for all dashboard widgets
+3. **WebSocket endpoint** -- Real-time data push + initial history
+4. **Live power display + per-phase breakdown** -- Core dashboard purpose
+5. **Operating status indicator** -- Essential context for power data
 
-### Add After Validation (v1.x)
+### Phase 2: Power Control (core v2.0 value)
 
-- [ ] Model 123 (Immediate Controls) + SolarEdge EDPC translation -- power limiting
-- [ ] Model 160 (MPPT tracker data) -- per-string monitoring
-- [ ] Configuration webapp (FastAPI + htmx)
-- [ ] Connection multiplexing -- handle multiple downstream clients
-- [ ] Register caching -- improve performance and reduce SE30K load
-- [ ] Graceful degradation on upstream disconnect
-- [ ] Diagnostic logging with register dump
-- [ ] Live register viewer in webapp
+6. **Power control WebSocket command handler** -- Backend for slider
+7. **Power control slider + toggle** -- The main v2.0 feature
+8. **Power limit feedback** -- Closed-loop confirmation
+9. **Venus OS override detection** -- Key differentiator
 
-### Future Consideration (v2+)
+### Phase 3: Polish
 
-- [ ] Plugin architecture for other inverter brands -- architecture prepared but not implemented in v1
-- [ ] Model 704 (DERCtlAC) support -- Sunspec 2018 compatibility
-- [ ] Multi-inverter support -- multiple upstream connections with unit ID routing
-- [ ] Fronius identity emulation -- evaluate if the Fronius brand benefits outweigh the risks
+10. **Mini-sparklines** -- Visual trend, 60-min history
+11. **Daily energy tracking** -- Most-asked metric
+12. **Inverter detail panel** -- Complete electrical picture
+13. **Revert timeout countdown** -- Safety visibility
 
-## Feature Prioritization Matrix
+### Defer to v2.x
 
-| Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| Config file (TOML) | HIGH | LOW | P1 |
-| Modbus TCP server (port 502) | HIGH | LOW | P1 |
-| Sunspec model chain (1, 103, 120) | HIGH | MEDIUM | P1 |
-| SolarEdge upstream client | HIGH | MEDIUM | P1 |
-| Register translation | HIGH | HIGH | P1 |
-| Operating state mapping | HIGH | LOW | P1 |
-| systemd service | HIGH | LOW | P1 |
-| Power limiting (Model 123 + EDPC) | HIGH | HIGH | P2 |
-| MPPT tracker data (Model 160) | MEDIUM | MEDIUM | P2 |
-| Connection multiplexing | MEDIUM | HIGH | P2 |
-| Configuration webapp | MEDIUM | MEDIUM | P2 |
-| Register caching | MEDIUM | MEDIUM | P2 |
-| Graceful degradation | MEDIUM | MEDIUM | P2 |
-| Diagnostic logging | LOW | LOW | P2 |
-| Plugin architecture | LOW | HIGH | P3 |
-| Model 704 support | LOW | MEDIUM | P3 |
-| Multi-inverter | LOW | HIGH | P3 |
+- Venus OS flow-style layout (complex, diminishing returns without full system data)
+- Power scheduling / automation
 
-**Priority key:**
-- P1: Must have for launch -- Venus OS detection and basic monitoring
-- P2: Should have, add when possible -- power control and operational quality
-- P3: Nice to have, future consideration
+## Sparkline Implementation Notes
 
-## Key Technical Details for Implementation
+For the single-file HTML constraint, use inline SVG sparklines. No library needed -- a sparkline is ~15 lines of vanilla JS:
 
-### SolarEdge SE30K Specifics
-- Modbus TCP port: 1502 (project context says 192.168.3.18:1502)
-- Unit ID: 126 (standard for SolarEdge)
-- Supports Sunspec models at register 40000+
-- EDPC registers for power control: 0xF300-0xF322
-- **Single TCP connection limitation on port 502** -- key constraint motivating the proxy
-
-### Sunspec Register Map (What Proxy Must Serve)
-
-```
-Register 40000-40001: "SunS" header (0x5375, 0x6E53)
-Register 40002-40003: Model 1 header (ID=1, Length=65 or 66)
-Register 40004-40069: Model 1 body (manufacturer, model, serial, firmware, etc.)
-Register 40070-40071: Model 103 header (ID=103, Length=50)
-Register 40072-40121: Model 103 body (AC measurements + operating state)
-Register 40122-40123: Model 120 header (ID=120, Length=26)
-Register 40124-40149: Model 120 body (nameplate ratings incl. WRtg)
-Register 40150-40151: End model (0xFFFF, 0)
+```javascript
+function drawSparkline(svgEl, data, color) {
+    const w = svgEl.clientWidth, h = svgEl.clientHeight;
+    const max = Math.max(...data), min = Math.min(...data);
+    const range = max - min || 1;
+    const points = data.map((v, i) =>
+        `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`
+    ).join(' ');
+    svgEl.innerHTML = `<polyline points="${points}" fill="none"
+        stroke="${color}" stroke-width="1.5"/>`;
+}
 ```
 
-With power limiting (v1.x):
-```
-Register 40150-40151: Model 123 header (ID=123, Length=24)
-Register 40152-40175: Model 123 body (immediate controls, WMaxLimPct at offset +5)
-Register 40176-40177: End model (0xFFFF, 0)
-```
-
-### Model 103 Register Layout (offsets from model start +2)
-
-| Offset | Field | Type | Scale Offset | Notes |
-|--------|-------|------|-------------|-------|
-| 0 | Model ID | uint16 | - | Must be 103 |
-| 1 | Model Length | uint16 | - | 50 |
-| 2 | A (total AC current) | uint16 | 6 | Amps |
-| 3 | AphA (L1 current) | uint16 | 6 | Amps |
-| 4 | AphB (L2 current) | uint16 | 6 | Amps |
-| 5 | AphC (L3 current) | uint16 | 6 | Amps |
-| 6 | A_SF | int16 | - | Current scale factor |
-| 10 | PhVphA (L1 voltage) | uint16 | 13 | Volts |
-| 11 | PhVphB (L2 voltage) | uint16 | 13 | Volts |
-| 12 | PhVphC (L3 voltage) | uint16 | 13 | Volts |
-| 13 | V_SF | int16 | - | Voltage scale factor |
-| 14 | W (AC power) | int16 | 15 | Watts (signed!) |
-| 15 | W_SF | int16 | - | Power scale factor |
-| 24 | WH (total energy) | uint32 | 26 | Watt-hours |
-| 26 | WH_SF | int16 | - | Energy scale factor |
-| 38 | St (operating state) | uint16 | - | Sunspec enum |
-
-### Power Limit Translation
-
-- **Downstream (Venus OS writes to proxy):** Model 123 offset +5: [WMaxLimPct, unused, WMaxLimPct_RvrtTms, unused, WMaxLim_Ena]
-- **Upstream (proxy writes to SolarEdge):** EDPC register 0xF322 (DynamicActivePowerLimit) as float32 percentage (0-100)
-- Scale factor: dbus-fronius reads scale at Model 123 body offset 23, computes `powerLimitScale = 100.0 / getScale(values, 0)`
-
-### Sunspec Operating State Enum
-
-| Sunspec Value | Name | Fronius Code | Venus OS Display |
-|---------------|------|-------------|------------------|
-| 1 | Off | 0 | - |
-| 2 | Sleeping | 8 | Standby |
-| 3 | Starting | 3 | Startup 3/6 |
-| 4 | MPPT | 11 | Running (MPPT) |
-| 5 | Throttled | 12 | Running (Throttled) |
-| 6 | Shutting down | 8 | Standby |
-| 7 | Fault | 10 | Error |
-| 8 | Standby | 8 | Standby |
-
-## Competitor / Existing Solution Analysis
-
-| Feature | dbus-fronius (native) | This Proxy | Advantage |
-|---------|----------------------|------------|-----------|
-| SolarEdge monitoring | Yes (native Sunspec) | Yes (translated) | Proxy: connection multiplexing, caching |
-| SolarEdge limiting | Yes (EDPC registers) | Yes (Model 123 -> EDPC) | Proxy: presents standard Sunspec interface; native: already works |
-| Fronius identity | N/A (reads real manufacturer) | Configurable | Proxy: can force-enable limiter without user intervention |
-| Connection sharing | No (one connection per device) | Yes | Proxy: allows Venus OS + other tools to share one connection |
-| Configuration | Venus OS GUI | Webapp + config file | Proxy: independent config, no Venus OS modification needed |
-| Network flexibility | Must be same subnet | Can bridge networks | Proxy: SE on different network/VLAN still works |
+History sent once on WebSocket connect. Frontend appends each snapshot's value to its local array and redraws the SVG polyline.
 
 ## Sources
 
-- `victronenergy/dbus-fronius` GitHub repository (direct source code analysis, HIGH confidence):
-  - `sunspec_detector.cpp` -- discovery mechanism, model enumeration, manufacturer matching
-  - `sunspec_updater.cpp` -- register reading, power/voltage parsing, limiter logic
-  - `solaredge_limiter.cpp` -- SolarEdge EDPC proprietary registers (0xF300+)
-  - `inverter.cpp` -- D-Bus service registration, paths published
-  - `inverter_gateway.cpp` -- IP scanning, UDP broadcast discovery
-  - `dbus_fronius.cpp` -- detector initialization (SolarAPI + Sunspec at unit 126)
-  - `data_processor.cpp` -- power/energy calculation and phase distribution
-  - `fronius_udp_detector.cpp` -- UDP broadcast on port 50049
-  - `defines.h` -- DeviceInfo struct, protocol types, enums
-  - `products.h` -- product ID constants (0xA142-0xA146)
-  - `power_info.cpp` -- D-Bus path structure (Power, Current, Voltage, Energy/Forward)
-- Sunspec Information Model specification (models 1, 101-103, 111-113, 120, 123, 160, 701, 702, 704)
+- [Victron gui-v2 repository](https://github.com/victronenergy/gui-v2) -- Theme colors from `themes/color/Dark.json` and `themes/color/ColorDesign.json` (HIGH confidence, direct source)
+- [Venus OS gui-v2 ColorDesign.json](https://raw.githubusercontent.com/victronenergy/gui-v2/main/themes/color/ColorDesign.json) -- HIGH confidence
+- [Venus OS gui-v2 Dark.json](https://raw.githubusercontent.com/victronenergy/gui-v2/main/themes/color/Dark.json) -- HIGH confidence
+- [fnando/sparkline](https://github.com/fnando/sparkline) -- Zero-dependency SVG sparkline pattern reference (evaluated, not used)
+- [aiohttp WebSocket docs](https://docs.aiohttp.org/en/stable/web_quickstart.html) -- WebSocket handler pattern
+- Existing codebase analysis: `control.py`, `webapp.py`, `static/index.html` (HIGH confidence, direct source)
 
 ---
-*Feature research for: Venus OS Fronius Proxy (SolarEdge to Fronius Modbus TCP translation)*
-*Researched: 2026-03-17*
+*Feature research for: Venus OS Fronius Proxy v2.0 Dashboard & Power Control UI*
+*Researched: 2026-03-18*
