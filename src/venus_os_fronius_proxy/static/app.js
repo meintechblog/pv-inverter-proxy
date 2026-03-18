@@ -758,7 +758,7 @@ function formatValue(val) {
 // ===== Power Control =====
 
 const RATED_KW = 30;
-let ctrlSliderDragging = false;
+
 let lastControlState = null;
 
 // --- Confirmation Dialog ---
@@ -859,25 +859,6 @@ function dismissToast(toast) {
     });
 }
 
-// --- Slider Preview ---
-
-(function() {
-    var slider = document.getElementById('ctrl-slider');
-    var sliderValue = document.getElementById('ctrl-slider-value');
-    if (!slider || !sliderValue) return;
-
-    slider.addEventListener('input', function() {
-        var pct = parseInt(slider.value);
-        var kw = (pct / 100 * RATED_KW).toFixed(1);
-        sliderValue.textContent = pct + '% = ' + kw + ' kW';
-    });
-
-    slider.addEventListener('mousedown', function() { ctrlSliderDragging = true; });
-    slider.addEventListener('touchstart', function() { ctrlSliderDragging = true; });
-    document.addEventListener('mouseup', function() { ctrlSliderDragging = false; });
-    document.addEventListener('touchend', function() { ctrlSliderDragging = false; });
-})();
-
 // --- Apply Power Limit ---
 
 async function applyPowerLimit(pct) {
@@ -904,11 +885,11 @@ async function applyPowerLimit(pct) {
 
 (function() {
     var applyBtn = document.getElementById('ctrl-apply');
-    var slider = document.getElementById('ctrl-slider');
-    if (!applyBtn || !slider) return;
+    var dropdown = document.getElementById('ctrl-dropdown');
+    if (!applyBtn || !dropdown) return;
 
     applyBtn.addEventListener('click', function() {
-        var pct = parseInt(slider.value);
+        var pct = parseInt(dropdown.value);
         var kw = (pct / 100 * RATED_KW).toFixed(1);
         showConfirmDialog(
             'Set power limit to <strong>' + pct + '% (' + kw + ' kW)</strong>?<br>' +
@@ -963,11 +944,8 @@ function updatePowerControl(data) {
 
     var dot = document.getElementById('ctrl-dot');
     var label = document.getElementById('ctrl-label');
-    var limitEl = document.getElementById('ctrl-limit');
-    var sourceEl = document.getElementById('ctrl-source');
-    var tsEl = document.getElementById('ctrl-ts');
-    var slider = document.getElementById('ctrl-slider');
-    var sliderValue = document.getElementById('ctrl-slider-value');
+    var sourceBrief = document.getElementById('ctrl-source-brief');
+    var dropdown = document.getElementById('ctrl-dropdown');
     var applyBtn = document.getElementById('ctrl-apply');
     var toggleBtn = document.getElementById('ctrl-toggle');
     var revertDiv = document.getElementById('ctrl-revert');
@@ -991,33 +969,19 @@ function updatePowerControl(data) {
         if (label) label.textContent = 'No limit active';
     }
 
-    // Readout
-    if (limitEl) {
-        limitEl.textContent = enabled ? ctrl.limit_pct.toFixed(1) + '%' : '--';
-    }
-    if (sourceEl) {
-        var sourceNames = { 'none': 'None', 'webapp': 'Webapp', 'venus_os': 'Venus OS' };
-        sourceEl.textContent = sourceNames[source] || source;
-    }
-    if (tsEl) {
-        if (ctrl.last_change_ts && ctrl.last_change_ts > 0) {
-            tsEl.textContent = formatRelativeTime(ctrl.last_change_ts);
+    // Source brief (shown inline after status label)
+    var isVenusOverride = source === 'venus_os';
+    if (sourceBrief) {
+        if (enabled && source !== 'none') {
+            var sourceNames = { 'webapp': 'Webapp', 'venus_os': 'Venus OS' };
+            sourceBrief.textContent = '(' + (sourceNames[source] || source) + ' · ' + ctrl.limit_pct.toFixed(0) + '%)';
         } else {
-            tsEl.textContent = '--';
+            sourceBrief.textContent = '';
         }
     }
 
-    // Slider (only update if user is not dragging)
-    var isVenusOverride = source === 'venus_os';
-    if (!ctrlSliderDragging && slider && sliderValue) {
-        var pct = enabled ? Math.round(ctrl.limit_pct) : 100;
-        slider.value = pct;
-        var kw = (pct / 100 * RATED_KW).toFixed(1);
-        sliderValue.textContent = pct + '% = ' + kw + ' kW';
-    }
-
-    // Disable slider and apply when Venus OS controls
-    if (slider) slider.disabled = isVenusOverride;
+    // Disable dropdown and apply when Venus OS controls
+    if (dropdown) dropdown.disabled = isVenusOverride;
     if (applyBtn) applyBtn.disabled = isVenusOverride;
 
     // Toggle button text

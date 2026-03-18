@@ -694,22 +694,75 @@ body {
     gap: 1rem;
 }
 
-.ve-dashboard-row1 {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.ve-dashboard-row2 {
+.ve-dashboard-info-row {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
+    margin-bottom: 1rem;
 }
 
-/* Inline Power Control */
+.ve-dashboard-bottom-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+/* Inline Power Control — compact */
 .ve-power-control-inline {
     margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+}
+.ve-ctrl-compact {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.ve-ctrl-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.ve-ctrl-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.ve-ctrl-dropdown {
+    background: var(--ve-bg);
+    color: var(--ve-text);
+    border: 1px solid var(--ve-border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-family: var(--ve-mono);
+    font-size: 0.9em;
+    cursor: pointer;
+    min-width: 80px;
+}
+.ve-ctrl-dropdown:focus {
+    border-color: var(--ve-blue);
+    outline: none;
+}
+.ve-ctrl-dropdown:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.ve-btn--sm {
+    padding: 6px 14px;
+    font-size: 0.85em;
+}
+#ctrl-source-brief {
+    font-size: 0.85em;
+    margin-left: 0.25rem;
+}
+
+/* Compact sparkline */
+.ve-sparkline-compact {
+    padding: 0.75rem 1rem;
+}
+.ve-sparkline-compact .ve-sparkline-svg {
+    height: 50px;
 }
 
 /* Collapsible Override Log */
@@ -869,11 +922,15 @@ body {
     .ve-dashboard-bottom {
         grid-template-columns: 1fr;
     }
-    .ve-dashboard-row1 {
+    .ve-dashboard-info-row {
         grid-template-columns: 1fr;
     }
-    .ve-dashboard-row2 {
+    .ve-dashboard-bottom-row {
         grid-template-columns: 1fr;
+    }
+    .ve-ctrl-compact {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }
 
