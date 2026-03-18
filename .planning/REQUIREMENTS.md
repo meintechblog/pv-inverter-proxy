@@ -31,11 +31,11 @@
 
 ### Webapp
 
-- [ ] **WEB-01**: Webapp erreichbar ueber HTTP im LAN
-- [ ] **WEB-02**: SolarEdge IP-Adresse und Modbus-Port konfigurierbar ueber UI
-- [ ] **WEB-03**: Verbindungsstatus zu SolarEdge und Venus OS live angezeigt
-- [ ] **WEB-04**: Service-Health-Status angezeigt (uptime, letzte erfolgreiche Polls)
-- [ ] **WEB-05**: Register-Viewer zeigt Live Modbus Register (SolarEdge-Quell- und Fronius-Ziel-Register)
+- [x] **WEB-01**: Webapp erreichbar ueber HTTP im LAN
+- [x] **WEB-02**: SolarEdge IP-Adresse und Modbus-Port konfigurierbar ueber UI
+- [x] **WEB-03**: Verbindungsstatus zu SolarEdge und Venus OS live angezeigt
+- [x] **WEB-04**: Service-Health-Status angezeigt (uptime, letzte erfolgreiche Polls)
+- [x] **WEB-05**: Register-Viewer zeigt Live Modbus Register (SolarEdge-Quell- und Fronius-Ziel-Register)
 
 ### Deployment & Betrieb
 
@@ -96,11 +96,11 @@
 | CTRL-01 | Phase 3 | Complete |
 | CTRL-02 | Phase 3 | Complete |
 | CTRL-03 | Phase 3 | Complete |
-| WEB-01 | Phase 4 | Pending |
-| WEB-02 | Phase 4 | Pending |
-| WEB-03 | Phase 4 | Pending |
-| WEB-04 | Phase 4 | Pending |
-| WEB-05 | Phase 4 | Pending |
+| WEB-01 | Phase 4 | Complete |
+| WEB-02 | Phase 4 | Complete |
+| WEB-03 | Phase 4 | Complete |
+| WEB-04 | Phase 4 | Complete |
+| WEB-05 | Phase 4 | Complete |
 | DEPL-01 | Phase 3 | Complete |
 | DEPL-02 | Phase 3 | Complete |
 | DEPL-03 | Phase 3 | Complete |
