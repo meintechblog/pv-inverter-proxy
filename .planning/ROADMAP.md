@@ -37,11 +37,11 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
   2. TimeSeriesBuffer stores 60 minutes of power history and serves it as an array suitable for sparkline rendering
   3. Frontend is split into index.html + style.css + app.js, all served correctly by the existing aiohttp webapp
   4. Opening the webapp shows Venus OS themed UI with correct colors (#387DC5 blue, #141414 dark background, #FAF9F5 text)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md — Backend data pipeline: DashboardCollector, TimeSeriesBuffer, REST endpoint, static handler
+- [ ] 05-02-PLAN.md — Frontend 3-file split with Venus OS theme, sidebar navigation, ported v1.0 functionality
 
 ### Phase 6: Live Dashboard
 **Goal**: Users see real-time inverter power data updating live without page refresh, with per-phase breakdown and trend sparklines
@@ -97,7 +97,7 @@ Plans:
 | 2. Core Proxy (Read Path) | v1.0 | 2/2 | Complete | 2026-03-18 |
 | 3. Control Path & Production Hardening | v1.0 | 3/3 | Complete | 2026-03-18 |
 | 4. Configuration Webapp | v1.0 | 2/2 | Complete | 2026-03-18 |
-| 5. Data Pipeline & Theme Foundation | v2.0 | 0/? | Not started | - |
+| 5. Data Pipeline & Theme Foundation | v2.0 | 0/2 | Planning complete | - |
 | 6. Live Dashboard | v2.0 | 0/? | Not started | - |
 | 7. Power Control | v2.0 | 0/? | Not started | - |
 | 8. Inverter Details & Polish | v2.0 | 0/? | Not started | - |
