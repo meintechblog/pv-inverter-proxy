@@ -143,9 +143,10 @@
             <div class="ve-ctrl-status-line">
               <span class="ve-dot" id="ctrl-dot"></span>
               <span id="ctrl-label">No limit active</span>
-              <span class="ve-text-dim" id="ctrl-source-brief"></span>
+              <span id="ctrl-source-brief"></span>
             </div>
             <div class="ve-ctrl-actions" id="ctrl-action-group">
+              <label>Limit</label>
               <select id="ctrl-dropdown" class="ve-ctrl-dropdown">
                 <option value="0">0%</option><option value="5">5%</option>
                 <option value="10">10%</option><option value="15">15%</option>
@@ -159,6 +160,7 @@
                 <option value="90">90%</option><option value="95">95%</option>
                 <option value="100" selected>100%</option>
               </select>
+              <label>Active</label>
               <label class="ve-toggle">
                 <input type="checkbox" id="ctrl-toggle">
                 <span class="ve-toggle-track"></span>
@@ -169,7 +171,7 @@
             </div>
             <div class="ve-override-log-section">
               <button class="ve-override-log-toggle" id="override-log-toggle">
-                Log (<span id="override-log-count">0</span>)
+                Override Log (<span id="override-log-count">0</span>)
               </button>
               <div id="override-log" class="ve-override-log ve-override-log--collapsed">
                 <div class="ve-text-dim">No events yet</div>
