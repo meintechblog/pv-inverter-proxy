@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "proxy",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "-m", "venus_os_fronius_proxy", "--config", "config/config.local.yaml"],
+      "port": 8080
+    }
+  ]
+}
