@@ -509,13 +509,19 @@ body {
 
 .ve-doc-link {
     text-decoration: none;
-    font-size: 0.85em;
-    opacity: 0.5;
-    transition: opacity 0.15s;
+    font-size: 0.6em;
+    color: var(--ve-bg);
+    background: var(--ve-text-dim);
+    padding: 2px 5px;
+    border-radius: 3px;
     margin-left: 6px;
+    vertical-align: middle;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    transition: background 0.15s;
 }
 .ve-doc-link:hover {
-    opacity: 1;
+    background: var(--ve-text);
 }
 
 .ve-reg-se-value.null-value {
