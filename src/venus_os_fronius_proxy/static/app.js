@@ -132,7 +132,7 @@ function handleSnapshot(data) {
 
     // Update gauge
     updateGauge(inv.ac_power_w || 0);
-    updateGaugeStatus(inv.status || '--');
+    updateGaugeStatus(data.inverter_name || '--');
 
     // Update inverter status panel and daily energy
     updateStatusPanel(inv);

@@ -260,6 +260,18 @@ class DashboardCollector:
             "cache_stale": cache.is_stale,
         }
 
+        # Read inverter identity from Common Model (SunSpec Model 1)
+        def _decode_string(start: int, count: int) -> str:
+            regs = db.getValues(start + _PB_OFFSET, count)
+            result = b""
+            for r in regs:
+                result += r.to_bytes(2, "big")
+            return result.rstrip(b"\x00").decode("ascii", errors="replace").strip()
+
+        inverter_mfr = _decode_string(40004, 16)     # C_Manufacturer
+        inverter_model = _decode_string(40020, 16)    # C_Model
+        inverter_serial = _decode_string(40052, 16)   # C_SerialNumber
+
         # Read rated power from Model 120 WRtg (register 40124, SF at 40125)
         wrtg_raw = db.getValues(40124 + _PB_OFFSET, 1)[0]
         wrtg_sf_raw = db.getValues(40125 + _PB_OFFSET, 1)[0]
@@ -269,6 +281,8 @@ class DashboardCollector:
         snapshot = {
             "ts": time.time(),
             "inverter": inverter,
+            "inverter_name": f"{inverter_mfr} {inverter_model}".strip(),
+            "inverter_serial": inverter_serial,
             "rated_power_w": rated_power_w,
             "control": control,
             "venus_os": venus_os,
