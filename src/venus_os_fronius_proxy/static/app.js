@@ -883,7 +883,7 @@ function populatePowerDropdown(maxKw) {
     if (!dropdown) return;
     var currentVal = dropdown.value;
     dropdown.innerHTML = '<option value="off">Max</option>';
-    for (var kw = maxKw; kw >= 1; kw--) {
+    for (var kw = maxKw - 1; kw >= 1; kw--) {
         var opt = document.createElement('option');
         opt.value = kw;
         opt.textContent = kw + ' kW';

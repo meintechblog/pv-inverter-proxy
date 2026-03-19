@@ -128,6 +128,16 @@ def main():
                 break
             await asyncio.sleep(0.01)
 
+        # Restore last Venus OS limit after restart (if recent)
+        if "control_state" in shared_ctx:
+            cs = shared_ctx["control_state"]
+            if cs.is_enabled and cs.last_source == "venus_os":
+                try:
+                    await plugin.write_power_limit(True, cs.wmaxlimpct_float)
+                    log.info("restored_venus_limit", limit_pct=cs.wmaxlimpct_float)
+                except Exception:
+                    pass
+
         # Start webapp alongside proxy
         runner = None
         if shared_ctx:

@@ -184,8 +184,9 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
                 enabled=True, result="ok",
             )
 
-            # Venus OS source tracking (Phase 7)
+            # Venus OS source tracking + persist for restart recovery
             self._control.set_from_venus_os()
+            self._control.save_last_limit()
             if self._shared_ctx and "override_log" in self._shared_ctx:
                 self._shared_ctx["override_log"].append(
                     "venus_os", "set", self._control.wmaxlimpct_float,

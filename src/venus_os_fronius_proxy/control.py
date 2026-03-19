@@ -87,6 +87,9 @@ def wmaxlimpct_to_se_registers(raw_value: int, scale_factor: int = WMAXLIMPCT_SF
     return struct.unpack(">HH", packed)
 
 
+_LAST_LIMIT_FILE = "/etc/venus-os-fronius-proxy/last_limit.json"
+
+
 class ControlState:
     """Tracks Model 123 control state for the proxy.
 
@@ -106,6 +109,38 @@ class ControlState:
         # Phase 11: Venus OS lock state
         self.is_locked: bool = False
         self.lock_expires_at: float | None = None   # time.monotonic() deadline
+        # Load last Venus OS limit (survives restarts)
+        self._load_last_limit()
+
+    def _load_last_limit(self) -> None:
+        """Restore last Venus OS power limit from disk."""
+        import json, time as _time
+        try:
+            with open(_LAST_LIMIT_FILE) as f:
+                data = json.load(f)
+            age = _time.time() - data.get("ts", 0)
+            # Only restore if less than 5 minutes old
+            if age < 300 and data.get("source") == "venus_os":
+                self.wmaxlimpct_raw = data["raw"]
+                self.wmaxlim_ena = 1
+                self.last_source = "venus_os"
+                self.last_change_ts = data["ts"]
+                logger.info("Restored Venus OS limit from disk: %d%%", self.wmaxlimpct_raw)
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            pass
+
+    def save_last_limit(self) -> None:
+        """Persist current limit for restart recovery."""
+        import json, time as _time
+        try:
+            with open(_LAST_LIMIT_FILE, "w") as f:
+                json.dump({
+                    "raw": self.wmaxlimpct_raw,
+                    "source": self.last_source,
+                    "ts": _time.time(),
+                }, f)
+        except OSError:
+            pass
 
     @property
     def is_enabled(self) -> bool:
