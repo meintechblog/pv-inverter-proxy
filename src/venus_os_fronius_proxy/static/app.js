@@ -1323,8 +1323,15 @@ function updateVenusESS(snapshot) {
         feedInDD.value = closest;
     }
 
-    // 8. Max Inverter Power dropdown (always visible)
+    // 8. Limit Inverter Power
+    var invLimitToggle = document.getElementById('ess-limit-inverter');
+    var invLimitRow = document.getElementById('ess-max-inverter-row');
     var invLimitDD = document.getElementById('ess-max-inverter');
+
+    // Limited = dbus value is not -1 (any value >= 0 including 30kW is a valid limit)
+    var invLimited = vs.max_inverter_w >= 0;
+    if (invLimitToggle && notCooling(invLimitToggle)) invLimitToggle.checked = invLimited;
+    if (invLimitRow) invLimitRow.style.display = invLimited ? '' : 'none';
 
     if (invLimitDD && invLimitDD.options.length <= 1) {
         invLimitDD.innerHTML = '';
@@ -1335,7 +1342,7 @@ function updateVenusESS(snapshot) {
             invLimitDD.appendChild(opt);
         }
     }
-    if (invLimitDD && !invLimitDD.matches(':focus') && vs.max_inverter_w > 0) {
+    if (invLimitDD && !invLimitDD.matches(':focus') && invLimited) {
         var closest = Math.round(vs.max_inverter_w / 1000) * 1000;
         invLimitDD.value = closest;
     }
@@ -1408,8 +1415,22 @@ async function writeESSSetting(register, value) {
         showToast('Max feed-in: ' + formatKw(watts), 'success');
     });
 
-    // Max Inverter Power dropdown
+    // Limit Inverter Power toggle
+    var invLimitToggle = document.getElementById('ess-limit-inverter');
     var invLimitDD = document.getElementById('ess-max-inverter');
+
+    if (invLimitToggle) invLimitToggle.addEventListener('change', function() {
+        invLimitToggle._userChangedAt = Date.now();
+        if (invLimitToggle.checked) {
+            writeESSSetting(2704, 2000);  // Default 20 kW
+            showToast('Inverter limit: 20 kW', 'success');
+        } else {
+            // Venus OS can't set -1 via Modbus — set highest possible value
+            // This keeps the setting "active" in Venus OS but at max power
+            writeESSSetting(2704, 3000);  // 30 kW = rated
+            showToast('Inverter limit: 30 kW (max)', 'success');
+        }
+    });
 
     if (invLimitDD) invLimitDD.addEventListener('change', function() {
         var watts = parseInt(invLimitDD.value);
