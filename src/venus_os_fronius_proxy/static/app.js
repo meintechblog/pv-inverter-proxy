@@ -1281,12 +1281,19 @@ function updateVenusESS(snapshot) {
 
     if (!vs) return;
 
-    // 1. AC PV Excess Feed-in (PreventFeedback: 0=allow, inverted for UI)
-    if (acToggle) acToggle.checked = !vs.prevent_feedback;
+    // Skip toggle updates if user just changed them (prevent snap-back)
+    var now = Date.now();
 
-    // 2. Limit System Feed-in toggle: ON if MaxFeedInPower >= 0, OFF if -1
-    var feedInLimited = vs.max_feed_in_w >= 0;
-    if (limitToggle) limitToggle.checked = feedInLimited;
+    // 1. Limit System Feed-in toggle: ON if MaxFeedInPower >= 0 and < rated
+    var feedInLimited = vs.max_feed_in_w >= 0 && vs.max_feed_in_w < 30000;
+    if (limitToggle && (now - (limitToggle._userChangedAt || 0)) > 5000) {
+        limitToggle.checked = feedInLimited;
+    }
+
+    // 2. AC PV Excess Feed-in (PreventFeedback: 0=allow, inverted for UI)
+    if (acToggle && (now - (acToggle._userChangedAt || 0)) > 5000) {
+        acToggle.checked = !vs.prevent_feedback;
+    }
 
     // 3. Show Max Feed-in row only when limit is active
     if (maxFeedInRow) {
@@ -1344,24 +1351,24 @@ async function writeESSSetting(register, value) {
     var limitToggle = document.getElementById('ess-limit-feedin');
     var feedInDD = document.getElementById('ess-feed-in');
 
-    // AC PV Excess (PreventFeedback: inverted)
-    if (acToggle) acToggle.addEventListener('change', function() {
-        writeESSSetting(2708, acToggle.checked ? 0 : 1);
-        showToast('AC PV Excess: ' + (acToggle.checked ? 'Allowed' : 'Blocked'), 'success');
-    });
-
     // Limit System Feed-in toggle
     if (limitToggle) limitToggle.addEventListener('change', function() {
+        limitToggle._userChangedAt = Date.now();
         if (limitToggle.checked) {
-            // Enable with default 10 kW (raw = 100)
             writeESSSetting(2706, 100);
             showToast('Feed-in limit: 10 kW', 'success');
         } else {
-            // Disable = set to max inverter power (raw = 300 = 30000W)
-            // Venus OS doesn't accept -1/unlimited via Modbus
             writeESSSetting(2706, 300);
-            showToast('Feed-in limit: Off (30 kW)', 'success');
+            showToast('Feed-in limit: Off', 'success');
         }
+    });
+
+    // AC PV Excess (PreventFeedback: inverted)
+    if (acToggle) acToggle.addEventListener('change', function() {
+        acToggle._userChangedAt = Date.now();
+        writeESSSetting(2708, acToggle.checked ? 0 : 1);
+        showToast('AC PV Excess: ' + (acToggle.checked ? 'Allowed' : 'Blocked'), 'success');
+    });
     });
 
     // Max Feed-in value dropdown
