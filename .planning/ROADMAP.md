@@ -81,11 +81,11 @@ Plans:
   3. When MQTT is not connected, an inline setup guide card explains how to enable MQTT on LAN in Venus OS Remote Console
   4. Dashboard elements that depend on MQTT (Lock Toggle, Override Detection, Venus Settings) are visually greyed out with an overlay hint until MQTT is connected
   5. Power gauge, inverter status, and power slider remain fully functional without MQTT
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 14-01: TBD
-- [ ] 14-02: TBD
+- [ ] 14-01-PLAN.md — Extend config API for Venus fields + MQTT hot-reload + fix status handler
+- [ ] 14-02-PLAN.md — Frontend: Venus config section, connection bobbles, MQTT gate, setup guide
 
 ### Phase 15: Venus OS Auto-Detect
 **Goal**: The proxy detects when Venus OS connects and guides the user to complete MQTT setup
@@ -134,6 +134,6 @@ Phases execute in numeric order: 13 -> 14 -> 15 -> 16
 | 11. Venus OS Widget & Lock Toggle | v2.1 | 2/2 | Complete | 2026-03-18 |
 | 12. Unified Dashboard Layout | v2.1 | 1/1 | Complete | 2026-03-18 |
 | 13. MQTT Config Backend | 2/2 | Complete    | 2026-03-19 | - |
-| 14. Config Page & Dashboard UX | v3.0 | 0/? | Not started | - |
+| 14. Config Page & Dashboard UX | v3.0 | 0/2 | Not started | - |
 | 15. Venus OS Auto-Detect | v3.0 | 0/? | Not started | - |
 | 16. Install Script & README | v3.0 | 0/? | Not started | - |
