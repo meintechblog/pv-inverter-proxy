@@ -1178,17 +1178,20 @@ function stopCountdownInterval() {
     var toggle = document.getElementById('venus-lock-toggle');
     if (!toggle) return;
     var lastDisableTs = 0;
+    var isCurrentlyLocked = false;
 
     toggle.addEventListener('change', function() {
         var wantAllow = toggle.checked;
         if (!wantAllow) {
-            // Check for rapid double-toggle: off-on-off within 3s = permanent
+            // First disable = 15 min. If already disabled (toggle again within 5s) = permanent
             var now = Date.now();
-            var permanent = (now - lastDisableTs) < 3000;
+            var permanent = isCurrentlyLocked && (now - lastDisableTs) < 5000;
             lastDisableTs = now;
+            isCurrentlyLocked = true;
             sendLockCommand(true, permanent);
         } else {
             lastDisableTs = 0;
+            isCurrentlyLocked = false;
             sendLockCommand(false, false);
         }
     });

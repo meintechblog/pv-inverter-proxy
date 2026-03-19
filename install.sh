@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Venus OS Fronius Proxy — One-Line Installer
+# PV-Inverter Proxy — One-Line Installer
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/meintechblog/venus-os-fronius-proxy/main/install.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/meintechblog/pv-inverter-proxy/main/install.sh | bash
 #
 # What it does:
 #   1. Creates fronius-proxy service user
@@ -16,7 +16,7 @@
 #
 set -euo pipefail
 
-REPO="https://github.com/meintechblog/venus-os-fronius-proxy.git"
+REPO="https://github.com/meintechblog/pv-inverter-proxy.git"
 INSTALL_DIR="/opt/venus-os-fronius-proxy"
 CONFIG_DIR="/etc/venus-os-fronius-proxy"
 SERVICE_USER="fronius-proxy"
@@ -35,7 +35,7 @@ fail()  { echo -e "${RED} ✗ $1${NC}"; exit 1; }
 # --- Pre-flight ---
 echo ""
 echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-echo -e "${BLUE}  Venus OS Fronius Proxy — Installer${NC}"
+echo -e "${BLUE}  PV-Inverter Proxy — Installer${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
 echo ""
 
@@ -88,7 +88,7 @@ mkdir -p "$CONFIG_DIR"
 if [ ! -f "$CONFIG_DIR/config.yaml" ]; then
     info "Creating default config..."
     cat > "$CONFIG_DIR/config.yaml" << 'YAML'
-# Venus OS Fronius Proxy Configuration
+# PV-Inverter Proxy Configuration
 #
 # SolarEdge inverter connection
 solaredge:
@@ -155,5 +155,5 @@ echo "  Logs:       journalctl -u $SERVICE_NAME -f"
 echo "  Status:     systemctl status $SERVICE_NAME"
 echo ""
 echo "  To update later:"
-echo "    curl -sSL https://raw.githubusercontent.com/meintechblog/venus-os-fronius-proxy/main/install.sh | bash"
+echo "    curl -sSL https://raw.githubusercontent.com/meintechblog/pv-inverter-proxy/main/install.sh | bash"
 echo ""

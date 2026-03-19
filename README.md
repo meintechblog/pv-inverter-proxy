@@ -1,4 +1,4 @@
-# Venus OS Fronius Proxy
+# PV-Inverter Proxy
 
 Modbus TCP proxy that makes a **SolarEdge SE30K** inverter appear as a **Fronius** to **Venus OS** (Victron). Venus OS natively discovers, monitors, and controls the inverter — including power limiting via DVCC/ESS.
 
@@ -20,7 +20,7 @@ Includes a dark-themed **web dashboard** with live monitoring, power control, an
 On a fresh **Debian 12+** / **Ubuntu 22.04+** machine (LXC, VM, or bare metal):
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/meintechblog/venus-os-fronius-proxy/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/meintechblog/pv-inverter-proxy/main/install.sh | bash
 ```
 
 This installs everything: Python venv, systemd service, default config. Edit the config afterwards:
@@ -35,7 +35,7 @@ systemctl restart venus-os-fronius-proxy
 Same command — the script detects an existing installation and updates in-place:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/meintechblog/venus-os-fronius-proxy/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/meintechblog/pv-inverter-proxy/main/install.sh | bash
 ```
 
 ## Configuration
@@ -105,7 +105,7 @@ systemctl stop venus-os-fronius-proxy
 ## Development
 
 ```bash
-git clone https://github.com/meintechblog/venus-os-fronius-proxy.git
+git clone https://github.com/meintechblog/pv-inverter-proxy.git
 cd venus-os-fronius-proxy
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
