@@ -44,15 +44,15 @@ async def read_venus_settings(host: str, port: int = 502) -> dict | None:
         else:
             max_feed_in_w = raw_signed * 100
 
-        # Grid power (unit 100, regs 808-810: L1/L2/L3 in 0.1W)
+        # Grid power (unit 100, regs 820-822: L1/L2/L3 int16, 1W scale)
+        # Negative = feeding into grid, positive = consuming from grid
         grid_feed_in_w = 0.0
         try:
-            rg = await client.read_holding_registers(808, count=3, device_id=100)
+            rg = await client.read_holding_registers(820, count=3, device_id=100)
             if not rg.isError():
-                for v in rg.registers:
-                    grid_feed_in_w += s16(v)
-                # Negative = feeding into grid
-                grid_feed_in_w = max(0, -grid_feed_in_w)
+                total_grid = sum(s16(v) for v in rg.registers)
+                # Show as positive feed-in (negative grid = exporting)
+                grid_feed_in_w = max(0, -total_grid)
         except Exception:
             pass
 
