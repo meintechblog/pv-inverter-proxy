@@ -111,6 +111,13 @@
                 <option value="max" selected>Max</option>
               </select>
             </div>
+            <div class="ve-gauge-venus-toggle">
+              <span class="ve-text-dim">Venus OS</span>
+              <label class="ve-toggle" id="venus-lock-container">
+                <input type="checkbox" id="venus-lock-toggle" checked>
+                <span class="ve-toggle-track"></span>
+              </label>
+            </div>
           </div>
 
           <div class="ve-card ve-phases-card">
@@ -143,8 +150,13 @@
           </div>
         </div>
 
-        <!-- Row 2: Connection + Venus OS (2-col) -->
-        <div class="ve-dashboard-info-row">
+        <!-- Hidden elements for Venus OS lock countdown -->
+        <div id="lock-countdown" style="display:none">
+          <span id="lock-countdown-time">15:00</span>
+        </div>
+
+        <!-- Row 2: Connection + Sparkline + Performance (3-col) -->
+        <div class="ve-dashboard-row3">
           <div class="ve-card" id="status-panel">
             <h2 class="ve-card-title">Connection</h2>
             <div class="ve-status-row">
@@ -160,33 +172,6 @@
               <span id="ws-label">WebSocket: --</span>
             </div>
           </div>
-          <div class="ve-card" id="venus-os-panel">
-            <h2 class="ve-card-title">Venus OS Control</h2>
-            <div class="ve-venus-status-row">
-              <span class="ve-status-dot" id="venus-status-dot"></span>
-              <span id="venus-status-text">--</span>
-            </div>
-            <div class="ve-kv-grid">
-              <div><label>Override</label><span class="ve-live-value" id="venus-override">--</span></div>
-              <div><label>Last Contact</label><span class="ve-live-value" id="venus-last-contact">--</span></div>
-            </div>
-            <div class="ve-venus-lock" id="venus-lock-section">
-              <div class="ve-venus-lock-row">
-                <span class="ve-venus-lock-label">Disable Venus OS</span>
-                <label class="ve-toggle" id="venus-lock-container">
-                  <input type="checkbox" id="venus-lock-toggle">
-                  <span class="ve-toggle-track"></span>
-                </label>
-              </div>
-              <div class="ve-lock-countdown" id="lock-countdown" style="display:none">
-                Auto-unlock in: <span id="lock-countdown-time">15:00</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Row 3: Sparkline + Performance -->
-        <div class="ve-dashboard-row3">
           <div class="ve-card ve-sparkline-card ve-sparkline-compact">
             <h2 class="ve-card-title">Power History (60 min)</h2>
             <svg id="sparkline-power" viewBox="0 0 600 50" preserveAspectRatio="none" class="ve-sparkline-svg"></svg>

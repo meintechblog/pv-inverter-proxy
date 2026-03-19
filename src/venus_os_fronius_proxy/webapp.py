@@ -535,13 +535,8 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
     shared_ctx = request.app["shared_ctx"]
     control = shared_ctx["control_state"]
 
-    min_kw = body.get("min_kw", 0)
-    max_kw = body.get("max_kw", 30)
-
-    # Convert to percent of rated power
-    rated_kw = 30  # TODO: read from snapshot
-    control.clamp_min_pct = max(0, min(100, round(min_kw / rated_kw * 100)))
-    control.clamp_max_pct = max(0, min(100, round(max_kw / rated_kw * 100)))
+    control.clamp_min_pct = max(0, min(100, int(body.get("min_pct", 0))))
+    control.clamp_max_pct = max(0, min(100, int(body.get("max_pct", 100))))
 
     # Enforce min <= max
     if control.clamp_min_pct > control.clamp_max_pct:

@@ -712,10 +712,10 @@ body {
     margin-bottom: 1rem;
 }
 
-/* Row 3: Sparkline + Performance */
+/* Row 2: Connection + Sparkline + Performance */
 .ve-dashboard-row3 {
     display: grid;
-    grid-template-columns: 3fr 2fr;
+    grid-template-columns: repeat(3, 1fr);
     gap: 1rem;
     margin-bottom: 1rem;
 }
@@ -776,8 +776,16 @@ body {
     display: flex;
     align-items: center;
     gap: 0.35rem;
-    min-width: 80px;
+    min-width: 90px;
     justify-content: center;
+}
+.ve-gauge-venus-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    font-size: 0.8em;
 }
 
 /* Power Control card (legacy, kept for CSS) */

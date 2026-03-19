@@ -889,16 +889,27 @@ function populatePowerDropdowns(maxKw) {
     var minVal = minDD.value;
     var maxVal = maxDD.value;
 
-    // Min dropdown: 0 kW, 1 kW, ... (maxKw-1) kW
+    var minW = Math.round(maxKw * 1000 * 0.01);  // 1% in watts
+
+    // Min dropdown: (maxKw-1) kW ... 1 kW, (1% as Watts), 0 kW  (descending)
     minDD.innerHTML = '';
-    for (var kw = 0; kw < maxKw; kw++) {
+    for (var kw = maxKw - 1; kw >= 1; kw--) {
         var opt = document.createElement('option');
         opt.value = kw;
         opt.textContent = kw + ' kW';
         minDD.appendChild(opt);
     }
+    var minWOpt = document.createElement('option');
+    minWOpt.value = 'min1';
+    minWOpt.textContent = minW + ' W';
+    minDD.appendChild(minWOpt);
+    var zeroOpt = document.createElement('option');
+    zeroOpt.value = '0';
+    zeroOpt.textContent = '0 kW';
+    minDD.appendChild(zeroOpt);
+    minDD.value = '0';  // Default: no floor
 
-    // Max dropdown: (maxKw) kW ... 1 kW  (top = "Max" = rated)
+    // Max dropdown: Max, (maxKw-1) kW ... 1 kW  (descending)
     maxDD.innerHTML = '<option value="max">Max</option>';
     for (var kw = maxKw - 1; kw >= 1; kw--) {
         var opt = document.createElement('option');
@@ -912,26 +923,34 @@ function populatePowerDropdowns(maxKw) {
     if (maxDD.querySelector('option[value="' + maxVal + '"]')) maxDD.value = maxVal;
 }
 
-function getClampValues() {
+function getClampPct() {
     var minDD = document.getElementById('ctrl-min');
     var maxDD = document.getElementById('ctrl-max');
-    var minKw = minDD ? parseInt(minDD.value) || 0 : 0;
-    var maxKw = (maxDD && maxDD.value !== 'max') ? parseInt(maxDD.value) : RATED_KW;
-    return { min: minKw, max: maxKw };
+    var minPct;
+    if (minDD && minDD.value === 'min1') {
+        minPct = 1;  // 1% = ~300W at 30kW
+    } else {
+        var minKw = minDD ? parseInt(minDD.value) || 0 : 0;
+        minPct = Math.round(minKw / RATED_KW * 100);
+    }
+    var maxPct = (maxDD && maxDD.value !== 'max') ? Math.round(parseInt(maxDD.value) / RATED_KW * 100) : 100;
+    return { min: minPct, max: maxPct };
 }
 
 // --- Min/Max clamp dropdowns ---
 
-async function sendClamp(minKw, maxKw) {
+async function sendClamp(minPct, maxPct) {
     try {
         var res = await fetch('/api/power-clamp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ min_kw: minKw, max_kw: maxKw })
+            body: JSON.stringify({ min_pct: minPct, max_pct: maxPct })
         });
         var data = await res.json();
         if (data.success) {
-            showToast('Range: ' + minKw + '–' + maxKw + ' kW', 'success');
+            var minKw = (minPct / 100 * RATED_KW).toFixed(0);
+            var maxKw = maxPct >= 100 ? 'Max' : (maxPct / 100 * RATED_KW).toFixed(0) + ' kW';
+            showToast('Range: ' + minKw + ' kW – ' + maxKw, 'success');
         } else {
             showToast(data.error || 'Failed', 'error');
         }
@@ -940,31 +959,35 @@ async function sendClamp(minKw, maxKw) {
     }
 }
 
+function getMinKwValue(minDD) {
+    if (minDD.value === 'min1') return 0.3;  // ~1% of 30kW
+    return parseInt(minDD.value) || 0;
+}
+
 (function() {
     var minDD = document.getElementById('ctrl-min');
     var maxDD = document.getElementById('ctrl-max');
     if (!minDD || !maxDD) return;
 
     minDD.addEventListener('change', function() {
-        var minVal = parseInt(minDD.value) || 0;
-        var maxVal = (maxDD.value === 'max') ? RATED_KW : parseInt(maxDD.value);
+        var clamp = getClampPct();
         // Enforce min <= max
-        if (minVal > maxVal) {
-            maxDD.value = minVal;
-            maxVal = minVal;
+        if (clamp.min > clamp.max) {
+            var minKwVal = getMinKwValue(minDD);
+            maxDD.value = Math.ceil(minKwVal);
+            clamp = getClampPct();
         }
-        sendClamp(minVal, maxVal);
+        sendClamp(clamp.min, clamp.max);
     });
 
     maxDD.addEventListener('change', function() {
-        var minVal = parseInt(minDD.value) || 0;
-        var maxVal = (maxDD.value === 'max') ? RATED_KW : parseInt(maxDD.value);
+        var clamp = getClampPct();
         // Enforce min <= max
-        if (maxVal < minVal) {
-            minDD.value = maxVal;
-            minVal = maxVal;
+        if (clamp.max < clamp.min) {
+            minDD.value = (maxDD.value === 'max') ? '0' : maxDD.value;
+            clamp = getClampPct();
         }
-        sendClamp(minVal, maxVal);
+        sendClamp(clamp.min, clamp.max);
     });
 })();
 
@@ -982,7 +1005,7 @@ function updatePowerControl(data) {
     // Status dot and label (between min/max dropdowns)
     var source = ctrl.last_source || 'none';
     var enabled = ctrl.enabled;
-    var limitKw = (ctrl.limit_pct / 100 * RATED_KW).toFixed(0);
+    var limitKw = (ctrl.limit_pct / 100 * RATED_KW).toFixed(1);
     if (source === 'venus_os') {
         if (dot) dot.className = 've-dot ve-dot--warn';
         if (label) label.textContent = limitKw + ' kW';
@@ -1090,32 +1113,35 @@ function updateVenusInfo(snapshot) {
         isOnline = age < 120;
     }
 
-    dot.className = 've-status-dot ' + (isOnline ? 'online' : 'offline');
-    statusText.textContent = isOnline ? 'Online' : 'Offline';
+    if (dot) dot.className = 've-status-dot ' + (isOnline ? 'online' : 'offline');
+    if (statusText) statusText.textContent = isOnline ? 'Online' : 'Offline';
 
-    // Override status
-    var ctrl = snapshot.control;
-    if (isOnline && ctrl && ctrl.enabled && ctrl.last_source === 'venus_os') {
-        overrideEl.textContent = ctrl.limit_pct.toFixed(1) + '%';
-    } else if (isOnline) {
-        overrideEl.textContent = 'No override';
-    } else {
-        overrideEl.textContent = '--';
+    // Override status (elements may not exist if Venus OS card removed)
+    if (overrideEl) {
+        var ctrl = snapshot.control;
+        if (isOnline && ctrl && ctrl.enabled && ctrl.last_source === 'venus_os') {
+            overrideEl.textContent = ctrl.limit_pct.toFixed(1) + '%';
+        } else if (isOnline) {
+            overrideEl.textContent = 'No override';
+        } else {
+            overrideEl.textContent = '--';
+        }
     }
 
-    // Last contact (relative time)
-    if (venus.last_change_ts > 0) {
-        var ageSec = Math.floor(snapshot.ts - venus.last_change_ts);
-        if (ageSec < 60) lastContactEl.textContent = ageSec + 's ago';
-        else if (ageSec < 3600) lastContactEl.textContent = Math.floor(ageSec / 60) + 'm ago';
-        else lastContactEl.textContent = Math.floor(ageSec / 3600) + 'h ago';
-    } else {
-        lastContactEl.textContent = 'Never';
+    if (lastContactEl) {
+        if (venus.last_change_ts > 0) {
+            var ageSec = Math.floor(snapshot.ts - venus.last_change_ts);
+            if (ageSec < 60) lastContactEl.textContent = ageSec + 's ago';
+            else if (ageSec < 3600) lastContactEl.textContent = Math.floor(ageSec / 60) + 'm ago';
+            else lastContactEl.textContent = Math.floor(ageSec / 3600) + 'h ago';
+        } else {
+            lastContactEl.textContent = 'Never';
+        }
     }
 
-    // Lock toggle state
-    toggle.checked = venus.is_locked;
-    toggle.disabled = false;  // Always allow lock (preemptive) and unlock
+    // Venus OS toggle: checked = allowed, unchecked = blocked (inverted from lock)
+    toggle.checked = !venus.is_locked;
+    toggle.disabled = false;
 
     // Countdown
     if (venus.is_locked && venus.lock_remaining_s != null) {
@@ -1160,18 +1186,20 @@ function stopCountdownInterval() {
     if (!toggle) return;
     toggle.addEventListener('change', function(e) {
         e.preventDefault();
-        var wantLock = toggle.checked;
-        if (wantLock) {
-            toggle.checked = false;  // Revert until confirmed
+        // Inverted: checked = Venus OS allowed, unchecked = blocked
+        var wantAllow = toggle.checked;
+        if (!wantAllow) {
+            // User wants to BLOCK Venus OS
+            toggle.checked = true;  // Revert until confirmed
             var unlockTime = new Date(Date.now() + 15 * 60 * 1000);
             var timeStr = unlockTime.getHours() + ':' + (unlockTime.getMinutes() < 10 ? '0' : '') + unlockTime.getMinutes();
             showConfirmDialog(
                 'Disable Venus OS control for <strong>15 minutes</strong>?<br>' +
-                'Venus OS will not be able to limit inverter power during this time.<br>' +
-                'Auto-unlock at ' + timeStr + '.',
+                'Auto-enable at ' + timeStr + '.',
                 function() { sendLockCommand(true); }
             );
         } else {
+            // User wants to ALLOW Venus OS
             sendLockCommand(false);
         }
     });
