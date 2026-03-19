@@ -145,6 +145,9 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
                 raise Exception(f"ILLEGAL_VALUE: {error}")
 
             self._control.update_wmaxlimpct(values[0])
+            # Implicitly enable when a limit value is written (Venus OS
+            # writes WMaxLimPct without setting WMaxLim_Ena separately)
+            self._control.update_wmaxlim_ena(1)
 
             if self._control.is_locked:
                 control_log.info(
@@ -155,28 +158,22 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
                 self._update_model_123_readback()
                 return
 
-            if self._control.is_enabled:
-                result = await self._plugin.write_power_limit(
-                    True, self._control.wmaxlimpct_float,
-                )
-                if not result.success:
-                    control_log.info(
-                        "power_limit_write",
-                        wmaxlimpct=values[0], enabled=True,
-                        result="failed", error=result.error,
-                    )
-                    raise Exception(f"Write failed: {result.error}")
+            result = await self._plugin.write_power_limit(
+                True, self._control.wmaxlimpct_float,
+            )
+            if not result.success:
                 control_log.info(
                     "power_limit_write",
-                    wmaxlimpct=values[0],
-                    limit_pct=self._control.wmaxlimpct_float,
-                    enabled=True, result="ok",
+                    wmaxlimpct=values[0], enabled=True,
+                    result="failed", error=result.error,
                 )
-            else:
-                control_log.info(
-                    "power_limit_write",
-                    wmaxlimpct=values[0], enabled=False, result="stored",
-                )
+                raise Exception(f"Write failed: {result.error}")
+            control_log.info(
+                "power_limit_write",
+                wmaxlimpct=values[0],
+                limit_pct=self._control.wmaxlimpct_float,
+                enabled=True, result="ok",
+            )
 
             # Venus OS source tracking (Phase 7)
             self._control.set_from_venus_os()
