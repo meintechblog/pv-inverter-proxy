@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Setup & Onboarding
-status: completed
-stopped_at: Completed 14-02-PLAN.md (Phase 14 complete)
-last_updated: "2026-03-19T18:47:41.285Z"
-last_activity: 2026-03-19 — Completed 14-02 (Config page & dashboard UX frontend)
+status: in-progress
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-03-19T20:53:00.000Z"
+last_activity: 2026-03-19 — Completed 15-01 (Venus OS auto-detect backend + frontend banner)
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 3
+  total_plans: 5
+  completed_plans: 5
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie einen echten Fronius-Inverter
-**Current focus:** v3.0 Setup & Onboarding — Phase 14 complete
+**Current focus:** v3.0 Setup & Onboarding — Phase 15 complete
 
 ## Current Position
 
-Phase: 14 of 16 (Config Page & Dashboard UX)
-Plan: 2 of 2
-Status: Phase 14 complete (all plans delivered)
-Last activity: 2026-03-19 — Completed 14-02 (Config page & dashboard UX frontend)
+Phase: 15 of 16 (Venus OS Auto-Detect)
+Plan: 1 of 1
+Status: Phase 15 complete (all plans delivered)
+Last activity: 2026-03-19 — Completed 15-01 (Venus OS auto-detect backend + frontend banner)
 
 Progress: [██████████] 100%
 
@@ -58,6 +58,9 @@ Progress: [██████████] 100%
 - Connection bobbles replace Test Connection button for live status (14-02)
 - venus-dependent class + mqtt-gated CSS for dashboard feature gating (14-02)
 - MQTT setup guide card shown contextually when configured but disconnected (14-02)
+- Detection is one-shot: flag set on first Model 123 write only (15-01)
+- Banner placed before config form, outside form element (15-01)
+- window._lastVenusDetected tracks state for input listener restore (15-01)
 
 ### Pending Todos
 
@@ -71,6 +74,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-19T18:45:00Z
-Stopped at: Completed 14-02-PLAN.md (Phase 14 complete)
-Resume file: Next phase pending
+Last session: 2026-03-19T20:53:00.000Z
+Stopped at: Completed 15-01-PLAN.md
+Resume file: .planning/phases/15-venus-os-auto-detect/15-01-SUMMARY.md
