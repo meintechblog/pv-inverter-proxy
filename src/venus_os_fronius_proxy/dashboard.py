@@ -113,7 +113,7 @@ class DashboardCollector:
         self._load_daily_energy()
 
     def _load_daily_energy(self) -> None:
-        """Load daily energy baseline from persistent file."""
+        """Load daily stats from persistent file (energy baseline, peak, hours)."""
         import json, datetime
         try:
             with open(_DAILY_ENERGY_FILE) as f:
@@ -122,19 +122,26 @@ class DashboardCollector:
             if data.get("date") == today:
                 self._energy_at_start = data.get("baseline_wh")
                 self._energy_date = today
+                self._peak_power_w = data.get("peak_power_w", 0.0)
+                self._operating_seconds = data.get("operating_seconds", 0.0)
         except (FileNotFoundError, json.JSONDecodeError, KeyError):
             pass
 
-    def _save_daily_energy(self, baseline_wh: int) -> None:
-        """Persist daily energy baseline to survive restarts."""
+    def _save_daily_stats(self, baseline_wh: int) -> None:
+        """Persist daily stats to survive restarts."""
         import json, datetime
         today = datetime.date.today().isoformat()
         try:
             with open(_DAILY_ENERGY_FILE, "w") as f:
-                json.dump({"date": today, "baseline_wh": baseline_wh}, f)
+                json.dump({
+                    "date": today,
+                    "baseline_wh": baseline_wh,
+                    "peak_power_w": self._peak_power_w,
+                    "operating_seconds": self._operating_seconds,
+                }, f)
             self._energy_date = today
         except OSError:
-            pass  # Config dir might not be writable
+            pass
 
     @property
     def last_snapshot(self) -> dict | None:
@@ -178,14 +185,15 @@ class DashboardCollector:
         energy_wh = inverter.get("energy_total_wh", 0)
         today = datetime.date.today().isoformat()
 
-        # Reset baseline at midnight or on first run
+        # Reset all daily stats at midnight
         if self._energy_date != today:
             self._energy_at_start = None
             self._energy_date = today
+            self._peak_power_w = 0.0
+            self._operating_seconds = 0.0
 
         if self._energy_at_start is None and energy_wh > 0:
             self._energy_at_start = energy_wh
-            self._save_daily_energy(energy_wh)
 
         # Compute daily energy delta from baseline
         daily_wh = energy_wh - self._energy_at_start if self._energy_at_start is not None else 0
@@ -212,6 +220,13 @@ class DashboardCollector:
         inverter["peak_power_w"] = self._peak_power_w
         inverter["operating_hours"] = round(self._operating_seconds / 3600, 4)
         inverter["efficiency_pct"] = efficiency_pct
+
+        # Persist daily stats every ~60s (not every poll to reduce disk writes)
+        if self._energy_at_start is not None:
+            save_interval = getattr(self, "_last_save_ts", 0)
+            if now_mono - save_interval > 60:
+                self._save_daily_stats(self._energy_at_start)
+                self._last_save_ts = now_mono
 
         # Build control section
         control: dict = {}
