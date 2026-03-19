@@ -22,8 +22,8 @@ Requirements for Setup & Onboarding milestone. Each maps to roadmap phases.
 
 ### Install & Docs
 
-- [ ] **DOCS-01**: Install Script fixen — YAML Key Mismatch (`solaredge:` → `inverter:`), Venus Config Section, sichere curl Flags
-- [ ] **DOCS-02**: README aktualisieren — Setup-Flow dokumentieren, Venus OS >= 3.7 Voraussetzung, Badges, Screenshots
+- [x] **DOCS-01**: Install Script fixen — YAML Key Mismatch (`solaredge:` → `inverter:`), Venus Config Section, sichere curl Flags
+- [x] **DOCS-02**: README aktualisieren — Setup-Flow dokumentieren, Venus OS >= 3.7 Voraussetzung, Badges, Screenshots
 
 ## Future Requirements
 
@@ -54,8 +54,8 @@ Requirements for Setup & Onboarding milestone. Each maps to roadmap phases.
 | SETUP-01 | Phase 15 | Complete |
 | SETUP-02 | Phase 14 | Complete |
 | SETUP-03 | Phase 14 | Complete |
-| DOCS-01 | Phase 16 | Pending |
-| DOCS-02 | Phase 16 | Pending |
+| DOCS-01 | Phase 16 | Complete |
+| DOCS-02 | Phase 16 | Complete |
 
 **Coverage:**
 - v3.0 requirements: 9 total
