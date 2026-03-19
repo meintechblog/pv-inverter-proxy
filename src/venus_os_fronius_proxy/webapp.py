@@ -406,8 +406,8 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
                 samples = buf.get_all()
                 if not samples:
                     continue
-                # Downsample with step of 10
-                downsampled = samples[::10]
+                # Downsample with step of 3 (5 min / 3 = ~100 points)
+                downsampled = samples[::3]
                 history[buf_key] = [
                     [s.timestamp + mono_offset, s.value] for s in downsampled
                 ]

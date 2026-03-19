@@ -21,12 +21,12 @@ class Sample:
 class TimeSeriesBuffer:
     """Fixed-duration ring buffer using deque(maxlen).
 
-    Stores up to max_seconds + 60 samples (extra margin before eviction).
-    At 1 sample/second poll rate, 3600s = 60 minutes of history.
+    Stores up to max_seconds + 10 samples (extra margin before eviction).
+    At 1 sample/second poll rate, 300s = 5 minutes of history.
     """
 
-    def __init__(self, max_seconds: int = 3600) -> None:
-        self._buf: deque[Sample] = deque(maxlen=max_seconds + 60)
+    def __init__(self, max_seconds: int = 300) -> None:
+        self._buf: deque[Sample] = deque(maxlen=max_seconds + 10)
 
     def append(self, value: float, ts: float | None = None) -> None:
         """Add a sample. Uses time.monotonic() if ts is not provided."""

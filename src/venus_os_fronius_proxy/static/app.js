@@ -146,7 +146,7 @@ function handleSnapshot(data) {
 
     // Append to sparkline data
     sparklineData.push(inv.ac_power_w || 0);
-    if (sparklineData.length > 3600) sparklineData.shift();
+    if (sparklineData.length > 300) sparklineData.shift();
     renderSparkline();
 
     // Update connection/health from snapshot data

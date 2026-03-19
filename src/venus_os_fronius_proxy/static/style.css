@@ -716,10 +716,10 @@ body {
     margin-bottom: 1rem;
 }
 
-/* Row 2: Connection + Sparkline + Performance */
+/* Row 2: Connection + Performance */
 .ve-dashboard-row3 {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
     margin-bottom: 1rem;
 }
@@ -763,6 +763,23 @@ body {
 }
 .ve-phase-table td.ve-phase-label {
     width: 30px;
+}
+.ve-phase-sparkline {
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--ve-border);
+}
+.ve-phase-sparkline .ve-sparkline-svg {
+    width: 100%;
+    height: 40px;
+}
+.ve-phase-sparkline .ve-sparkline-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75em;
+}
+.ve-text-center {
+    text-align: center;
 }
 
 /* Power limit clamp in gauge card */

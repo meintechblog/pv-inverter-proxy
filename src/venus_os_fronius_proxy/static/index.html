@@ -143,6 +143,14 @@
                 </tr>
               </tbody>
             </table>
+            <div class="ve-phase-sparkline">
+              <svg id="sparkline-power" viewBox="0 0 600 40" preserveAspectRatio="none" class="ve-sparkline-svg"></svg>
+              <div class="ve-sparkline-labels">
+                <span class="ve-text-dim" id="sparkline-min">--</span>
+                <span class="ve-text-dim ve-text-center" id="sparkline-time">5 min</span>
+                <span class="ve-text-dim" id="sparkline-max">--</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -166,14 +174,6 @@
             <div class="ve-status-row">
               <span class="ve-dot" id="ws-dot"></span>
               <span id="ws-label">WebSocket: --</span>
-            </div>
-          </div>
-          <div class="ve-card ve-sparkline-card ve-sparkline-compact">
-            <h2 class="ve-card-title">Power History (60 min)</h2>
-            <svg id="sparkline-power" viewBox="0 0 600 50" preserveAspectRatio="none" class="ve-sparkline-svg"></svg>
-            <div class="ve-sparkline-labels">
-              <span class="ve-text-dim" id="sparkline-min">--</span>
-              <span class="ve-text-dim" id="sparkline-max">--</span>
             </div>
           </div>
           <div class="ve-card" id="peak-stats-panel">
