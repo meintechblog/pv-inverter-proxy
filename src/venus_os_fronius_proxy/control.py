@@ -112,6 +112,8 @@ class ControlState:
         # Power clamp: min/max bounds for Venus OS regulation (in %)
         self.clamp_min_pct: int = 0    # 0 = no floor (but proxy enforces min 1%)
         self.clamp_max_pct: int = 100  # 100 = no ceiling
+        # Load persistent clamp + lock state
+        self._load_ui_state()
         # Load last Venus OS limit (survives restarts)
         self._load_last_limit()
 
@@ -141,6 +143,41 @@ class ControlState:
                     "raw": self.wmaxlimpct_raw,
                     "source": self.last_source,
                     "ts": _time.time(),
+                }, f)
+        except OSError:
+            pass
+
+    _UI_STATE_FILE = "/etc/venus-os-fronius-proxy/ui_state.json"
+
+    def _load_ui_state(self) -> None:
+        """Load persistent UI state (clamp values, lock)."""
+        import json, time as _time
+        try:
+            with open(self._UI_STATE_FILE) as f:
+                data = json.load(f)
+            self.clamp_min_pct = data.get("clamp_min_pct", 0)
+            self.clamp_max_pct = data.get("clamp_max_pct", 100)
+            # Restore lock only if not expired
+            if data.get("is_locked") and data.get("lock_ts", 0) > 0:
+                age = _time.time() - data["lock_ts"]
+                remaining = 900 - age
+                if remaining > 0:
+                    self.is_locked = True
+                    self.lock_expires_at = _time.monotonic() + remaining
+                    logger.info("Restored Venus OS lock (%.0fs remaining)", remaining)
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            pass
+
+    def save_ui_state(self) -> None:
+        """Persist clamp + lock state for restart recovery."""
+        import json, time as _time
+        try:
+            with open(self._UI_STATE_FILE, "w") as f:
+                json.dump({
+                    "clamp_min_pct": self.clamp_min_pct,
+                    "clamp_max_pct": self.clamp_max_pct,
+                    "is_locked": self.is_locked,
+                    "lock_ts": _time.time() if self.is_locked else 0,
                 }, f)
         except OSError:
             pass

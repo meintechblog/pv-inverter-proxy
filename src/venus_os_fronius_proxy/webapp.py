@@ -542,6 +542,7 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
     if control.clamp_min_pct > control.clamp_max_pct:
         control.clamp_min_pct = control.clamp_max_pct
 
+    control.save_ui_state()
     return web.json_response({"success": True})
 
 
@@ -577,10 +578,12 @@ async def venus_lock_handler(request: web.Request) -> web.Response:
         control.update_wmaxlim_ena(0)
         control.last_source = "none"
         await plugin.write_power_limit(True, 100.0)
+        control.save_ui_state()
         if override_log is not None:
             override_log.append("webapp", "lock", None, "Venus OS writes blocked, limit reset to 100%")
     else:
         control.unlock()
+        control.save_ui_state()
         if override_log is not None:
             override_log.append("webapp", "unlock", None, "Venus OS writes unblocked")
 

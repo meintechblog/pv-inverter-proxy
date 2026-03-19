@@ -889,34 +889,27 @@ function populatePowerDropdowns(maxKw) {
     var minVal = minDD.value;
     var maxVal = maxDD.value;
 
-    var minW = Math.round(maxKw * 1000 * 0.01);  // 1% in watts
+    function kwLabel(pct) {
+        var kw = maxKw * pct / 100;
+        return kw === Math.floor(kw) ? kw.toFixed(0) + ' kW' : kw.toFixed(1) + ' kW';
+    }
 
-    // Min dropdown: (maxKw-1) kW ... 1 kW, (1% as Watts), 0 kW  (descending)
+    // Both dropdowns: 100% down to 0% in 1% steps, shown as kW
     minDD.innerHTML = '';
-    for (var kw = maxKw - 1; kw >= 1; kw--) {
-        var opt = document.createElement('option');
-        opt.value = kw;
-        opt.textContent = kw + ' kW';
-        minDD.appendChild(opt);
-    }
-    var minWOpt = document.createElement('option');
-    minWOpt.value = 'min1';
-    minWOpt.textContent = minW + ' W';
-    minDD.appendChild(minWOpt);
-    var zeroOpt = document.createElement('option');
-    zeroOpt.value = '0';
-    zeroOpt.textContent = '0 kW';
-    minDD.appendChild(zeroOpt);
-    minDD.value = '0';  // Default: no floor
+    maxDD.innerHTML = '';
+    for (var pct = 100; pct >= 0; pct--) {
+        var optMin = document.createElement('option');
+        optMin.value = pct;
+        optMin.textContent = kwLabel(pct);
+        minDD.appendChild(optMin);
 
-    // Max dropdown: Max, (maxKw-1) kW ... 1 kW  (descending)
-    maxDD.innerHTML = '<option value="max">Max</option>';
-    for (var kw = maxKw - 1; kw >= 1; kw--) {
-        var opt = document.createElement('option');
-        opt.value = kw;
-        opt.textContent = kw + ' kW';
-        maxDD.appendChild(opt);
+        var optMax = document.createElement('option');
+        optMax.value = pct;
+        optMax.textContent = kwLabel(pct);
+        maxDD.appendChild(optMax);
     }
+    minDD.value = '0';   // Default: no floor
+    maxDD.value = '100'; // Default: no ceiling
 
     // Restore
     if (minDD.querySelector('option[value="' + minVal + '"]')) minDD.value = minVal;
@@ -926,14 +919,8 @@ function populatePowerDropdowns(maxKw) {
 function getClampPct() {
     var minDD = document.getElementById('ctrl-min');
     var maxDD = document.getElementById('ctrl-max');
-    var minPct;
-    if (minDD && minDD.value === 'min1') {
-        minPct = 1;  // 1% = ~300W at 30kW
-    } else {
-        var minKw = minDD ? parseInt(minDD.value) || 0 : 0;
-        minPct = Math.round(minKw / RATED_KW * 100);
-    }
-    var maxPct = (maxDD && maxDD.value !== 'max') ? Math.round(parseInt(maxDD.value) / RATED_KW * 100) : 100;
+    var minPct = minDD ? parseInt(minDD.value) || 0 : 0;
+    var maxPct = maxDD ? parseInt(maxDD.value) || 100 : 100;
     return { min: minPct, max: maxPct };
 }
 
@@ -948,20 +935,17 @@ async function sendClamp(minPct, maxPct) {
         });
         var data = await res.json();
         if (data.success) {
-            var minKw = (minPct / 100 * RATED_KW).toFixed(0);
-            var maxKw = maxPct >= 100 ? 'Max' : (maxPct / 100 * RATED_KW).toFixed(0) + ' kW';
-            showToast('Range: ' + minKw + ' kW – ' + maxKw, 'success');
+            var minKw = (minPct / 100 * RATED_KW);
+            var maxKw = (maxPct / 100 * RATED_KW);
+            var minStr = minKw === Math.floor(minKw) ? minKw.toFixed(0) : minKw.toFixed(1);
+            var maxStr = maxKw === Math.floor(maxKw) ? maxKw.toFixed(0) : maxKw.toFixed(1);
+            showToast('Range: ' + minStr + ' – ' + maxStr + ' kW', 'success');
         } else {
             showToast(data.error || 'Failed', 'error');
         }
     } catch (e) {
         showToast('Request failed: ' + e.message, 'error');
     }
-}
-
-function getMinKwValue(minDD) {
-    if (minDD.value === 'min1') return 0.3;  // ~1% of 30kW
-    return parseInt(minDD.value) || 0;
 }
 
 (function() {
@@ -971,21 +955,18 @@ function getMinKwValue(minDD) {
 
     minDD.addEventListener('change', function() {
         var clamp = getClampPct();
-        // Enforce min <= max
         if (clamp.min > clamp.max) {
-            var minKwVal = getMinKwValue(minDD);
-            maxDD.value = Math.ceil(minKwVal);
-            clamp = getClampPct();
+            maxDD.value = clamp.min;
+            clamp.max = clamp.min;
         }
         sendClamp(clamp.min, clamp.max);
     });
 
     maxDD.addEventListener('change', function() {
         var clamp = getClampPct();
-        // Enforce min <= max
         if (clamp.max < clamp.min) {
-            minDD.value = (maxDD.value === 'max') ? '0' : maxDD.value;
-            clamp = getClampPct();
+            minDD.value = clamp.max;
+            clamp.min = clamp.max;
         }
         sendClamp(clamp.min, clamp.max);
     });
@@ -1017,7 +998,15 @@ function updatePowerControl(data) {
         if (label) label.textContent = 'No limit';
     }
 
-    // Dropdown always enabled — manual limit is additive (min of webapp + venus wins)
+    // Sync dropdown selections from snapshot (restored clamp values)
+    var minDD = document.getElementById('ctrl-min');
+    var maxDD = document.getElementById('ctrl-max');
+    if (minDD && ctrl.clamp_min_pct != null && !minDD.matches(':focus')) {
+        minDD.value = ctrl.clamp_min_pct;
+    }
+    if (maxDD && ctrl.clamp_max_pct != null && !maxDD.matches(':focus')) {
+        maxDD.value = ctrl.clamp_max_pct;
+    }
 }
 
 function formatRelativeTime(ts) {
