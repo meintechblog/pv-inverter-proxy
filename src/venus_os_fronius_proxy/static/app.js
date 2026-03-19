@@ -14,23 +14,37 @@ var venusCountdownInterval = null;
 
 // ===== Navigation =====
 
+function navigateTo(page) {
+    // Hide all pages, show selected
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    var pageEl = document.getElementById('page-' + page);
+    if (pageEl) pageEl.classList.add('active');
+    // Update nav active state
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    var navItem = document.querySelector('.nav-item[data-page="' + page + '"]');
+    if (navItem) navItem.classList.add('active');
+    // Persist in URL hash
+    window.location.hash = page;
+    // Close mobile sidebar
+    document.getElementById('sidebar').classList.remove('open');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (overlay) overlay.classList.remove('active');
+}
+
 document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', (e) => {
         e.preventDefault();
-        const page = item.dataset.page;
-        // Hide all pages, show selected
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        var pageEl = document.getElementById('page-' + page);
-        if (pageEl) pageEl.classList.add('active');
-        // Update nav active state
-        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        item.classList.add('active');
-        // Close mobile sidebar
-        document.getElementById('sidebar').classList.remove('open');
-        const overlay = document.getElementById('sidebar-overlay');
-        if (overlay) overlay.classList.remove('active');
+        navigateTo(item.dataset.page);
     });
 });
+
+// Restore page from URL hash on load
+(function() {
+    var hash = window.location.hash.replace('#', '');
+    if (hash && document.getElementById('page-' + hash)) {
+        navigateTo(hash);
+    }
+})();
 
 // ===== Hamburger Toggle (Mobile) =====
 
