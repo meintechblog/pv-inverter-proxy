@@ -160,8 +160,9 @@ function updateConfigBobbles(snapshot) {
 function updateSetupGuide(snapshot) {
     var guide = document.getElementById('mqtt-setup-guide');
     if (!guide) return;
-    var venusHost = document.getElementById('venus-host');
-    var hostConfigured = venusHost && venusHost.value.trim() !== '';
+    // Use SAVED config value (not current input which may be mid-typing)
+    var savedHost = _cfgOriginal.venus && _cfgOriginal.venus['venus-host'];
+    var hostConfigured = savedHost && savedHost.trim() !== '';
     if (!snapshot.venus_mqtt_connected && hostConfigured) {
         guide.style.display = '';
     } else {
