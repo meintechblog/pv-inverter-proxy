@@ -1357,8 +1357,8 @@ async function writeESSSetting(register, value) {
             writeESSSetting(2706, 100);
             showToast('Feed-in limit: 10 kW', 'success');
         } else {
-            // Disable = unlimited (raw = -1 → 65535 as uint16)
-            writeESSSetting(2706, 65535);
+            // Disable = unlimited (raw = 0, Venus OS interprets as -1/unlimited)
+            writeESSSetting(2706, 0);
             showToast('Feed-in limit: Off', 'success');
         }
     });
