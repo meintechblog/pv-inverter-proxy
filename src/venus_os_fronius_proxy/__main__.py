@@ -152,7 +152,12 @@ def main():
         venus_task = None
         if shared_ctx:
             from venus_os_fronius_proxy.venus_reader import venus_mqtt_loop
-            venus_task = asyncio.create_task(venus_mqtt_loop(shared_ctx))
+            venus_task = asyncio.create_task(venus_mqtt_loop(
+                shared_ctx,
+                host=config.venus.host,
+                port=config.venus.port,
+                portal_id=config.venus.portal_id,
+            ))
 
         # Start health heartbeat task
         heartbeat_task = None
