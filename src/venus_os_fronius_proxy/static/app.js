@@ -1281,23 +1281,27 @@ function updateVenusESS(snapshot) {
 
     if (!vs) return;
 
-    // Skip toggle updates if user just changed them (prevent snap-back)
     var now = Date.now();
+    var limitRow = document.getElementById('ess-limit-row');
 
-    // 1. Limit System Feed-in toggle: ON if MaxFeedInPower >= 0 and < rated
+    // 1. AC PV Excess Feed-in (main toggle — PreventFeedback: 0=allow)
+    var acExcessOn = !vs.prevent_feedback;
+    if (acToggle && (now - (acToggle._userChangedAt || 0)) > 5000) {
+        acToggle.checked = acExcessOn;
+    }
+
+    // 2. Show "Limit System Feed-in" only when AC excess is ON
+    if (limitRow) limitRow.style.display = acExcessOn ? '' : 'none';
+
+    // 3. Limit System Feed-in toggle: ON if MaxFeedInPower >= 0 and < 30000
     var feedInLimited = vs.max_feed_in_w >= 0 && vs.max_feed_in_w < 30000;
     if (limitToggle && (now - (limitToggle._userChangedAt || 0)) > 5000) {
         limitToggle.checked = feedInLimited;
     }
 
-    // 2. AC PV Excess Feed-in (PreventFeedback: 0=allow, inverted for UI)
-    if (acToggle && (now - (acToggle._userChangedAt || 0)) > 5000) {
-        acToggle.checked = !vs.prevent_feedback;
-    }
-
-    // 3. Show Max Feed-in row only when limit is active
+    // 4. Show Max Feed-in row only when both AC excess ON + limit ON
     if (maxFeedInRow) {
-        maxFeedInRow.style.display = feedInLimited ? '' : 'none';
+        maxFeedInRow.style.display = (acExcessOn && feedInLimited) ? '' : 'none';
     }
 
     // 4. Feed-in actual (current grid export)
