@@ -1373,7 +1373,6 @@ async function writeESSSetting(register, value) {
         writeESSSetting(2708, acToggle.checked ? 0 : 1);
         showToast('AC PV Excess: ' + (acToggle.checked ? 'Allowed' : 'Blocked'), 'success');
     });
-    });
 
     // Max Feed-in value dropdown
     if (feedInDD) feedInDD.addEventListener('change', function() {
