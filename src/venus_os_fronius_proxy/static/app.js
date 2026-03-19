@@ -772,15 +772,142 @@ async function pollRegisters() {
     }
 }
 
+// SunSpec human-readable decode map
+// Sources: SunSpec Model 103 (inverter), 120 (nameplate), 123 (controls)
+// Spec: https://sunspec.org/sunspec-modbus-specifications/
+var SUNSPEC_DECODE = {
+    // Model 103 — Three-Phase Inverter
+    40071: { unit: 'A', sf_addr: 40075, label: 'Total AC current' },
+    40072: { unit: 'A', sf_addr: 40075, label: 'Phase L1 current' },
+    40073: { unit: 'A', sf_addr: 40075, label: 'Phase L2 current' },
+    40074: { unit: 'A', sf_addr: 40075, label: 'Phase L3 current' },
+    40075: { is_sf: true },
+    40076: { unit: 'V', sf_addr: 40082, label: 'Line voltage L1-L2' },
+    40077: { unit: 'V', sf_addr: 40082, label: 'Line voltage L2-L3' },
+    40078: { unit: 'V', sf_addr: 40082, label: 'Line voltage L3-L1' },
+    40079: { unit: 'V', sf_addr: 40082, label: 'Phase voltage L1-N' },
+    40080: { unit: 'V', sf_addr: 40082, label: 'Phase voltage L2-N' },
+    40081: { unit: 'V', sf_addr: 40082, label: 'Phase voltage L3-N' },
+    40082: { is_sf: true },
+    40083: { unit: 'W', sf_addr: 40084, label: 'AC power output', signed: true },
+    40084: { is_sf: true },
+    40085: { unit: 'Hz', sf_addr: 40086, label: 'Grid frequency' },
+    40086: { is_sf: true },
+    40087: { unit: 'VA', sf_addr: 40088, label: 'Apparent power', signed: true },
+    40088: { is_sf: true },
+    40089: { unit: 'var', sf_addr: 40090, label: 'Reactive power', signed: true },
+    40090: { is_sf: true },
+    40091: { unit: '%', sf_addr: 40092, label: 'Power factor', signed: true },
+    40092: { is_sf: true },
+    40093: { unit: 'Wh', sf_addr: 40095, label: 'Lifetime energy', size: 2 },
+    40095: { is_sf: true },
+    40096: { unit: 'A', sf_addr: 40097, label: 'DC current' },
+    40097: { is_sf: true },
+    40098: { unit: 'V', sf_addr: 40099, label: 'DC voltage' },
+    40099: { is_sf: true },
+    40100: { unit: 'W', sf_addr: 40101, label: 'DC power', signed: true },
+    40101: { is_sf: true },
+    40102: { unit: '°C', sf_addr: 40106, label: 'Cabinet temperature', signed: true },
+    40103: { unit: '°C', sf_addr: 40106, label: 'Heatsink temperature', signed: true },
+    40104: { unit: '°C', sf_addr: 40106, label: 'Transformer temperature', signed: true },
+    40105: { unit: '°C', sf_addr: 40106, label: 'Other temperature', signed: true },
+    40106: { is_sf: true },
+    40107: { enum: { 1: 'Off', 2: 'Sleeping', 3: 'Starting', 4: 'Producing (MPPT)', 5: 'Throttled', 6: 'Shutting down', 7: 'Fault', 8: 'Standby' }, label: 'Operating state' },
+    40108: { label: 'Vendor-specific status code' },
+    // Model 120 — Nameplate
+    40123: { enum: { 4: 'PV', 82: 'Storage', 83: 'PV+Storage' }, label: 'DER type' },
+    40124: { unit: 'W', sf_addr: 40125, label: 'Max power rating' },
+    40125: { is_sf: true },
+    40126: { unit: 'VA', sf_addr: 40127, label: 'Max apparent power' },
+    40127: { is_sf: true },
+    40133: { unit: 'A', sf_addr: 40134, label: 'Max current rating' },
+    40134: { is_sf: true },
+    // Model 123 — Controls
+    40153: { enum: { 0: 'Disconnect', 1: 'Connect' }, label: 'Connection control' },
+    40154: { unit: '%', sf_fixed: -2, label: 'Power limit setpoint' },
+    40158: { enum: { 0: 'Disabled', 1: 'Enabled' }, label: 'Power limit enable' },
+};
+
+// SunSpec model documentation links
+var SUNSPEC_DOCS = {
+    'Common (Model 1)': 'https://sunspec.org/wp-content/uploads/2021/12/SunSpec_Information_Model_Specification_v1.9_12212021.pdf',
+    'Inverter (Model 103)': 'https://sunspec.org/wp-content/uploads/2021/12/SunSpec_Information_Model_Specification_v1.9_12212021.pdf',
+    'Nameplate (Model 120)': 'https://sunspec.org/wp-content/uploads/2021/12/SunSpec_Information_Model_Specification_v1.9_12212021.pdf',
+    'Controls (Model 123)': 'https://sunspec.org/wp-content/uploads/2021/12/SunSpec_Information_Model_Specification_v1.9_12212021.pdf',
+};
+
+// Cache for scale factor values (populated on first build, updated on poll)
+var sfCache = {};
+
+function decodeRegisterValue(addr, rawValue, allFields) {
+    var meta = SUNSPEC_DECODE[addr];
+    if (!meta || rawValue === null || rawValue === undefined) return '';
+    if (meta.is_sf) return 'Scale Factor';
+
+    // Enum lookup
+    if (meta.enum) {
+        var label = meta.enum[rawValue];
+        return label ? label : 'Unknown (' + rawValue + ')';
+    }
+
+    // Scale factor decode
+    if (meta.unit) {
+        // SunSpec sentinel values: 0x7FFF/0x8000 (int16), 0xFFFF (uint16) = not implemented
+        if (rawValue === 32768 || rawValue === 32767 || rawValue === 65535) return 'N/A';
+
+        var sf = 0;
+        if (meta.sf_fixed !== undefined) {
+            sf = meta.sf_fixed;
+        } else if (meta.sf_addr) {
+            // Look up SF from cached values
+            sf = sfCache[meta.sf_addr];
+            if (sf === undefined || sf === null) return rawValue + ' ' + meta.unit + ' (raw)';
+            // SF is stored as int16 (signed)
+            if (sf > 32767) sf = sf - 65536;
+        }
+        // Handle large values that may be comma-formatted strings from API
+        var numValue = (typeof rawValue === 'string') ? parseInt(rawValue.replace(/,/g, ''), 10) : rawValue;
+        if (isNaN(numValue)) return '';
+        var decoded = numValue * Math.pow(10, sf);
+        // Format nicely — large values get k/M suffix
+        var decimals = sf < 0 ? Math.abs(sf) : 0;
+        if (Math.abs(decoded) >= 1000000) {
+            return (decoded / 1000000).toFixed(1) + ' M' + meta.unit;
+        } else if (Math.abs(decoded) >= 10000) {
+            return (decoded / 1000).toFixed(1) + ' k' + meta.unit;
+        }
+        return decoded.toFixed(decimals) + ' ' + meta.unit;
+    }
+
+    return '';
+}
+
+function buildSfCache(models) {
+    models.forEach(function(model) {
+        model.fields.forEach(function(field) {
+            var meta = SUNSPEC_DECODE[field.addr];
+            if (meta && meta.is_sf && field.fronius_value !== null) {
+                sfCache[field.addr] = field.fronius_value;
+            }
+        });
+    });
+}
+
 function buildRegisterViewer(container, models) {
+    // Build SF cache first so decode works
+    buildSfCache(models);
+
     models.forEach((model) => {
         const group = document.createElement('div');
         group.className = 've-model-group';
 
         const header = document.createElement('div');
         header.className = 've-model-header';
-        header.innerHTML = '<span>' + model.name + '</span><span>&#9660;</span>';
-        header.addEventListener('click', () => {
+        var docUrl = SUNSPEC_DOCS[model.name];
+        var docLink = docUrl ? ' <a href="' + docUrl + '" target="_blank" rel="noopener" class="ve-doc-link" title="SunSpec Specification">&#128196;</a>' : '';
+        header.innerHTML = '<span>' + model.name + docLink + '</span><span>&#9660;</span>';
+        header.addEventListener('click', (e) => {
+            if (e.target.closest('.ve-doc-link')) return; // Don't toggle on doc link click
             const fields = group.querySelector('.ve-model-fields');
             fields.classList.toggle('collapsed');
             header.querySelector('span:last-child').textContent =
@@ -794,7 +921,7 @@ function buildRegisterViewer(container, models) {
         // Column header row
         const headerRow = document.createElement('div');
         headerRow.className = 've-reg-header';
-        headerRow.innerHTML = '<span>Addr</span><span>Name</span><span class="ve-reg-se-value">SE30K Source</span><span class="ve-reg-fronius-value">Fronius Target</span>';
+        headerRow.innerHTML = '<span>Addr</span><span>Name</span><span class="ve-reg-se-value">SE30K Source</span><span class="ve-reg-fronius-value">Fronius Target</span><span class="ve-reg-decoded">Decoded</span>';
         fields.appendChild(headerRow);
 
         model.fields.forEach(field => {
@@ -805,12 +932,16 @@ function buildRegisterViewer(container, models) {
             const seVal = formatValue(field.se_value);
             const frVal = formatValue(field.fronius_value);
             const seClass = field.se_value === null ? 've-reg-se-value null-value' : 've-reg-se-value';
+            const decoded = decodeRegisterValue(field.addr, field.fronius_value, model.fields);
+            const meta = SUNSPEC_DECODE[field.addr];
+            var tooltip = meta && meta.label ? ' title="' + meta.label + '"' : '';
 
             row.innerHTML =
                 '<span class="ve-reg-addr">' + field.addr + '</span>' +
-                '<span class="ve-reg-name">' + field.name + '</span>' +
+                '<span class="ve-reg-name"' + tooltip + '>' + field.name + '</span>' +
                 '<span class="' + seClass + '" id="se-val-' + field.addr + '">' + seVal + '</span>' +
-                '<span class="ve-reg-fronius-value" id="fr-val-' + field.addr + '">' + frVal + '</span>';
+                '<span class="ve-reg-fronius-value" id="fr-val-' + field.addr + '">' + frVal + '</span>' +
+                '<span class="ve-reg-decoded" id="dec-val-' + field.addr + '">' + decoded + '</span>';
             fields.appendChild(row);
             previousRegValues[field.addr] = { se: field.se_value, fr: field.fronius_value };
         });
@@ -821,10 +952,14 @@ function buildRegisterViewer(container, models) {
 }
 
 function updateRegisterValues(models) {
+    // Refresh SF cache
+    buildSfCache(models);
+
     models.forEach(model => {
         model.fields.forEach(field => {
             const seEl = document.getElementById('se-val-' + field.addr);
             const frEl = document.getElementById('fr-val-' + field.addr);
+            const decEl = document.getElementById('dec-val-' + field.addr);
             let changed = false;
 
             if (seEl) {
@@ -840,6 +975,12 @@ function updateRegisterValues(models) {
                 if (frEl.textContent !== newFrVal) {
                     frEl.textContent = newFrVal;
                     changed = true;
+                }
+            }
+            if (decEl) {
+                var newDec = decodeRegisterValue(field.addr, field.fronius_value, model.fields);
+                if (decEl.textContent !== newDec) {
+                    decEl.textContent = newDec;
                 }
             }
 
