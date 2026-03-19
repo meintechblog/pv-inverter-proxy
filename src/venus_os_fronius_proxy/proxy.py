@@ -144,6 +144,7 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
                 )
                 raise Exception(f"ILLEGAL_VALUE: {error}")
 
+            old_raw = self._control.wmaxlimpct_raw
             self._control.update_wmaxlimpct(values[0])
             # Implicitly enable when a limit value is written (Venus OS
             # writes WMaxLimPct without setting WMaxLim_Ena separately)
@@ -155,6 +156,11 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
                     wmaxlimpct=values[0], result="locked",
                     detail="Venus OS write accepted, not forwarded to inverter",
                 )
+                self._update_model_123_readback()
+                return
+
+            # Skip SE30K write if value unchanged (Venus OS refreshes every 5s)
+            if values[0] == old_raw and self._control.is_enabled:
                 self._update_model_123_readback()
                 return
 
