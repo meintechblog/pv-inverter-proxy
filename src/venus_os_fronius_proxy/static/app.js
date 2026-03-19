@@ -1271,8 +1271,6 @@ function formatKw(watts) {
 function updateVenusESS(snapshot) {
     var vs = snapshot.venus_settings;
     var acToggle = document.getElementById('ess-ac-excess');
-    var limitToggle = document.getElementById('ess-limit-feedin');
-    var maxFeedInRow = document.getElementById('ess-max-feedin-row');
     var feedInDD = document.getElementById('ess-feed-in');
     var feedInActual = document.getElementById('ess-feed-in-actual');
     var limiterEl = document.getElementById('ess-limiter-value');
@@ -1288,10 +1286,10 @@ function updateVenusESS(snapshot) {
         acToggle.checked = !vs.prevent_feedback;
     }
 
-    // 4. Feed-in actual (current grid export)
+    // 2. Feed-in actual (current grid export)
     if (feedInActual) {
         feedInActual.textContent = formatKw(vs.grid_feed_in_w);
-        if (feedInLimited && vs.grid_feed_in_w > vs.max_feed_in_w) {
+        if (vs.max_feed_in_w > 0 && vs.grid_feed_in_w > vs.max_feed_in_w) {
             feedInActual.style.color = 'var(--ve-red)';
         } else if (vs.grid_feed_in_w > 0) {
             feedInActual.style.color = 'var(--ve-green)';
@@ -1300,8 +1298,8 @@ function updateVenusESS(snapshot) {
         }
     }
 
-    // 5. Feed-in dropdown (target value)
-    if (feedInDD && !feedInDD.matches(':focus') && feedInLimited) {
+    // 3. Feed-in dropdown (target value)
+    if (feedInDD && !feedInDD.matches(':focus') && vs.max_feed_in_w > 0) {
         var closest = Math.round(vs.max_feed_in_w / 1000) * 1000;
         feedInDD.value = closest;
     }
