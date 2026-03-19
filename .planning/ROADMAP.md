@@ -95,10 +95,10 @@ Plans:
   1. When Venus OS sends its first Modbus write to the proxy, the config page shows a banner indicating Venus OS is connected
   2. The banner prompts the user to enter the Venus OS IP for MQTT configuration with a Test & Apply flow
   3. Auto-detect does not auto-save config -- user must confirm before any configuration change takes effect
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 15-01: TBD
+- [ ] 15-01-PLAN.md — Backend detection flag + frontend auto-detect banner
 
 ### Phase 16: Install Script & README
 **Goal**: A new user can install and configure the proxy with a single curl command and clear documentation
@@ -135,5 +135,5 @@ Phases execute in numeric order: 13 -> 14 -> 15 -> 16
 | 12. Unified Dashboard Layout | v2.1 | 1/1 | Complete | 2026-03-18 |
 | 13. MQTT Config Backend | 2/2 | Complete    | 2026-03-19 | - |
 | 14. Config Page & Dashboard UX | 2/2 | Complete    | 2026-03-19 | - |
-| 15. Venus OS Auto-Detect | v3.0 | 0/? | Not started | - |
+| 15. Venus OS Auto-Detect | v3.0 | 0/1 | Not started | - |
 | 16. Install Script & README | v3.0 | 0/? | Not started | - |
