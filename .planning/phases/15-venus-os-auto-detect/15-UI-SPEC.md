@@ -39,7 +39,7 @@ Declared values (must be multiples of 4):
 | 2xl | 48px | Major section breaks |
 | 3xl | 64px | Page-level spacing |
 
-Exceptions: none
+Exceptions: 12px — inherited from existing `ve-hint-card ol` paragraph spacing convention; not a new value.
 
 **Phase-specific usage:**
 - Banner padding: 16px (`md`) — matches existing `ve-hint-card` padding
