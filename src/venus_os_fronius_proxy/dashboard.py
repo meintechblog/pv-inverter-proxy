@@ -155,6 +155,7 @@ class DashboardCollector:
         conn_mgr: object | None = None,
         poll_counter: dict | None = None,
         override_log: object | None = None,
+        shared_ctx: dict | None = None,
     ) -> dict:
         """Decode registers, update buffers, return snapshot."""
         db = cache.datablock
@@ -260,17 +261,23 @@ class DashboardCollector:
             "cache_stale": cache.is_stale,
         }
 
-        # Read inverter identity from Common Model (SunSpec Model 1)
-        def _decode_string(start: int, count: int) -> str:
-            regs = db.getValues(start + _PB_OFFSET, count)
+        # Read inverter identity from original SE30K poll data (not translated cache)
+        def _decode_regs(regs: list[int]) -> str:
             result = b""
             for r in regs:
                 result += r.to_bytes(2, "big")
             return result.rstrip(b"\x00").decode("ascii", errors="replace").strip()
 
-        inverter_mfr = _decode_string(40004, 16)     # C_Manufacturer
-        inverter_model = _decode_string(40020, 16)    # C_Model
-        inverter_serial = _decode_string(40052, 16)   # C_SerialNumber
+        inverter_mfr = ""
+        inverter_model = ""
+        inverter_serial = ""
+        if shared_ctx and shared_ctx.get("last_se_poll"):
+            se_common = shared_ctx["last_se_poll"].get("common_registers", [])
+            if len(se_common) >= 66:
+                # Common Model: DID(0) + Len(1) + Manufacturer(2-17) + Model(18-33) + ... + Serial(50-65)
+                inverter_mfr = _decode_regs(se_common[2:18])
+                inverter_model = _decode_regs(se_common[18:34])
+                inverter_serial = _decode_regs(se_common[50:66])
 
         # Read rated power from Model 120 WRtg (register 40124, SF at 40125)
         wrtg_raw = db.getValues(40124 + _PB_OFFSET, 1)[0]

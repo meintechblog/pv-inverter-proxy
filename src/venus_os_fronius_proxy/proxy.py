@@ -320,6 +320,7 @@ async def _poll_loop(
                         cache, shared_ctx.get("control_state"),
                         conn_mgr=conn_mgr, poll_counter=poll_counter,
                         override_log=shared_ctx.get("override_log"),
+                        shared_ctx=shared_ctx,
                     )
 
                 # Broadcast latest snapshot to all WebSocket clients
