@@ -1425,10 +1425,9 @@ async function writeESSSetting(register, value) {
             writeESSSetting(2704, 2000);  // Default 20 kW
             showToast('Inverter limit: 20 kW', 'success');
         } else {
-            // Venus OS can't set -1 via Modbus — set highest possible value
-            // This keeps the setting "active" in Venus OS but at max power
-            writeESSSetting(2704, 3000);  // 30 kW = rated
-            showToast('Inverter limit: 30 kW (max)', 'success');
+            // Venus OS can't disable this via Modbus (requires dbus -1)
+            invLimitToggle.checked = true;  // Revert
+            showToast('Disable via Venus OS interface', 'warning');
         }
     });
 
