@@ -405,6 +405,54 @@ body {
     display: none;
 }
 
+/* Register toolbar */
+.ve-reg-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.ve-reg-toolbar h2 { margin: 0; }
+
+.ve-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--ve-text-dim);
+    user-select: none;
+}
+.ve-toggle-label input { display: none; }
+.ve-toggle-track {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    background: rgba(100, 99, 95, 0.4);
+    border-radius: 10px;
+    transition: background 0.2s;
+}
+.ve-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: var(--ve-text-dim);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+}
+.ve-toggle-label input:checked + .ve-toggle-track {
+    background: var(--ve-accent);
+}
+.ve-toggle-label input:checked + .ve-toggle-track .ve-toggle-thumb {
+    transform: translateX(16px);
+    background: #fff;
+}
+
+.ve-reg-row.ve-empty { display: none; }
+.ve-reg-row.ve-empty.ve-show-empty { display: grid; }
+
 .ve-reg-header {
     display: grid;
     grid-template-columns: 64px 1fr minmax(100px, 1fr) minmax(100px, 1fr) minmax(120px, 1.2fr);

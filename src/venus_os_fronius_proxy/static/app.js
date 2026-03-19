@@ -189,6 +189,23 @@ function updateAutoDetectBanner(snapshot) {
     }
 }
 
+// Register viewer: hide empty toggle
+(function() {
+    var toggle = document.getElementById('reg-hide-empty');
+    if (toggle) {
+        toggle.addEventListener('change', function() {
+            var rows = document.querySelectorAll('.ve-reg-row.ve-empty');
+            for (var i = 0; i < rows.length; i++) {
+                if (toggle.checked) {
+                    rows[i].classList.remove('ve-show-empty');
+                } else {
+                    rows[i].classList.add('ve-show-empty');
+                }
+            }
+        });
+    }
+})();
+
 // Hide auto-detect banner as soon as user types a Venus OS IP
 (function() {
     var venusHostInput = document.getElementById('venus-host');
@@ -935,6 +952,15 @@ function buildRegisterViewer(container, models) {
             const decoded = decodeRegisterValue(field.addr, field.fronius_value, model.fields);
             const meta = SUNSPEC_DECODE[field.addr];
             var tooltip = meta && meta.label ? ' title="' + meta.label + '"' : '';
+
+            // Mark rows as empty when both values are 0/null and no meaningful decode
+            var isEmpty = (field.se_value === null || field.se_value === 0) &&
+                          (field.fronius_value === null || field.fronius_value === 0) &&
+                          (!decoded || decoded === '0 W' || decoded === '0 A' || decoded === '0 VA' ||
+                           decoded === '0 var' || decoded === '0 %' || decoded === '0.00 A' ||
+                           decoded === '0.0 W' || decoded === '0 V' || decoded === '' ||
+                           decoded === 'N/A' || decoded === '0.00 %');
+            if (isEmpty) row.classList.add('ve-empty');
 
             row.innerHTML =
                 '<span class="ve-reg-addr">' + field.addr + '</span>' +
