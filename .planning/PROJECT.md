@@ -37,25 +37,17 @@ Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie ei
 - ✓ Venus OS Lock Toggle (Apple-style, 900s Safety Cap, Confirmation Dialog) — v2.1
 - ✓ Unified Dashboard (Power Control inline, 2-Row Grid, keine separate Seite) — v2.1
 
+- ✓ Config Page mit Defaults, Save & Apply mit Live-Connection-Bobble — v3.0
+- ✓ Venus OS Auto-Detect nach eingehender Modbus-Verbindung (gruenes Banner) — v3.0
+- ✓ MQTT konfigurierbar (Venus OS IP, Port, Portal ID aus Config statt hardcoded) — v3.0
+- ✓ Portal ID Auto-Discovery per MQTT Wildcard — v3.0
+- ✓ MQTT Setup Guide mit Hinweis + ausgegraute Dashboard-Elemente bis MQTT connected — v3.0
+- ✓ Install Script poliert (curl one-liner, sichere Flags, pre-flight checks) — v3.0
+- ✓ README mit vollstaendigem v3.0 Setup-Flow — v3.0
+
 ### Active
 
-- [ ] Config Page mit Defaults, Save & Apply mit Live-Connection-Bobble
-- [ ] Venus OS Auto-Config nach eingehender Modbus-Verbindung
-- [ ] MQTT konfigurierbar (Venus OS IP + Portal ID aus Config statt hardcoded)
-- [ ] MQTT Setup Guide mit Hinweis + ausgegraute Dashboard-Elemente bis MQTT connected
-- [ ] Install Script polieren (curl one-liner)
-- [ ] README aktualisieren mit neuem Setup-Flow
-
-## Current Milestone: v3.0 Setup & Onboarding
-
-**Goal:** Neuen Usern einen reibungslosen Setup-Flow bieten — von Install bis volle Venus OS Integration in wenigen Minuten.
-
-**Target features:**
-- Config Page mit sinnvollen Defaults und Live-Connection-Status
-- Automatische Venus OS Config-Erkennung nach Modbus-Verbindung
-- MQTT konfigurierbar machen + Setup Guide wenn MQTT fehlt
-- Dashboard-Elemente ausgegraut bis MQTT connected (Lock, Override, Venus Settings)
-- Install Script und README polieren
+(Keine — naechstes Milestone definieren mit `/gsd:new-milestone`)
 
 ### Out of Scope
 
@@ -68,9 +60,9 @@ Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie ei
 
 ## Context
 
-**Shipped v2.1** with 2,578 LOC Python (src) + 2,801 LOC HTML/CSS/JS + 4,083 LOC tests.
+**Shipped v3.0** with ~3,000 LOC Python (src) + ~3,200 LOC HTML/CSS/JS + ~4,500 LOC tests. 41 files changed, +5,438 lines in v3.0.
 
-Tech stack: Python 3.12, pymodbus 3.8+, aiohttp (HTTP + WebSocket), structlog, PyYAML, vanilla JS.
+Tech stack: Python 3.12, pymodbus 3.8+, aiohttp (HTTP + WebSocket), paho-mqtt, structlog, PyYAML, vanilla JS.
 
 **Infrastructure:**
 - SolarEdge SE30K: 192.168.3.18:1502 (Modbus TCP)
@@ -78,7 +70,7 @@ Tech stack: Python 3.12, pymodbus 3.8+, aiohttp (HTTP + WebSocket), structlog, P
 - LXC Container: 192.168.3.191 (Debian 13, Proxmox)
 - Proxy: Port 502 (Modbus) + Port 80 (Webapp)
 
-**Live verified:** Venus OS shows "Fronius SE30K-RW00IBNM4" with ~10-14 kW live power. Unified dashboard with inline power control, Venus OS lock toggle, peak statistics, smart notifications, CSS animations. All on one page.
+**Live verified:** Venus OS shows "Fronius SE30K-RW00IBNM4" with ~10-14 kW live power. Unified dashboard with inline power control, Venus OS lock toggle, peak statistics, smart notifications, CSS animations. Config page with live connection bobbles, Venus OS auto-detect banner, MQTT setup guide. curl one-liner install.
 
 ## Constraints
 
@@ -111,6 +103,12 @@ Tech stack: Python 3.12, pymodbus 3.8+, aiohttp (HTTP + WebSocket), structlog, P
 | Lock 900s Hard Cap | Venus OS nie permanent aussperrbar | ✓ Good — Safety non-negotiable |
 | Client-side event detection | Snapshot-Diff statt neue WS Message Types | ✓ Good — extend snapshot, not protocol |
 | Gauge 50W Deadband | Verhindert Jitter bei 1Hz Updates | ✓ Good — smooth Industrial feel |
+| VenusConfig Dataclass + Hot-Reload | MQTT Config aenderbar ohne Restart | ✓ Good — cancel old task, start new loop |
+| Nested Config API {inverter, venus} | Zwei Config-Bereiche sauber getrennt | ✓ Good — backward compatible |
+| Connection Bobbles statt Test Button | Live-Status statt One-Shot Test | ✓ Good — permanent sichtbar |
+| MQTT Gate auf Dashboard | Venus-Widgets ausgegraut ohne MQTT | ✓ Good — klare UX, kein Fehler |
+| Model 123 Write Detection | Venus OS Erkennung ueber Modbus Write | ✓ Good — zuverlaessig, kein False Positive |
+| No Auto-Save bei Detection | User muss Config bestaetigen | ✓ Good — Safety first |
 
 ---
-*Last updated: 2026-03-19 after v3.0 milestone start*
+*Last updated: 2026-03-19 after v3.0 milestone completion*

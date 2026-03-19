@@ -1,5 +1,14 @@
 # Milestones
 
+## v3.0 Setup & Onboarding (Shipped: 2026-03-19)
+
+**Phases completed:** 4 phases, 6 plans, 0 tasks
+
+**Key accomplishments:**
+- (none recorded)
+
+---
+
 ## v2.1 Dashboard Redesign & Polish (Shipped: 2026-03-18)
 
 **Phases:** 9-12 (4 phases, 7 plans)
