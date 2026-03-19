@@ -467,6 +467,36 @@ async def test_status_venus_mqtt_state(client, shared_ctx):
     assert data["venus_os"] == "not configured"
 
 
+# ---------- Venus OS Auto-Detection (Phase 15) ----------
+
+
+class TestVenusAutoDetect:
+    async def test_status_includes_detected_flag(self, client, shared_ctx):
+        """GET /api/status includes venus_os_detected based on shared_ctx."""
+        shared_ctx["venus_os_detected"] = True
+        resp = await client.get("/api/status")
+        data = await resp.json()
+        assert data["venus_os_detected"] is True
+
+        del shared_ctx["venus_os_detected"]
+        resp = await client.get("/api/status")
+        data = await resp.json()
+        assert data["venus_os_detected"] is False
+
+    async def test_detection_does_not_modify_config(self, client, shared_ctx):
+        """Setting venus_os_detected does NOT modify config keys in shared_ctx."""
+        # Take a snapshot of config-related keys before
+        config_keys_before = {k: v for k, v in shared_ctx.items() if "config" in k.lower()}
+
+        shared_ctx["venus_os_detected"] = True
+        resp = await client.get("/api/status")
+        await resp.json()
+
+        # Config keys should be unchanged
+        config_keys_after = {k: v for k, v in shared_ctx.items() if "config" in k.lower()}
+        assert config_keys_before == config_keys_after
+
+
 def test_no_hardcoded_ips_webapp():
     """webapp.py contains no hardcoded Venus OS IPs or portal IDs."""
     import inspect

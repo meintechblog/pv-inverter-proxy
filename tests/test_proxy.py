@@ -564,3 +564,68 @@ class TestProxyLockBehavior:
         # Plugin SHOULD have been called
         plugin.write_power_limit.assert_called_once()
         assert control.last_source == "venus_os"
+
+
+# ---------- Venus OS Auto-Detection (Phase 15) ----------
+
+
+class TestVenusAutoDetect:
+    @pytest.mark.asyncio
+    async def test_first_model123_write_sets_detected(self):
+        """After async_setValues with a Model 123 address, venus_os_detected is True."""
+        plugin = _make_mock_plugin(poll_success=True)
+        initial_values = build_initial_registers()
+        datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
+        cache = RegisterCache(datablock, staleness_timeout=30.0)
+        control = ControlState()
+        shared_ctx = {"override_log": OverrideLog()}
+
+        slave_ctx = StalenessAwareSlaveContext(
+            cache=cache, plugin=plugin, control_state=control,
+            shared_ctx=shared_ctx, hr=datablock,
+        )
+
+        await slave_ctx.async_setValues(0x06, 40154, [50])
+
+        assert shared_ctx["venus_os_detected"] is True
+        assert isinstance(shared_ctx["venus_os_detected_ts"], float)
+
+    @pytest.mark.asyncio
+    async def test_detection_only_fires_once(self):
+        """After two Model 123 writes, timestamp does not change on the second call."""
+        plugin = _make_mock_plugin(poll_success=True)
+        initial_values = build_initial_registers()
+        datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
+        cache = RegisterCache(datablock, staleness_timeout=30.0)
+        control = ControlState()
+        shared_ctx = {"override_log": OverrideLog()}
+
+        slave_ctx = StalenessAwareSlaveContext(
+            cache=cache, plugin=plugin, control_state=control,
+            shared_ctx=shared_ctx, hr=datablock,
+        )
+
+        await slave_ctx.async_setValues(0x06, 40154, [50])
+        ts1 = shared_ctx["venus_os_detected_ts"]
+
+        await slave_ctx.async_setValues(0x06, 40154, [60])
+        assert ts1 == shared_ctx["venus_os_detected_ts"]
+
+    @pytest.mark.asyncio
+    async def test_non_model123_write_no_detection(self):
+        """A setValues call to a non-Model-123 address does NOT set venus_os_detected."""
+        plugin = _make_mock_plugin(poll_success=True)
+        initial_values = build_initial_registers()
+        datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
+        cache = RegisterCache(datablock, staleness_timeout=30.0)
+        control = ControlState()
+        shared_ctx = {"override_log": OverrideLog()}
+
+        slave_ctx = StalenessAwareSlaveContext(
+            cache=cache, plugin=plugin, control_state=control,
+            shared_ctx=shared_ctx, hr=datablock,
+        )
+
+        # Write to non-Model-123 address (inverter register area)
+        slave_ctx.setValues(0x06, 40070, [100])
+        assert "venus_os_detected" not in shared_ctx
