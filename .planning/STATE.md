@@ -4,7 +4,7 @@ milestone: v3.0
 milestone_name: Setup & Onboarding
 status: completed
 stopped_at: Completed 16-01-PLAN.md
-last_updated: "2026-03-19T21:16:26.985Z"
+last_updated: "2026-03-19T21:19:35.860Z"
 last_activity: 2026-03-19 — Completed 16-01 (install script fix + README rewrite)
 progress:
   total_phases: 4
