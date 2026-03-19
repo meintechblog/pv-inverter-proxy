@@ -49,7 +49,7 @@ Full details: `.planning/milestones/v2.1-ROADMAP.md`
 
 **Milestone Goal:** Neuen Usern einen reibungslosen Setup-Flow bieten -- von Install bis volle Venus OS Integration in wenigen Minuten.
 
-- [ ] **Phase 13: MQTT Config Backend** - VenusConfig dataclass, parameterize MQTT, CONNACK fix, de-hardcode all hardcoded Venus OS references
+- [x] **Phase 13: MQTT Config Backend** - VenusConfig dataclass, parameterize MQTT, CONNACK fix, de-hardcode all hardcoded Venus OS references (completed 2026-03-19)
 - [ ] **Phase 14: Config Page & Dashboard UX** - Config page with defaults and connection bobbles, MQTT setup guide, dashboard MQTT gate
 - [ ] **Phase 15: Venus OS Auto-Detect** - Detect incoming Modbus connection from Venus OS and prompt user to configure MQTT
 - [ ] **Phase 16: Install Script & README** - Fix install script YAML mismatch, add venus config section, update README with setup flow
@@ -133,7 +133,7 @@ Phases execute in numeric order: 13 -> 14 -> 15 -> 16
 | 10. Peak Statistics & Smart Notifications | v2.1 | 2/2 | Complete | 2026-03-18 |
 | 11. Venus OS Widget & Lock Toggle | v2.1 | 2/2 | Complete | 2026-03-18 |
 | 12. Unified Dashboard Layout | v2.1 | 1/1 | Complete | 2026-03-18 |
-| 13. MQTT Config Backend | 1/2 | In Progress|  | - |
+| 13. MQTT Config Backend | 2/2 | Complete   | 2026-03-19 | - |
 | 14. Config Page & Dashboard UX | v3.0 | 0/? | Not started | - |
 | 15. Venus OS Auto-Detect | v3.0 | 0/? | Not started | - |
 | 16. Install Script & README | v3.0 | 0/? | Not started | - |

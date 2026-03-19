@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Setup & Onboarding
 status: active
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-03-19T17:47:41.021Z"
-last_activity: 2026-03-19 — Completed 13-01 (VenusConfig + parameterized venus_reader)
+stopped_at: Completed 13-02-PLAN.md
+last_updated: "2026-03-19T17:53:30Z"
+last_activity: 2026-03-19 — Completed 13-02 (Webapp de-hardcode + portal ID auto-discovery)
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 50
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie einen echten Fronius-Inverter
-**Current focus:** v3.0 Setup & Onboarding — Phase 13, Plan 01 complete
+**Current focus:** v3.0 Setup & Onboarding — Phase 13 complete
 
 ## Current Position
 
 Phase: 13 of 16 (MQTT Config Backend)
-Plan: 1 of 2
-Status: Active — Plan 01 complete
-Last activity: 2026-03-19 — Completed 13-01 (VenusConfig + parameterized venus_reader)
+Plan: 2 of 2
+Status: Phase 13 complete
+Last activity: 2026-03-19 — Completed 13-02 (Webapp de-hardcode + portal ID auto-discovery)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -49,6 +49,9 @@ Progress: [█████░░░░░] 50%
 - Override log collapsed by default with event count badge (12-01)
 - Empty venus host = not configured, proxy runs without MQTT (13-01)
 - CONNACK rejection raises ConnectionError with return code (13-01)
+- Portal ID discovery retries every 30s in while-True loop before main MQTT loop (13-02)
+- 503 status for unconfigured Venus OS handlers (graceful degradation) (13-02)
+- CONNACK validated in _mqtt_write_venus for consistency (13-02)
 
 ### Pending Todos
 
@@ -62,6 +65,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-19T17:47:40.535Z
-Stopped at: Completed 13-01-PLAN.md
+Last session: 2026-03-19T17:53:30Z
+Stopped at: Completed 13-02-PLAN.md
 Resume file: None
