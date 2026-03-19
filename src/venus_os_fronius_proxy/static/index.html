@@ -189,10 +189,6 @@
                 <label>DC PV Excess</label>
                 <label class="ve-toggle"><input type="checkbox" id="ess-dc-excess"><span class="ve-toggle-track"></span></label>
               </div>
-              <div class="ve-ess-row ve-ess-sub" id="ess-limit-row" style="display:none">
-                <label>Limit Feed-in</label>
-                <label class="ve-toggle"><input type="checkbox" id="ess-limit-feedin"><span class="ve-toggle-track"></span></label>
-              </div>
               <div class="ve-ess-row ve-ess-sub" id="ess-max-feedin-row" style="display:none">
               <label>Max Feed-in</label>
               <div class="ve-ess-value-control">
@@ -201,6 +197,14 @@
                 <select id="ess-feed-in" class="ve-ctrl-dropdown ve-ess-dropdown"></select>
               </div>
             </div>
+            </div>
+            <div class="ve-ess-row">
+              <label>Limit Inverter Power</label>
+              <label class="ve-toggle"><input type="checkbox" id="ess-limit-inverter"><span class="ve-toggle-track"></span></label>
+            </div>
+            <div class="ve-ess-row ve-ess-sub" id="ess-max-inverter-row" style="display:none">
+              <label>Max Inverter Power</label>
+              <select id="ess-max-inverter" class="ve-ctrl-dropdown ve-ess-dropdown"></select>
             </div>
             <div class="ve-ess-row">
               <label>Feed-in Limiting</label>

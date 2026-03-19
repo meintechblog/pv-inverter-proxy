@@ -67,9 +67,14 @@ async def read_venus_settings(host: str, port: int = 502) -> dict | None:
 
         client.close()
 
+        # Max inverter/discharge power (reg 2704, scale *10)
+        max_inverter_raw = s16(regs[4])  # 2704
+        max_inverter_w = max_inverter_raw * 10 if max_inverter_raw > 0 else -1
+
         return {
             "ac_setpoint_w": s16(regs[0]),          # 2700: Grid setpoint
             "max_feed_in_w": max_feed_in_w,          # 2706: Max feed-in setting
+            "max_inverter_w": max_inverter_w,         # 2704: Max inverter power
             "overvoltage_feed_in": bool(regs[7]),    # 2707: DC-coupled PV excess
             "prevent_feedback": bool(regs[8]),        # 2708: AC-coupled PV excess
             "grid_feed_in_w": grid_feed_in_w,        # Actual grid feed-in (positive = exporting)

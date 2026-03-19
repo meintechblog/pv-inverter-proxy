@@ -558,7 +558,7 @@ async def venus_write_handler(request: web.Request) -> web.Response:
     Body: {"register": 2706, "value": 100}
     Only allows known safe registers (ESS settings).
     """
-    ALLOWED_REGISTERS = {2706, 2707, 2708}  # MaxFeedIn, OvervoltageFeedIn, PreventFeedback
+    ALLOWED_REGISTERS = {2704, 2706, 2707, 2708}  # MaxDischargePower, MaxFeedIn, OvervoltageFeedIn, PreventFeedback
 
     try:
         body = await request.json()

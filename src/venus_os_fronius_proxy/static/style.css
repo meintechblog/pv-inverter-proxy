@@ -828,9 +828,7 @@ body {
     margin: 4px 0;
 }
 .ve-ess-sub {
-    padding-left: 1rem;
-    border-left: 2px solid var(--ve-blue-dim);
-    margin-left: 0.5rem;
+    padding-left: 1.5rem;
 }
 .ve-ess-value-control {
     display: flex;
