@@ -483,7 +483,7 @@ async def power_limit_handler(request: web.Request) -> web.Response:
                 status=400,
             )
 
-        raw_value = int(round(limit_pct * 100))  # SF=-2: 50% -> 5000
+        raw_value = int(round(limit_pct))  # SF=0: 50% -> 50
         error = validate_wmaxlimpct(raw_value)
         if error:
             return web.json_response(
