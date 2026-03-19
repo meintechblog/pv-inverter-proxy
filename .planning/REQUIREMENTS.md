@@ -17,8 +17,8 @@ Requirements for Setup & Onboarding milestone. Each maps to roadmap phases.
 ### Setup Flow
 
 - [ ] **SETUP-01**: Venus OS Auto-Config — Proxy erkennt eingehende Modbus-Verbindung und legt Venus OS Config-Eintrag mit Connection-Bobble an
-- [ ] **SETUP-02**: MQTT Setup Guide — Hinweis-Card wenn MQTT nicht verbunden mit Anleitung (Venus OS Remote Console → Settings → Services → MQTT on LAN)
-- [ ] **SETUP-03**: Dashboard MQTT-Gate — Lock Toggle, Override, Venus Settings ausgegraut mit Overlay-Hint bis MQTT connected
+- [x] **SETUP-02**: MQTT Setup Guide — Hinweis-Card wenn MQTT nicht verbunden mit Anleitung (Venus OS Remote Console → Settings → Services → MQTT on LAN)
+- [x] **SETUP-03**: Dashboard MQTT-Gate — Lock Toggle, Override, Venus Settings ausgegraut mit Overlay-Hint bis MQTT connected
 
 ### Install & Docs
 
@@ -52,8 +52,8 @@ Requirements for Setup & Onboarding milestone. Each maps to roadmap phases.
 | CFG-03 | Phase 13 | Complete |
 | CFG-04 | Phase 13 | Complete |
 | SETUP-01 | Phase 15 | Pending |
-| SETUP-02 | Phase 14 | Pending |
-| SETUP-03 | Phase 14 | Pending |
+| SETUP-02 | Phase 14 | Complete |
+| SETUP-03 | Phase 14 | Complete |
 | DOCS-01 | Phase 16 | Pending |
 | DOCS-02 | Phase 16 | Pending |
 
