@@ -251,6 +251,16 @@
 
       <!-- Config Page -->
       <div id="page-config" class="page">
+        <div id="venus-auto-detect-banner" class="ve-hint-card ve-hint-card--success" role="status" style="display:none">
+          <div class="ve-hint-header">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="flex-shrink:0">
+              <circle cx="10" cy="10" r="9" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <path d="M6 10.5l2.5 2.5 5.5-5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+            <h3>Venus OS Detected</h3>
+          </div>
+          <p>Venus OS is sending Modbus commands to this proxy. Enter the Venus OS IP address below and click Save &amp; Apply to enable MQTT monitoring and control.</p>
+        </div>
         <form id="config-form">
           <div class="ve-panel">
             <h2><span class="ve-dot ve-dot--dim" id="cfg-se-dot"></span> SolarEdge Inverter</h2>

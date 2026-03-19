@@ -155,6 +155,37 @@ function updateSetupGuide(snapshot) {
     }
 }
 
+function updateAutoDetectBanner(snapshot) {
+    var banner = document.getElementById('venus-auto-detect-banner');
+    if (!banner) return;
+    window._lastVenusDetected = snapshot.venus_os_detected;
+    var venusHost = document.getElementById('venus-host');
+    var hostConfigured = venusHost && venusHost.value.trim() !== '';
+    var shouldShow = snapshot.venus_os_detected && !hostConfigured;
+    if (shouldShow && banner.style.display === 'none') {
+        banner.style.display = '';
+        banner.classList.add('ve-card--entering');
+        setTimeout(function() { banner.classList.remove('ve-card--entering'); }, 300);
+    } else if (!shouldShow) {
+        banner.style.display = 'none';
+    }
+}
+
+// Hide auto-detect banner as soon as user types a Venus OS IP
+(function() {
+    var venusHostInput = document.getElementById('venus-host');
+    if (venusHostInput) {
+        venusHostInput.addEventListener('input', function() {
+            var banner = document.getElementById('venus-auto-detect-banner');
+            if (banner && this.value.trim() !== '') {
+                banner.style.display = 'none';
+            } else if (banner && this.value.trim() === '' && window._lastVenusDetected) {
+                banner.style.display = '';
+            }
+        });
+    }
+})();
+
 // ===== Snapshot Handler =====
 
 function handleSnapshot(data) {
@@ -217,6 +248,7 @@ function handleSnapshot(data) {
     updateMqttGate(data);
     updateConfigBobbles(data);
     updateSetupGuide(data);
+    updateAutoDetectBanner(data);
 
     previousSnapshot = data;
 

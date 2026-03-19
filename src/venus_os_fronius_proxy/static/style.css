@@ -1459,6 +1459,13 @@ body {
     font-size: 0.85em;
     color: var(--ve-text-dim);
 }
+.ve-hint-card--success {
+    background: rgba(114, 184, 76, 0.12);
+    border-color: rgba(114, 184, 76, 0.25);
+}
+.ve-hint-card--success .ve-hint-header {
+    color: var(--ve-green);
+}
 
 /* ===== Inline Dot in Panel Headings ===== */
 .ve-panel h2 .ve-dot,
