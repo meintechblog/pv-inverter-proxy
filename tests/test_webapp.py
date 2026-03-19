@@ -124,21 +124,22 @@ async def test_health_endpoint(client):
 
 
 async def test_config_get(client):
-    """GET /api/config returns JSON with host, port, unit_id."""
+    """GET /api/config returns nested inverter and venus sections."""
     resp = await client.get("/api/config")
     assert resp.status == 200
     data = await resp.json()
-    assert "host" in data
-    assert "port" in data
-    assert "unit_id" in data
+    assert "inverter" in data
+    assert "venus" in data
+    assert data["inverter"]["host"] == "192.168.3.18"
+    assert data["inverter"]["port"] == 1502
+    assert data["inverter"]["unit_id"] == 1
 
 
 async def test_config_save_valid(client):
-    """POST /api/config with valid JSON saves config and returns success."""
+    """POST /api/config with valid nested JSON saves config and returns success."""
     resp = await client.post("/api/config", json={
-        "host": "192.168.1.100",
-        "port": 1502,
-        "unit_id": 1,
+        "inverter": {"host": "192.168.1.100", "port": 1502, "unit_id": 1},
+        "venus": {"host": "", "port": 1883, "portal_id": ""},
     })
     assert resp.status == 200
     data = await resp.json()
@@ -146,11 +147,10 @@ async def test_config_save_valid(client):
 
 
 async def test_config_save_invalid_ip(client):
-    """POST /api/config with invalid IP returns 400."""
+    """POST /api/config with invalid inverter IP returns 400."""
     resp = await client.post("/api/config", json={
-        "host": "not-valid",
-        "port": 1502,
-        "unit_id": 1,
+        "inverter": {"host": "not-valid", "port": 1502, "unit_id": 1},
+        "venus": {"host": "", "port": 1883, "portal_id": ""},
     })
     assert resp.status == 400
     data = await resp.json()
@@ -364,6 +364,105 @@ async def test_venus_dbus_no_config(client):
     data = await resp.json()
     assert data["success"] is False
     assert "not configured" in data["error"].lower()
+
+
+# ---------- Venus config API tests (Phase 14) ----------
+
+
+async def test_config_get_returns_venus(client):
+    """GET /api/config returns venus section with default values."""
+    resp = await client.get("/api/config")
+    assert resp.status == 200
+    data = await resp.json()
+    assert "venus" in data
+    venus = data["venus"]
+    assert venus["host"] == ""
+    assert venus["port"] == 1883
+    assert venus["portal_id"] == ""
+
+
+async def test_config_get_venus_defaults(client):
+    """With default Config(), venus section has host='', port=1883, portal_id=''."""
+    resp = await client.get("/api/config")
+    data = await resp.json()
+    assert data["venus"] == {"host": "", "port": 1883, "portal_id": ""}
+
+
+async def test_config_save_venus(client):
+    """POST /api/config with venus fields saves them correctly."""
+    resp = await client.post("/api/config", json={
+        "inverter": {"host": "192.168.3.18", "port": 1502, "unit_id": 1},
+        "venus": {"host": "10.0.0.5", "port": 1883, "portal_id": ""},
+    })
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["success"] is True
+    assert client.app["config"].venus.host == "10.0.0.5"
+
+
+async def test_config_save_venus_hot_reload(client, shared_ctx):
+    """POST /api/config with changed venus host cancels old task and starts new one."""
+    # Create a mock old venus task
+    old_task = MagicMock()
+    old_task.done.return_value = False
+    shared_ctx["venus_task"] = old_task
+
+    with patch("venus_os_fronius_proxy.webapp.venus_mqtt_loop", new_callable=MagicMock) as mock_loop:
+        # Make venus_mqtt_loop return a coroutine
+        mock_coro = AsyncMock()
+        mock_loop.return_value = mock_coro()
+
+        resp = await client.post("/api/config", json={
+            "inverter": {"host": "192.168.3.18", "port": 1502, "unit_id": 1},
+            "venus": {"host": "10.0.0.5", "port": 1883, "portal_id": ""},
+        })
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["success"] is True
+
+        # Old task should have been cancelled
+        old_task.cancel.assert_called_once()
+
+        # New task should be created
+        assert "venus_task" in shared_ctx
+
+
+async def test_config_save_venus_empty_host_clears(client, shared_ctx):
+    """POST /api/config with venus.host='' clears MQTT state."""
+    # Set up existing venus state
+    old_task = MagicMock()
+    old_task.done.return_value = False
+    shared_ctx["venus_task"] = old_task
+    shared_ctx["venus_mqtt_connected"] = True
+
+    resp = await client.post("/api/config", json={
+        "inverter": {"host": "192.168.3.18", "port": 1502, "unit_id": 1},
+        "venus": {"host": "", "port": 1883, "portal_id": ""},
+    })
+    assert resp.status == 200
+    assert shared_ctx["venus_mqtt_connected"] is False
+    assert "venus_task" not in shared_ctx
+
+
+async def test_status_venus_mqtt_state(client, shared_ctx):
+    """GET /api/status returns real venus_mqtt_connected state."""
+    # Connected
+    shared_ctx["venus_mqtt_connected"] = True
+    resp = await client.get("/api/status")
+    data = await resp.json()
+    assert data["venus_os"] == "connected"
+
+    # Disconnected
+    shared_ctx["venus_mqtt_connected"] = False
+    resp = await client.get("/api/status")
+    data = await resp.json()
+    assert data["venus_os"] == "disconnected"
+
+    # Not configured (key missing)
+    del shared_ctx["venus_mqtt_connected"]
+    resp = await client.get("/api/status")
+    data = await resp.json()
+    assert data["venus_os"] == "not configured"
 
 
 def test_no_hardcoded_ips_webapp():
