@@ -920,11 +920,8 @@ function buildRegisterViewer(container, models) {
 
         const header = document.createElement('div');
         header.className = 've-model-header';
-        var docUrl = SUNSPEC_DOCS[model.name];
-        var docLink = docUrl ? ' <a href="' + docUrl + '" target="_blank" rel="noopener" class="ve-doc-link" title="SunSpec Specification">&#128196;</a>' : '';
-        header.innerHTML = '<span>' + model.name + docLink + '</span><span>&#9660;</span>';
+        header.innerHTML = '<span>' + model.name + '</span><span>&#9660;</span>';
         header.addEventListener('click', (e) => {
-            if (e.target.closest('.ve-doc-link')) return; // Don't toggle on doc link click
             const fields = group.querySelector('.ve-model-fields');
             fields.classList.toggle('collapsed');
             header.querySelector('span:last-child').textContent =
