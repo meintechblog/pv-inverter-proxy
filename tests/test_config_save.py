@@ -102,6 +102,60 @@ def test_inverter_plugin_reconfigure_is_abstract():
     assert "reconfigure" in InverterPlugin.__abstractmethods__
 
 
+def test_save_config_venus_roundtrip(tmp_path: Path):
+    """save_config roundtrip preserves venus section."""
+    from venus_os_fronius_proxy.config import Config, VenusConfig, load_config, save_config
+
+    original = Config()
+    original.venus.host = "192.168.3.146"
+    original.venus.port = 1884
+    original.venus.portal_id = "abc123"
+
+    config_path = str(tmp_path / "config.yaml")
+    save_config(config_path, original)
+
+    reloaded = load_config(config_path)
+    assert reloaded.venus.host == "192.168.3.146"
+    assert reloaded.venus.port == 1884
+    assert reloaded.venus.portal_id == "abc123"
+
+
+def test_validate_venus_valid():
+    """validate_venus_config returns None for valid input."""
+    from venus_os_fronius_proxy.config import validate_venus_config
+
+    assert validate_venus_config("192.168.3.146", 1883) is None
+
+
+def test_validate_venus_empty_host():
+    """validate_venus_config returns None for empty host (not configured)."""
+    from venus_os_fronius_proxy.config import validate_venus_config
+
+    assert validate_venus_config("", 1883) is None
+
+
+def test_validate_venus_bad_ip():
+    """validate_venus_config returns error for invalid IP."""
+    from venus_os_fronius_proxy.config import validate_venus_config
+
+    result = validate_venus_config("not-an-ip", 1883)
+    assert result is not None
+    assert "Invalid IP" in result
+
+
+def test_validate_venus_bad_port():
+    """validate_venus_config returns error for port out of range."""
+    from venus_os_fronius_proxy.config import validate_venus_config
+
+    result_low = validate_venus_config("192.168.3.146", 0)
+    assert result_low is not None
+    assert "Port" in result_low
+
+    result_high = validate_venus_config("192.168.3.146", 70000)
+    assert result_high is not None
+    assert "Port" in result_high
+
+
 @pytest.mark.asyncio
 async def test_solaredge_reconfigure():
     """SolarEdgePlugin.reconfigure calls close and updates attributes."""

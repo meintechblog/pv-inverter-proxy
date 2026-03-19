@@ -59,3 +59,43 @@ def test_load_config_night_mode(tmp_path: Path):
     cfg = load_config(str(cfg_file))
 
     assert cfg.night_mode.threshold_seconds == 600.0
+
+
+def test_venus_config_defaults():
+    """VenusConfig() has host="", port=1883, portal_id=""."""
+    from venus_os_fronius_proxy.config import VenusConfig
+
+    vc = VenusConfig()
+    assert vc.host == ""
+    assert vc.port == 1883
+    assert vc.portal_id == ""
+
+
+def test_load_config_venus_section(tmp_path: Path):
+    """load_config with venus section in YAML populates VenusConfig fields."""
+    from venus_os_fronius_proxy.config import load_config
+
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text(
+        'venus:\n  host: "10.0.0.1"\n  port: 1884\n  portal_id: "abc123"\n'
+    )
+
+    cfg = load_config(str(cfg_file))
+
+    assert cfg.venus.host == "10.0.0.1"
+    assert cfg.venus.port == 1884
+    assert cfg.venus.portal_id == "abc123"
+
+
+def test_load_config_missing_venus(tmp_path: Path):
+    """load_config without venus section uses VenusConfig defaults (no crash)."""
+    from venus_os_fronius_proxy.config import load_config
+
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text('inverter:\n  host: "10.0.0.1"\n')
+
+    cfg = load_config(str(cfg_file))
+
+    assert cfg.venus.host == ""
+    assert cfg.venus.port == 1883
+    assert cfg.venus.portal_id == ""
