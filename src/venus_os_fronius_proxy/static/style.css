@@ -424,15 +424,17 @@ body {
     user-select: none;
 }
 .ve-toggle-label input { display: none; }
-.ve-toggle-track {
+.ve-toggle-label .ve-switch {
     position: relative;
+    display: inline-block;
     width: 36px;
     height: 20px;
     background: rgba(100, 99, 95, 0.4);
     border-radius: 10px;
     transition: background 0.2s;
+    flex-shrink: 0;
 }
-.ve-toggle-thumb {
+.ve-toggle-label .ve-switch-knob {
     position: absolute;
     top: 2px;
     left: 2px;
@@ -442,10 +444,10 @@ body {
     border-radius: 50%;
     transition: transform 0.2s, background 0.2s;
 }
-.ve-toggle-label input:checked + .ve-toggle-track {
-    background: var(--ve-accent);
+.ve-toggle-label input:checked ~ .ve-switch {
+    background: #72B84C;
 }
-.ve-toggle-label input:checked + .ve-toggle-track .ve-toggle-thumb {
+.ve-toggle-label input:checked ~ .ve-switch .ve-switch-knob {
     transform: translateX(16px);
     background: #fff;
 }
