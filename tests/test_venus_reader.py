@@ -79,3 +79,53 @@ def test_no_hardcoded_ips():
     source = inspect.getsource(vr)
     assert "192.168.3.146" not in source, "Hardcoded VENUS_HOST IP found"
     assert "88a29ec1e5f4" not in source, "Hardcoded PORTAL_ID found"
+
+
+@pytest.mark.asyncio
+async def test_discover_portal_id_success():
+    """discover_portal_id returns portal ID extracted from MQTT topic."""
+    import struct
+    from venus_os_fronius_proxy.venus_reader import discover_portal_id
+
+    # Build a fake PUBLISH packet: topic = "N/abc123/system/0/Serial", payload = {"value": "abc123"}
+    topic = b"N/abc123/system/0/Serial"
+    payload = b'{"value": "abc123"}'
+    topic_len = struct.pack("!H", len(topic))
+    rem_len = 2 + len(topic) + len(payload)
+    publish_packet = bytes([0x30, rem_len]) + topic_len + topic + payload
+
+    mock_sock = MagicMock()
+    # recv sequence: first call returns PUBLISH packet
+    mock_sock.recv.return_value = publish_packet
+
+    with patch("venus_os_fronius_proxy.venus_reader._mqtt_connect", return_value=mock_sock):
+        result = await discover_portal_id("10.0.0.1", 1883, timeout=2.0)
+
+    assert result == "abc123"
+    mock_sock.close.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_discover_portal_id_timeout():
+    """discover_portal_id returns None when socket times out."""
+    import socket as socket_mod
+    from venus_os_fronius_proxy.venus_reader import discover_portal_id
+
+    mock_sock = MagicMock()
+    mock_sock.recv.side_effect = socket_mod.timeout("timed out")
+
+    with patch("venus_os_fronius_proxy.venus_reader._mqtt_connect", return_value=mock_sock):
+        result = await discover_portal_id("10.0.0.1", 1883, timeout=1.0)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_discover_portal_id_connection_error():
+    """discover_portal_id returns None when connection fails."""
+    from venus_os_fronius_proxy.venus_reader import discover_portal_id
+
+    with patch("venus_os_fronius_proxy.venus_reader._mqtt_connect", side_effect=ConnectionError("refused")):
+        result = await discover_portal_id("10.0.0.1", 1883, timeout=1.0)
+
+    assert result is None

@@ -10,7 +10,7 @@ from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 
 from pymodbus.datastore import ModbusSequentialDataBlock
 
-from venus_os_fronius_proxy.config import Config, InverterConfig, WebappConfig
+from venus_os_fronius_proxy.config import Config, InverterConfig, VenusConfig, WebappConfig
 from venus_os_fronius_proxy.connection import ConnectionManager, ConnectionState
 from venus_os_fronius_proxy.control import ControlState, OverrideLog
 from venus_os_fronius_proxy.plugin import WriteResult
@@ -336,3 +336,41 @@ async def test_venus_lock_endpoint_invalid_json(client):
         headers={"Content-Type": "application/json"},
     )
     assert resp.status == 400
+
+
+# ---------- Venus config de-hardcode tests (Phase 13) ----------
+
+
+async def test_venus_write_no_config(client):
+    """POST /api/venus-write returns 503 when venus.host is empty."""
+    # Default Config() has venus.host = ""
+    resp = await client.post("/api/venus-write", json={
+        "register": 2706,
+        "value": 100,
+    })
+    assert resp.status == 503
+    data = await resp.json()
+    assert data["success"] is False
+    assert "not configured" in data["error"].lower()
+
+
+async def test_venus_dbus_no_config(client):
+    """POST /api/venus-dbus returns 503 when venus host/portal_id empty."""
+    resp = await client.post("/api/venus-dbus", json={
+        "path": "/Settings/CGwacs/MaxFeedInPower",
+        "value": 5000,
+    })
+    assert resp.status == 503
+    data = await resp.json()
+    assert data["success"] is False
+    assert "not configured" in data["error"].lower()
+
+
+def test_no_hardcoded_ips_webapp():
+    """webapp.py contains no hardcoded Venus OS IPs or portal IDs."""
+    import inspect
+    import venus_os_fronius_proxy.webapp as wa
+
+    source = inspect.getsource(wa)
+    assert "192.168.3.146" not in source, "Hardcoded VENUS_HOST IP in webapp.py"
+    assert "88a29ec1e5f4" not in source, "Hardcoded PORTAL_ID in webapp.py"
