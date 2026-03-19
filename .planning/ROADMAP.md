@@ -65,11 +65,11 @@ Full details: `.planning/milestones/v2.1-ROADMAP.md`
   2. If Portal ID is left blank, the proxy auto-discovers it via MQTT wildcard subscription and logs the discovered value
   3. MQTT connection failures are detected and reported accurately (no silent false-positive connections)
   4. All five previously hardcoded Venus OS IP/portal ID references in the codebase are eliminated
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 13-01: TBD
-- [ ] 13-02: TBD
+- [ ] 13-01-PLAN.md — VenusConfig dataclass + parameterize venus_reader + CONNACK fix
+- [ ] 13-02-PLAN.md — De-hardcode webapp + portal ID auto-discovery + dashboard wiring
 
 ### Phase 14: Config Page & Dashboard UX
 **Goal**: Users can configure the proxy through the web UI and see live connection status for all components
@@ -133,7 +133,7 @@ Phases execute in numeric order: 13 -> 14 -> 15 -> 16
 | 10. Peak Statistics & Smart Notifications | v2.1 | 2/2 | Complete | 2026-03-18 |
 | 11. Venus OS Widget & Lock Toggle | v2.1 | 2/2 | Complete | 2026-03-18 |
 | 12. Unified Dashboard Layout | v2.1 | 1/1 | Complete | 2026-03-18 |
-| 13. MQTT Config Backend | v3.0 | 0/? | Not started | - |
+| 13. MQTT Config Backend | v3.0 | 0/2 | Not started | - |
 | 14. Config Page & Dashboard UX | v3.0 | 0/? | Not started | - |
 | 15. Venus OS Auto-Detect | v3.0 | 0/? | Not started | - |
 | 16. Install Script & README | v3.0 | 0/? | Not started | - |
