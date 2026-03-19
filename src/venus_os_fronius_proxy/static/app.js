@@ -1128,7 +1128,11 @@ function updateVenusInfo(snapshot) {
     }
 
     // Venus OS toggle: checked = allowed, unchecked = blocked (inverted from lock)
-    toggle.checked = !venus.is_locked;
+    // Skip update if user just changed it (debounce)
+    var now = Date.now();
+    if ((now - (toggle._userChangedAt || 0)) > 8000) {
+        toggle.checked = !venus.is_locked;
+    }
     toggle.disabled = false;
 
     // Countdown
@@ -1184,6 +1188,7 @@ function stopCountdownInterval() {
     var isCurrentlyLocked = false;
 
     toggle.addEventListener('change', function() {
+        toggle._userChangedAt = Date.now();
         var wantAllow = toggle.checked;
         if (!wantAllow) {
             // First disable = 15 min. If already disabled (toggle again within 5s) = permanent
