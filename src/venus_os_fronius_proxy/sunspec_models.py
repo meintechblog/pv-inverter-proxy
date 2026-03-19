@@ -106,13 +106,13 @@ def build_initial_registers() -> list[int]:
     # [151] Conn_WinTms = 0
     # [152] Conn_RvrtTms = 0
     # [153] Conn = 0
-    # [154] WMaxLimPct = 10000 (= 100.00% with SF -2)
-    regs[154] = 10000
+    # [154] WMaxLimPct = 100 (= 100% with SF 0)
+    regs[154] = 100
     # [155] WMaxLimPct_WinTms = 0
     # [156] WMaxLimPct_RvrtTms = 0
     # [157] WMaxLimPct_RmpTms = 0
-    # [158] WMaxLimPct_SF = -2
-    regs[158] = _int16_as_uint16(-2)
+    # [158] WMaxLimPct_SF = 0 (Venus OS legacy limiter writes plain integer %)
+    regs[158] = 0
     # [159] WMaxLim_Ena = 0 (Venus OS sets this when it wants to control)
 
     # End Marker (40175-40176)
