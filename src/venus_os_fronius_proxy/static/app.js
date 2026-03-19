@@ -883,7 +883,7 @@ function populatePowerDropdown(maxKw) {
     if (!dropdown) return;
     var currentVal = dropdown.value;
     dropdown.innerHTML = '<option value="off">Off</option>';
-    for (var kw = 1; kw <= maxKw; kw++) {
+    for (var kw = maxKw; kw >= 1; kw--) {
         var opt = document.createElement('option');
         opt.value = kw;
         opt.textContent = kw + ' kW';
@@ -949,46 +949,24 @@ function updatePowerControl(data) {
 
     var dot = document.getElementById('ctrl-dot');
     var label = document.getElementById('ctrl-label');
-    var sourceBrief = document.getElementById('ctrl-source-brief');
     var dropdown = document.getElementById('ctrl-dropdown');
-    var revertDiv = document.getElementById('ctrl-revert');
-    var revertTime = document.getElementById('ctrl-revert-time');
-    var banner = document.getElementById('ctrl-override-banner');
 
-    // Status dot and label
+    // Status dot and label (inside gauge card)
     var source = ctrl.last_source || 'none';
     var enabled = ctrl.enabled;
+    var limitKw = (ctrl.limit_pct / 100 * RATED_KW).toFixed(0);
     if (source === 'venus_os') {
         if (dot) dot.className = 've-dot ve-dot--err';
-        if (label) label.textContent = 'Venus OS override';
-    } else if (enabled) {
-        var limitKw = (ctrl.limit_pct / 100 * RATED_KW).toFixed(0);
+        if (label) label.textContent = 'Venus OS: ' + limitKw + ' kW';
+    } else if (enabled && source === 'webapp') {
         if (dot) dot.className = 've-dot ve-dot--warn';
-        if (label) label.textContent = 'Limited to ' + limitKw + ' kW';
+        if (label) label.textContent = 'Manual: ' + limitKw + ' kW';
     } else {
         if (dot) dot.className = 've-dot ve-dot--ok';
         if (label) label.textContent = 'No limit';
     }
 
-    // Source brief
-    var isVenusOverride = source === 'venus_os';
-    if (sourceBrief) {
-        if (source === 'venus_os') {
-            sourceBrief.textContent = '(' + ctrl.limit_pct.toFixed(0) + '%)';
-        } else if (enabled && source === 'webapp') {
-            sourceBrief.textContent = '';
-        } else {
-            sourceBrief.textContent = '';
-        }
-    }
-
-    // Disable dropdown when Venus OS controls
-    if (dropdown) dropdown.disabled = isVenusOverride;
-
-    // Venus OS override banner
-    if (banner) {
-        banner.style.display = isVenusOverride ? 'block' : 'none';
-    }
+    // Dropdown always enabled — manual limit is additive (min of webapp + venus wins)
 
     // Revert countdown
     if (revertDiv && revertTime) {

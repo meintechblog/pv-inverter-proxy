@@ -704,10 +704,10 @@ body {
     margin-bottom: 1rem;
 }
 
-/* Row 2: Power Control + Connection + Venus OS */
-.ve-dashboard-row2 {
+/* Row 2: Connection + Venus OS */
+.ve-dashboard-info-row {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
     margin-bottom: 1rem;
 }
@@ -761,7 +761,19 @@ body {
     width: 30px;
 }
 
-/* Power Control card */
+/* Power limit inline in gauge card */
+.ve-gauge-limit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--ve-border);
+    font-size: 0.85em;
+}
+
+/* Power Control card (legacy, kept for CSS) */
 .ve-power-control-inline {
     display: flex;
     flex-direction: column;
@@ -974,7 +986,7 @@ body {
     .ve-dashboard-top {
         grid-template-columns: 1fr;
     }
-    .ve-dashboard-row2 {
+    .ve-dashboard-info-row {
         grid-template-columns: 1fr;
     }
     .ve-dashboard-row3 {

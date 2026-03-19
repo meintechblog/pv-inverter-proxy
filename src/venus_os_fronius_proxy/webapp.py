@@ -467,14 +467,7 @@ async def power_limit_handler(request: web.Request) -> web.Response:
     plugin = request.app["plugin"]
     override_log = shared_ctx.get("override_log")
 
-    # Venus OS priority check
-    if control.last_source == "venus_os":
-        age = time.time() - control.last_change_ts
-        if age < 60:
-            return web.json_response(
-                {"success": False, "error": "Venus OS is currently controlling power limit"},
-                status=409,
-            )
+    # No Venus OS priority block — manual limit is additive (min of webapp + venus wins)
 
     if action == "set":
         try:

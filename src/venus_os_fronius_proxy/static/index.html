@@ -99,6 +99,13 @@
               <span class="ve-daily-energy-value ve-live-value" id="daily-energy">0.0</span>
               <span class="ve-daily-energy-unit">kWh today</span>
             </div>
+            <div class="ve-gauge-limit">
+              <span class="ve-dot" id="ctrl-dot"></span>
+              <span id="ctrl-label" class="ve-text-dim">No limit</span>
+              <select id="ctrl-dropdown" class="ve-ctrl-dropdown">
+                <option value="off" selected>Off</option>
+              </select>
+            </div>
           </div>
 
           <div class="ve-card ve-phases-card">
@@ -131,36 +138,8 @@
           </div>
         </div>
 
-        <!-- Row 2: Power Control + Connection + Venus OS (3-col) -->
-        <div class="ve-dashboard-row2">
-          <div class="ve-card ve-power-control-inline" id="power-control-inline">
-            <h2 class="ve-card-title">Power Control</h2>
-            <div id="ctrl-override-banner" class="ve-ctrl-override-banner" style="display:none">
-              Venus OS has control
-            </div>
-            <div class="ve-ctrl-status-line">
-              <span class="ve-dot" id="ctrl-dot"></span>
-              <span id="ctrl-label">No limit active</span>
-              <span id="ctrl-source-brief"></span>
-            </div>
-            <div class="ve-ctrl-actions" id="ctrl-action-group">
-              <label>Limit</label>
-              <select id="ctrl-dropdown" class="ve-ctrl-dropdown">
-                <option value="off" selected>Off</option>
-              </select>
-            </div>
-            <div id="ctrl-revert" class="ve-ctrl-revert" style="display:none">
-              Auto-revert in: <span id="ctrl-revert-time">5:00</span>
-            </div>
-            <div class="ve-override-log-section">
-              <button class="ve-override-log-toggle" id="override-log-toggle">
-                Override Log (<span id="override-log-count">0</span>)
-              </button>
-              <div id="override-log" class="ve-override-log ve-override-log--collapsed">
-                <div class="ve-text-dim">No events yet</div>
-              </div>
-            </div>
-          </div>
+        <!-- Row 2: Connection + Venus OS (2-col) -->
+        <div class="ve-dashboard-info-row">
           <div class="ve-card" id="status-panel">
             <h2 class="ve-card-title">Connection</h2>
             <div class="ve-status-row">
