@@ -47,21 +47,21 @@ Requirements for Setup & Onboarding milestone. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CFG-01 | — | Pending |
-| CFG-02 | — | Pending |
-| CFG-03 | — | Pending |
-| CFG-04 | — | Pending |
-| SETUP-01 | — | Pending |
-| SETUP-02 | — | Pending |
-| SETUP-03 | — | Pending |
-| DOCS-01 | — | Pending |
-| DOCS-02 | — | Pending |
+| CFG-01 | Phase 14 | Pending |
+| CFG-02 | Phase 14 | Pending |
+| CFG-03 | Phase 13 | Pending |
+| CFG-04 | Phase 13 | Pending |
+| SETUP-01 | Phase 15 | Pending |
+| SETUP-02 | Phase 14 | Pending |
+| SETUP-03 | Phase 14 | Pending |
+| DOCS-01 | Phase 16 | Pending |
+| DOCS-02 | Phase 16 | Pending |
 
 **Coverage:**
 - v3.0 requirements: 9 total
-- Mapped to phases: 0
-- Unmapped: 9 ⚠️
+- Mapped to phases: 9
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-19*
-*Last updated: 2026-03-19 after initial definition*
+*Last updated: 2026-03-19 after roadmap creation*
