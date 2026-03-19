@@ -1270,26 +1270,45 @@ function formatKw(watts) {
 
 function updateVenusESS(snapshot) {
     var vs = snapshot.venus_settings;
+    if (!vs) return;
+
     var acToggle = document.getElementById('ess-ac-excess');
+    var dcToggle = document.getElementById('ess-dc-excess');
+    var limitToggle = document.getElementById('ess-limit-feedin');
+    var limitRow = document.getElementById('ess-limit-row');
+    var maxRow = document.getElementById('ess-max-feedin-row');
     var feedInDD = document.getElementById('ess-feed-in');
     var feedInActual = document.getElementById('ess-feed-in-actual');
     var limiterEl = document.getElementById('ess-limiter-value');
 
     populateESSFeedIn();
 
-    if (!vs) return;
-
     var now = Date.now();
+    function notCooling(el) { return (now - (el._userChangedAt || 0)) > 5000; }
 
-    // 1. AC PV Excess Feed-in (PreventFeedback: 0=allow, inverted for UI)
-    if (acToggle && (now - (acToggle._userChangedAt || 0)) > 5000) {
-        acToggle.checked = !vs.prevent_feedback;
-    }
+    // 1. AC PV Excess (PreventFeedback: 0=allow, inverted)
+    var acOn = !vs.prevent_feedback;
+    if (acToggle && notCooling(acToggle)) acToggle.checked = acOn;
 
-    // 2. Feed-in actual (current grid export)
+    // 2. DC PV Excess (OvervoltageFeedIn: 1=feed)
+    var dcOn = vs.overvoltage_feed_in;
+    if (dcToggle && notCooling(dcToggle)) dcToggle.checked = dcOn;
+
+    // 3. Show "Limit Feed-in" when AC OR DC is on
+    var excessActive = acOn || dcOn;
+    if (limitRow) limitRow.style.display = excessActive ? '' : 'none';
+
+    // 4. Limit Feed-in toggle (MaxFeedInPower >= 0 and < 30000 = limited)
+    var feedInLimited = vs.max_feed_in_w >= 0 && vs.max_feed_in_w < 30000;
+    if (limitToggle && notCooling(limitToggle)) limitToggle.checked = feedInLimited;
+
+    // 5. Show Max Feed-in dropdown when limit is active
+    if (maxRow) maxRow.style.display = (excessActive && feedInLimited) ? '' : 'none';
+
+    // 6. Feed-in actual (current grid export)
     if (feedInActual) {
         feedInActual.textContent = formatKw(vs.grid_feed_in_w);
-        if (vs.max_feed_in_w > 0 && vs.grid_feed_in_w > vs.max_feed_in_w) {
+        if (feedInLimited && vs.grid_feed_in_w > vs.max_feed_in_w) {
             feedInActual.style.color = 'var(--ve-red)';
         } else if (vs.grid_feed_in_w > 0) {
             feedInActual.style.color = 'var(--ve-green)';
@@ -1298,13 +1317,13 @@ function updateVenusESS(snapshot) {
         }
     }
 
-    // 3. Feed-in dropdown (target value)
-    if (feedInDD && !feedInDD.matches(':focus') && vs.max_feed_in_w > 0) {
+    // 7. Feed-in dropdown (target value)
+    if (feedInDD && !feedInDD.matches(':focus') && feedInLimited) {
         var closest = Math.round(vs.max_feed_in_w / 1000) * 1000;
         feedInDD.value = closest;
     }
 
-    // 6. Feed-in Limiting status (read-only)
+    // 8. Feed-in Limiting status
     if (limiterEl) {
         if (vs.limiter_active) {
             limiterEl.textContent = 'Active';
@@ -1334,13 +1353,34 @@ async function writeESSSetting(register, value) {
 
 (function() {
     var acToggle = document.getElementById('ess-ac-excess');
+    var dcToggle = document.getElementById('ess-dc-excess');
+    var limitToggle = document.getElementById('ess-limit-feedin');
     var feedInDD = document.getElementById('ess-feed-in');
 
-    // AC PV Excess (PreventFeedback: inverted)
+    // AC PV Excess (PreventFeedback: inverted — 0=allow, 1=block)
     if (acToggle) acToggle.addEventListener('change', function() {
         acToggle._userChangedAt = Date.now();
         writeESSSetting(2708, acToggle.checked ? 0 : 1);
-        showToast('AC PV Excess: ' + (acToggle.checked ? 'Allowed' : 'Blocked'), 'success');
+        showToast('AC PV Excess: ' + (acToggle.checked ? 'On' : 'Off'), 'success');
+    });
+
+    // DC PV Excess (OvervoltageFeedIn: 1=feed, 0=don't)
+    if (dcToggle) dcToggle.addEventListener('change', function() {
+        dcToggle._userChangedAt = Date.now();
+        writeESSSetting(2707, dcToggle.checked ? 1 : 0);
+        showToast('DC PV Excess: ' + (dcToggle.checked ? 'On' : 'Off'), 'success');
+    });
+
+    // Limit Feed-in toggle
+    if (limitToggle) limitToggle.addEventListener('change', function() {
+        limitToggle._userChangedAt = Date.now();
+        if (limitToggle.checked) {
+            writeESSSetting(2706, 100);  // Default 10 kW
+            showToast('Feed-in limit: 10 kW', 'success');
+        } else {
+            writeESSSetting(2706, 300);  // 30 kW = effectively off
+            showToast('Feed-in limit: Off', 'success');
+        }
     });
 
     // Max Feed-in value dropdown

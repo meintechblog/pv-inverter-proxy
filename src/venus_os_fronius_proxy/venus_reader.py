@@ -70,8 +70,9 @@ async def read_venus_settings(host: str, port: int = 502) -> dict | None:
         return {
             "ac_setpoint_w": s16(regs[0]),          # 2700: Grid setpoint
             "max_feed_in_w": max_feed_in_w,          # 2706: Max feed-in setting
-            "grid_feed_in_w": grid_feed_in_w,        # Actual grid feed-in (positive = exporting)
+            "overvoltage_feed_in": bool(regs[7]),    # 2707: DC-coupled PV excess
             "prevent_feedback": bool(regs[8]),        # 2708: AC-coupled PV excess
+            "grid_feed_in_w": grid_feed_in_w,        # Actual grid feed-in (positive = exporting)
             "limiter_active": bool(regs[9]),          # 2709: PV power limiter active
             "pv_limit_w": pv_limit_w,                 # Current PV power limit in W
             "ts": time.time(),
