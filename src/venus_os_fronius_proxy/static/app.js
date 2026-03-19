@@ -1282,7 +1282,7 @@ function updateVenusESS(snapshot) {
     populateESSFeedIn();
 
     var now = Date.now();
-    function notCooling(el) { return (now - (el._userChangedAt || 0)) > 5000; }
+    function notCooling(el) { return (now - (el._userChangedAt || 0)) > 8000; }
 
     // 1. AC PV Excess (PreventFeedback: 0=allow, inverted)
     var acOn = !vs.prevent_feedback;
