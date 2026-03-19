@@ -334,8 +334,8 @@ body {
     animation: ve-fade-in 0.2s ease;
 }
 .ve-btn--save {
-    background: #72B84C;
-    color: #fff;
+    background: var(--ve-green);
+    color: var(--ve-text);
     border: none;
     cursor: pointer;
     font-weight: 600;
@@ -351,8 +351,8 @@ body {
     transition: color 0.15s, border-color 0.15s;
 }
 .ve-btn--cancel:hover {
-    color: #F35C58;
-    border-color: #F35C58;
+    color: var(--ve-red);
+    border-color: var(--ve-red);
 }
 @keyframes ve-fade-in {
     from { opacity: 0; transform: translateY(-4px); }
@@ -510,7 +510,7 @@ body {
     transition: transform 0.2s, background 0.2s;
 }
 .ve-toggle-label input:checked ~ .ve-switch {
-    background: #72B84C;
+    background: var(--ve-green);
 }
 .ve-toggle-label input:checked ~ .ve-switch .ve-switch-knob {
     transform: translateX(16px);

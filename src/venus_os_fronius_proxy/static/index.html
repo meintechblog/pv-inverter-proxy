@@ -12,22 +12,23 @@
     <nav class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <svg class="sidebar-logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <!-- Sun -->
-          <circle cx="10" cy="6" r="3" fill="#F0962E"/>
-          <line x1="10" y1="1" x2="10" y2="0" stroke="#F0962E" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="14" y1="3" x2="15.5" y2="1.5" stroke="#F0962E" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="6" y1="3" x2="4.5" y2="1.5" stroke="#F0962E" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="15" y1="6" x2="16.5" y2="6" stroke="#F0962E" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="5" y1="6" x2="3.5" y2="6" stroke="#F0962E" stroke-width="1.5" stroke-linecap="round"/>
-          <!-- Arrow down (DC) -->
-          <line x1="10" y1="10" x2="10" y2="16" stroke="#F0962E" stroke-width="1.5"/>
-          <polyline points="7,14 10,17 13,14" stroke="#F0962E" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          <!-- Inverter box -->
-          <rect x="3" y="18" width="26" height="12" rx="2" stroke="#387DC5" stroke-width="2" fill="none"/>
-          <text x="16" y="27" text-anchor="middle" fill="#387DC5" font-size="8" font-weight="700" font-family="sans-serif">AC</text>
-          <!-- Arrow right (to grid) -->
-          <line x1="22" y1="12" x2="28" y2="12" stroke="#387DC5" stroke-width="1.5"/>
-          <polyline points="26,10 29,12 26,14" stroke="#387DC5" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Sun with glow -->
+          <circle cx="16" cy="8" r="4" fill="#F0962E"/>
+          <circle cx="16" cy="8" r="6" fill="none" stroke="#F0962E" stroke-width="0.5" opacity="0.4"/>
+          <!-- Sun rays -->
+          <line x1="16" y1="0.5" x2="16" y2="1.5" stroke="#F0962E" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="21.5" y1="2.5" x2="20.8" y2="3.2" stroke="#F0962E" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="10.5" y1="2.5" x2="11.2" y2="3.2" stroke="#F0962E" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="24" y1="8" x2="23" y2="8" stroke="#F0962E" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="8" y1="8" x2="9" y2="8" stroke="#F0962E" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="21.5" y1="13.5" x2="20.8" y2="12.8" stroke="#F0962E" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="10.5" y1="13.5" x2="11.2" y2="12.8" stroke="#F0962E" stroke-width="1.2" stroke-linecap="round"/>
+          <!-- Inverter body -->
+          <rect x="4" y="18" width="24" height="11" rx="2.5" fill="rgba(56, 125, 197, 0.15)" stroke="#387DC5" stroke-width="1.5"/>
+          <!-- Sine wave inside inverter -->
+          <path d="M8 23.5 Q11 20, 14 23.5 Q17 27, 20 23.5 Q23 20, 24 23.5" stroke="#387DC5" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+          <!-- Connection line sun to inverter -->
+          <line x1="16" y1="14.5" x2="16" y2="18" stroke="rgba(240, 150, 46, 0.35)" stroke-width="1" stroke-dasharray="1.5 1.5"/>
         </svg>
         <span class="sidebar-title">PV Inverter Proxy</span>
       </div>
