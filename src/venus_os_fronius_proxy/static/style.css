@@ -314,6 +314,20 @@ body {
     box-shadow: 0 0 0 2px rgba(56, 125, 197, 0.25);
 }
 
+/* Config page grid */
+.ve-config-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+.ve-config-grid .ve-panel {
+    margin-bottom: 0;
+}
+.ve-config-grid .ve-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
 .ve-form-group {
     margin: 10px 0;
 }
@@ -1146,6 +1160,9 @@ body {
 }
 
 @media (max-width: 480px) {
+    .ve-config-grid {
+        grid-template-columns: 1fr;
+    }
     .ve-dashboard-grid,
 .ve-dashboard-top {
         grid-template-columns: 1fr;
