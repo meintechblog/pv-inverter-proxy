@@ -30,10 +30,6 @@
           <polyline points="26,10 29,12 26,14" stroke="#387DC5" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <span class="sidebar-title">PV Inverter Proxy</span>
-        <div class="sidebar-dots">
-          <span class="ve-dot" id="se-dot" title="SolarEdge"></span>
-          <span class="ve-dot" id="vos-dot" title="Venus OS"></span>
-        </div>
       </div>
 
       <a class="nav-item active" data-page="dashboard">
@@ -185,20 +181,20 @@
           <div class="ve-card" id="venus-ess-panel">
             <h2 class="ve-card-title">Venus OS ESS</h2>
             <div class="ve-ess-row">
-              <label>Max Feed-in</label>
-              <select id="ess-feed-in" class="ve-ctrl-dropdown ve-ess-dropdown"></select>
+              <label>Grid Feed-in Limit</label>
+              <div class="ve-ess-value-control">
+                <span class="ve-live-value ve-ess-actual" id="ess-feed-in-actual">--</span>
+                <span class="ve-text-dim">/</span>
+                <select id="ess-feed-in" class="ve-ctrl-dropdown ve-ess-dropdown"></select>
+              </div>
             </div>
             <div class="ve-ess-row">
-              <label>DC-coupled PV Excess</label>
-              <label class="ve-toggle"><input type="checkbox" id="ess-overvoltage"><span class="ve-toggle-track"></span></label>
-            </div>
-            <div class="ve-ess-row">
-              <label>AC-coupled PV Excess</label>
+              <label>AC PV Excess → Grid</label>
               <label class="ve-toggle"><input type="checkbox" id="ess-ac-excess"><span class="ve-toggle-track"></span></label>
             </div>
             <div class="ve-ess-row">
               <label>PV Limiter</label>
-              <span class="ve-live-value" id="ess-limiter-active">--</span>
+              <span class="ve-live-value" id="ess-limiter-value">--</span>
             </div>
           </div>
           <div class="ve-card" id="peak-stats-panel">

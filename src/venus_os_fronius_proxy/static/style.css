@@ -820,7 +820,15 @@ body {
 }
 .ve-ess-dropdown {
     width: auto;
-    min-width: 90px;
+    min-width: 80px;
+}
+.ve-ess-value-control {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.ve-ess-actual {
+    font-size: 0.9em;
 }
 .ve-lock-timer {
     font-family: var(--ve-mono);
