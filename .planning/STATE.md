@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Multi-Source Virtual Inverter
 status: executing
-stopped_at: Completed 21-01-PLAN.md
-last_updated: "2026-03-20T19:10:00.000Z"
-last_activity: 2026-03-20 -- Completed 21-01 data model + AppContext refactor
+stopped_at: Completed 21-02-PLAN.md
+last_updated: "2026-03-20T19:17:42.000Z"
+last_activity: 2026-03-20 -- Completed 21-02 OpenDTU plugin
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 12
+  completed_plans: 2
+  percent: 25
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-20)
 ## Current Position
 
 Phase: 21 of 24 (Data Model & OpenDTU Plugin)
-Plan: 1 of 2 in current phase
-Status: executing
-Last activity: 2026-03-20 -- Completed 21-01 (data model + AppContext refactor)
+Plan: 2 of 2 in current phase
+Status: phase-complete
+Last activity: 2026-03-20 -- Completed 21-02 (OpenDTU plugin)
 
-Progress: [█░░░░░░░░░] 12%
+Progress: [██░░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -45,7 +45,7 @@ Progress: [█░░░░░░░░░] 12%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 21 | 1/2 | 14min | 14min |
+| 21 | 2/2 | 18min | 9min |
 
 ## Accumulated Context
 
@@ -59,6 +59,9 @@ Progress: [█░░░░░░░░░] 12%
 - [21-01]: Removed old inverter: migration code entirely (fresh config only)
 - [21-01]: AppContext uses object type hints to avoid circular imports
 - [21-01]: Compat property accessors on AppContext for minimal diff during migration
+- [21-02]: DC channel summation: sum power+current, power-weighted average for voltage
+- [21-02]: Fixed SunSpec scale factors: SF=0 power, SF=-1 voltage, SF=-2 current/freq
+- [21-02]: Dead-time guard at 30s (25s typical + 5s margin)
 
 ### Pending Todos
 
@@ -72,6 +75,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-20T19:10:00.000Z
-Stopped at: Completed 21-01-PLAN.md
-Resume file: .planning/phases/21-data-model-opendtu-plugin/21-02-PLAN.md
+Last session: 2026-03-20T19:17:42.000Z
+Stopped at: Completed 21-02-PLAN.md (Phase 21 complete)
+Resume file: .planning/phases/22-device-registry/22-01-PLAN.md

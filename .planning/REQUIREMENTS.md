@@ -15,11 +15,11 @@ Requirements for Multi-Source Virtual Inverter. Each maps to roadmap phases.
 
 ### OpenDTU Integration
 
-- [ ] **DTU-01**: System pollt OpenDTU REST API (/api/livedata/status) und liest AC Power, Voltage, Current, YieldDay, DC Channel Daten pro Hoymiles Inverter
-- [ ] **DTU-02**: Jeder Hoymiles Inverter hinter einem OpenDTU Gateway wird als eigenes Device behandelt (1 OpenDTU → N Devices via Serial)
-- [ ] **DTU-03**: System kann Power Limit pro Hoymiles Inverter setzen via POST /api/limit/config mit OpenDTU Basic Auth
-- [ ] **DTU-04**: OpenDTU Plugin implementiert InverterPlugin ABC (poll, write_power_limit, reconfigure, close)
-- [ ] **DTU-05**: System handelt die 18-25s Latenz bei Hoymiles Power Limit korrekt (Dead-Time Guard, kein Oszillieren)
+- [x] **DTU-01**: System pollt OpenDTU REST API (/api/livedata/status) und liest AC Power, Voltage, Current, YieldDay, DC Channel Daten pro Hoymiles Inverter
+- [x] **DTU-02**: Jeder Hoymiles Inverter hinter einem OpenDTU Gateway wird als eigenes Device behandelt (1 OpenDTU → N Devices via Serial)
+- [x] **DTU-03**: System kann Power Limit pro Hoymiles Inverter setzen via POST /api/limit/config mit OpenDTU Basic Auth
+- [x] **DTU-04**: OpenDTU Plugin implementiert InverterPlugin ABC (poll, write_power_limit, reconfigure, close)
+- [x] **DTU-05**: System handelt die 18-25s Latenz bei Hoymiles Power Limit korrekt (Dead-Time Guard, kein Oszillieren)
 
 ### Device Registry & Poll Management
 
@@ -87,11 +87,11 @@ Requirements for Multi-Source Virtual Inverter. Each maps to roadmap phases.
 | DATA-01 | Phase 21 | Complete |
 | DATA-02 | Phase 21 | Complete |
 | DATA-03 | Phase 21 | Complete |
-| DTU-01 | Phase 21 | Pending |
-| DTU-02 | Phase 21 | Pending |
-| DTU-03 | Phase 21 | Pending |
-| DTU-04 | Phase 21 | Pending |
-| DTU-05 | Phase 21 | Pending |
+| DTU-01 | Phase 21 | Complete |
+| DTU-02 | Phase 21 | Complete |
+| DTU-03 | Phase 21 | Complete |
+| DTU-04 | Phase 21 | Complete |
+| DTU-05 | Phase 21 | Complete |
 | REG-01 | Phase 22 | Pending |
 | REG-02 | Phase 22 | Pending |
 | REG-03 | Phase 22 | Pending |
