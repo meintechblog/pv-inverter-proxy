@@ -122,11 +122,11 @@ Plans:
   3. User confirms which discovered inverters to add; confirmed entries are automatically created in config
   4. When no inverter is configured, opening the config page automatically starts a background scan
   5. Already-configured inverters are visually marked in scan results to prevent accidental duplicates
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 20-01: Discovery API endpoint + progress WebSocket
-- [ ] 20-02: Discovery UI + onboarding auto-scan
+- [ ] 20-01-PLAN.md -- Background scan endpoint with WS progress streaming, ScannerConfig persistence
+- [ ] 20-02-PLAN.md -- Discovery UI: discover button, progress bar, result list, auto-scan onboarding, ports field
 
 ## Progress
 
