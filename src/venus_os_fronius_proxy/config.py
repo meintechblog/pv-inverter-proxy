@@ -8,21 +8,42 @@ from __future__ import annotations
 import dataclasses
 import ipaddress
 import os
+import shutil
 import tempfile
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import structlog
 import yaml
+
+log = structlog.get_logger()
 
 
 DEFAULT_CONFIG_PATH = "/etc/venus-os-fronius-proxy/config.yaml"
 
 
+def _generate_id() -> str:
+    """Generate a 12-character hex identifier for an inverter entry."""
+    return uuid.uuid4().hex[:12]
+
+
 @dataclass
-class InverterConfig:
+class InverterEntry:
+    """A single inverter connection entry."""
     host: str = "192.168.3.18"
     port: int = 1502
     unit_id: int = 1
+    enabled: bool = True
+    id: str = field(default_factory=_generate_id)
+    manufacturer: str = ""
+    model: str = ""
+    serial: str = ""
+    firmware_version: str = ""
+
+
+# Backward compatibility alias
+InverterConfig = InverterEntry
 
 
 @dataclass
@@ -52,16 +73,25 @@ class VenusConfig:
 
 @dataclass
 class Config:
-    inverter: InverterConfig = field(default_factory=InverterConfig)
+    inverters: list[InverterEntry] = field(default_factory=lambda: [InverterEntry()])
     proxy: ProxyConfig = field(default_factory=ProxyConfig)
     night_mode: NightModeConfig = field(default_factory=NightModeConfig)
     webapp: WebappConfig = field(default_factory=WebappConfig)
     venus: VenusConfig = field(default_factory=VenusConfig)
     log_level: str = "INFO"
 
+    @property
+    def inverter(self) -> InverterEntry:
+        """Backward compatibility: return first inverter entry."""
+        return self.inverters[0] if self.inverters else InverterEntry()
+
 
 def load_config(path: str | None = None) -> Config:
-    """Load config from YAML file. Missing file or missing keys use defaults."""
+    """Load config from YAML file. Missing file or missing keys use defaults.
+
+    Automatically migrates old single-inverter format (``inverter:``) to
+    multi-inverter list (``inverters:``), creating a ``.bak`` backup.
+    """
     config_path = path or DEFAULT_CONFIG_PATH
     try:
         with open(config_path) as f:
@@ -69,11 +99,39 @@ def load_config(path: str | None = None) -> Config:
     except FileNotFoundError:
         data = {}
 
-    return Config(
-        inverter=InverterConfig(**{
-            k: v for k, v in data.get("inverter", {}).items()
-            if k in InverterConfig.__dataclass_fields__
-        }),
+    # --- Migration: single inverter -> inverters list ---
+    migrated = False
+    if "inverter" in data and "inverters" not in data:
+        old = data.pop("inverter") or {}
+        entry_dict = {
+            "host": old.get("host", "192.168.3.18"),
+            "port": old.get("port", 1502),
+            "unit_id": old.get("unit_id", 1),
+            "enabled": True,
+            "id": _generate_id(),
+            "manufacturer": "",
+            "model": "",
+            "serial": "",
+            "firmware_version": "",
+        }
+        data["inverters"] = [entry_dict]
+        migrated = True
+
+    # --- Build inverters list ---
+    raw_inverters = data.get("inverters", [])
+    if raw_inverters:
+        inverters = [
+            InverterEntry(**{
+                k: v for k, v in entry.items()
+                if k in InverterEntry.__dataclass_fields__
+            })
+            for entry in raw_inverters
+        ]
+    else:
+        inverters = [InverterEntry()]
+
+    config = Config(
+        inverters=inverters,
         proxy=ProxyConfig(**{
             k: v for k, v in data.get("proxy", {}).items()
             if k in ProxyConfig.__dataclass_fields__
@@ -92,6 +150,24 @@ def load_config(path: str | None = None) -> Config:
         }),
         log_level=data.get("log_level", "INFO"),
     )
+
+    # --- Write back migrated config ---
+    if migrated and os.path.exists(config_path):
+        bak_path = config_path + ".bak"
+        if not os.path.exists(bak_path):
+            shutil.copy2(config_path, bak_path)
+        save_config(config_path, config)
+        log.info("config.migrated", config_path=config_path)
+
+    return config
+
+
+def get_active_inverter(config: Config) -> InverterEntry | None:
+    """Return the first enabled inverter entry, or None if all disabled."""
+    for entry in config.inverters:
+        if entry.enabled:
+            return entry
+    return None
 
 
 def validate_inverter_config(host: str, port: int, unit_id: int) -> str | None:
