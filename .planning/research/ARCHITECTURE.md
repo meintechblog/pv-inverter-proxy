@@ -1,391 +1,573 @@
-# Architecture: Setup & Onboarding Integration
+# Architecture: Multi-Source Virtual Inverter (v4.0)
 
-**Domain:** Modbus TCP proxy with web dashboard — setup/onboarding flow
-**Researched:** 2026-03-19
-**Confidence:** HIGH (all based on direct code analysis of existing codebase)
+**Domain:** Multi-source PV aggregation proxy with device-centric UI
+**Researched:** 2026-03-20
+**Confidence:** HIGH (based on direct code analysis + OpenDTU API docs)
 
-## Current Architecture Overview
+## Current Architecture (v3.1)
 
 ```
-                        shared_ctx (dict)
-                              |
-    __main__.py ──────────────┼────────────────────────────
-        |                     |                            |
-   run_proxy()           create_webapp()           venus_mqtt_loop()
-   (proxy.py)            (webapp.py)               (venus_reader.py)
-        |                     |                            |
-   ┌────┴─────┐          aiohttp app                raw socket MQTT
-   │ poll_loop│          REST + WS + static         to 192.168.3.146
-   │ + server │              |                      (hardcoded)
-   └──────────┘         browser (vanilla JS)
-```
-
-**Key observation:** `shared_ctx` is the central nervous system. Every component reads/writes from it. This is the correct integration point for new features — no new messaging needed.
-
-## Integration Analysis: Feature by Feature
-
-### 1. MQTT Host/Portal Configurable (venus_reader.py)
-
-**Current state:** `VENUS_HOST = "192.168.3.146"` and `PORTAL_ID = "88a29ec1e5f4"` are module-level constants in venus_reader.py. Also hardcoded in webapp.py `venus_write_handler` (line 598) and `_mqtt_write_venus` / `venus_dbus_handler` (line 677).
-
-**Files modified:**
-| File | Change |
-|------|--------|
-| `config.py` | Add `VenusConfig` dataclass (host, port=1883, portal_id, enabled=false) to `Config` |
-| `venus_reader.py` | Accept `host` + `portal_id` as parameters to `venus_mqtt_loop()` instead of constants |
-| `webapp.py` | `venus_write_handler` and `_mqtt_write_venus` and `venus_dbus_handler` read venus host/portal from `request.app["config"]` instead of hardcoded |
-| `__main__.py` | Pass `config.venus.host` + `config.venus.portal_id` to `venus_mqtt_loop()`. Only start venus_task if `config.venus.enabled` or host is set |
-| `install.sh` | Add `venus:` section to default config template |
-
-**New components:** None. Pure parameter threading.
-
-**Data flow change:**
-```
-Before: venus_reader.py -> hardcoded HOST -> socket.connect()
-After:  config.yaml -> Config.venus -> venus_mqtt_loop(host, portal_id) -> socket.connect()
-```
-
-**Design decision: `enabled` flag vs empty host.** Use empty string as "not configured" (no separate enabled flag). Reason: simpler config file for users, one less concept. `venus_mqtt_loop` simply does not start if host is empty. The webapp shows "MQTT not configured" state.
-
-### 2. MQTT Connection State in shared_ctx
-
-**Current state:** `venus_mqtt_loop` writes `shared_ctx["venus_settings"]` on every message. If MQTT fails, it reconnects after 5s but never clears or signals the disconnect. The dashboard has no concept of "MQTT disconnected."
-
-**Files modified:**
-| File | Change |
-|------|--------|
-| `venus_reader.py` | Write `shared_ctx["venus_mqtt_connected"] = True/False` on connect/disconnect/error |
-| `dashboard.py` | Include `venus_mqtt_connected` in snapshot |
-| `webapp.py` | Include `venus_mqtt_connected` in status_handler and broadcast |
-| `app.js` | Read `venus_mqtt_connected` from snapshot, grey out Venus-dependent UI elements |
-
-**New components:** None.
-
-**Data flow:**
-```
-venus_reader.py -> shared_ctx["venus_mqtt_connected"] = bool
+__main__.py
     |
-dashboard.py snapshot -> { ..., venus_mqtt_connected: true/false }
+    +-- SolarEdgePlugin (single instance)
+    |       |
+    +-- run_proxy(plugin, shared_ctx)
+    |       |
+    |   +-- _poll_loop(plugin, cache, conn_mgr, ...)
+    |   |       polls plugin.poll() -> cache.update() -> DashboardCollector.collect()
+    |   |       -> WebSocket broadcast
+    |   |
+    |   +-- ModbusTcpServer(StalenessAwareSlaveContext)
+    |           reads from RegisterCache (single datablock)
+    |           intercepts Model 123 writes -> plugin.write_power_limit()
     |
-WebSocket broadcast -> browser
+    +-- create_webapp(shared_ctx, config, config_path, plugin)
+    |       REST API + WebSocket + static files
     |
-app.js -> toggle CSS class "mqtt-disconnected" on Venus widgets
+    +-- venus_mqtt_loop(shared_ctx, host, port, portal_id)
+            MQTT subscriber for Venus OS ESS data
 ```
 
-**Which UI elements get greyed out:**
-- Venus OS Lock toggle
-- Venus OS Override indicator
-- Venus ESS Settings (MaxFeedIn, PreventFeedback, etc.)
-- Grid power display
+**Key coupling points that must change:**
 
-**Which elements stay active (inverter-only, no MQTT needed):**
-- Power gauge + phase details
-- Inverter status
-- Power control slider
-- Sparklines
-- Peak statistics
-- Today's performance
+1. **Single plugin assumption:** `__main__.py` creates one `SolarEdgePlugin`, passes it to `run_proxy()` and `create_webapp()`. No concept of multiple concurrent plugins.
+2. **Single RegisterCache + datablock:** `run_proxy()` builds one 177-register datablock (40000-40176). The cache addresses are hardcoded constants (`COMMON_CACHE_ADDR = 40003`, `INVERTER_CACHE_ADDR = 40070`).
+3. **Single DashboardCollector:** One collector tied to one plugin's poll results. Snapshot format assumes one inverter.
+4. **Tight proxy-plugin coupling:** `_poll_loop` directly calls `plugin.poll()`, `plugin.connect()`, `plugin.close()`. The `StalenessAwareSlaveContext` holds a single `plugin` reference for write forwarding.
+5. **Frontend assumes single inverter:** Dashboard shows one gauge, one status, one set of phase details. Navigation has fixed pages (dashboard, config, registers).
 
-**CSS approach:** Single `.mqtt-disconnected` class on a parent container. Child elements inherit opacity + pointer-events via CSS. No per-element JS toggling.
+## Target Architecture (v4.0)
 
-### 3. Config Page with Defaults + Connection Status Bobble
+```
+__main__.py
+    |
+    +-- DeviceRegistry
+    |       manages: Dict[device_id, DeviceEntry]
+    |       DeviceEntry = { plugin, poll_task, conn_mgr, collector, poll_counter }
+    |
+    +-- AggregationLayer
+    |       subscribes to all device collectors
+    |       sums active inverters -> virtual PV output
+    |       writes aggregated values to RegisterCache (Modbus datablock)
+    |
+    +-- run_proxy(aggregation_layer, shared_ctx)
+    |       |
+    |   +-- ModbusTcpServer(StalenessAwareSlaveContext)
+    |           reads aggregated RegisterCache
+    |           intercepts Model 123 writes -> PowerLimitDistributor
+    |
+    +-- PowerLimitDistributor
+    |       receives Venus OS limit commands
+    |       distributes across devices by priority config
+    |       calls device.plugin.write_power_limit() per device
+    |
+    +-- create_webapp(shared_ctx, config, config_path, device_registry)
+    |       REST API: /api/devices, /api/devices/{id}/dashboard, etc.
+    |       WebSocket: per-device + aggregated snapshots
+    |
+    +-- venus_mqtt_loop(shared_ctx, ...)
+            unchanged
+```
 
-**Current state:** Config page exists at `#page-config` with inverter host/port/unit_id form, test button, and save. No Venus OS config. No live connection indicators.
+## Component Design
 
-**Files modified:**
-| File | Change |
-|------|--------|
-| `config.py` | Add `VenusConfig` dataclass (already done in feature 1) |
-| `webapp.py` | Extend `config_get_handler` to return venus config. Extend `config_save_handler` to accept venus fields. Add `POST /api/config/venus-test` endpoint for MQTT connection test |
-| `index.html` | Add Venus OS section to config page: host, portal_id fields. Add connection status bobbles (green/red dots) next to SolarEdge and Venus OS sections |
-| `app.js` | Fetch connection status, animate bobbles, handle venus config save |
-| `style.css` | Status bobble styles (green pulse, red static, grey unknown) |
+### 1. DeviceRegistry (NEW: `device_registry.py`)
+
+Central manager for all inverter devices. Each device gets its own poll loop, connection manager, and dashboard collector running as independent asyncio tasks.
+
+```python
+@dataclass
+class DeviceEntry:
+    id: str                         # from InverterEntry.id (12-char hex)
+    config: InverterEntry           # host, port, unit_id, enabled, ...
+    device_type: str                # "solaredge" | "opendtu"
+    plugin: InverterPlugin          # brand-specific plugin instance
+    poll_task: asyncio.Task | None  # background poll loop
+    conn_mgr: ConnectionManager     # per-device reconnection state
+    collector: DashboardCollector   # per-device data collection
+    poll_counter: dict              # {"success": 0, "total": 0}
+    enabled: bool                   # runtime enable/disable
+```
+
+**Responsibilities:**
+- Create/destroy plugin instances based on config
+- Start/stop per-device poll loops as asyncio tasks
+- Provide device snapshots to AggregationLayer and webapp
+- Handle add/remove/enable/disable lifecycle
+- Expose `get_device(id)`, `get_all_devices()`, `get_active_devices()`
+
+**Why a new module:** The DeviceRegistry crosses the boundary between config, plugin lifecycle, and polling. Stuffing it into `__main__.py` or `proxy.py` would make either file too complex. It deserves its own module with clear API.
+
+### 2. OpenDTU Plugin (NEW: `plugins/opendtu.py`)
+
+Implements `InverterPlugin` ABC for Hoymiles micro-inverters via OpenDTU REST API.
+
+**API endpoints used:**
+- `GET /api/livedata/status?inv={serial}` -- power, voltage, current, yield, temperature
+- `GET /api/limit/status` -- current power limit percentage
+- `POST /api/limit/config` -- set power limit (with Basic Auth)
+
+**Key differences from SolarEdge plugin:**
+
+| Aspect | SolarEdge | OpenDTU |
+|--------|-----------|---------|
+| Protocol | Modbus TCP (pymodbus) | HTTP REST (aiohttp client) |
+| Data format | Raw uint16 registers | JSON with physical units |
+| Power limit | EDPC registers (61762, 61441) | REST POST with limit_type |
+| Connection | Persistent TCP socket | Stateless HTTP per-poll |
+| Multi-inverter | One unit_id per connection | Multiple serials per OpenDTU |
+| Rated power | Hardcoded from datasheet | `max_power` from `/api/limit/status` |
+
+**PollResult translation:** OpenDTU returns JSON with physical values (watts, volts, amps). The plugin must convert these back to SunSpec uint16 register format with scale factors so the existing `DashboardCollector._decode_all()` works unchanged.
+
+```python
+class OpenDTUPlugin(InverterPlugin):
+    def __init__(self, host: str, serial: str, auth: tuple[str, str] = ("admin", "openDTU42")):
+        self.host = host
+        self.serial = serial
+        self._auth = aiohttp.BasicAuth(*auth)
+        self._session: aiohttp.ClientSession | None = None
+        self._max_power_w: float = 0  # from limit/status
+
+    async def poll(self) -> PollResult:
+        # GET /api/livedata/status?inv={serial}
+        # Convert JSON -> common_registers + inverter_registers
+        ...
+
+    async def write_power_limit(self, enable: bool, limit_pct: float) -> WriteResult:
+        # POST /api/limit/config
+        # data={"serial": self.serial, "limit_type": 1, "limit_value": limit_pct}
+        ...
+```
+
+**InverterPlugin ABC change needed:** The current `PollResult` returns raw `common_registers` and `inverter_registers` (SunSpec uint16 arrays). This format is SolarEdge-specific but actually works well as a universal intermediate format because the `DashboardCollector` already knows how to decode SunSpec Model 103 registers. The OpenDTU plugin should synthesize these registers from JSON data. This avoids changing the collector at all.
+
+**Reconfigure semantics:** For OpenDTU, `reconfigure()` updates `host` and `serial`. No persistent connection to close (HTTP is stateless), but the aiohttp session should be recreated.
+
+### 3. AggregationLayer (NEW: `aggregation.py`)
+
+Sums all active device outputs into a single virtual PV inverter that Venus OS sees via Modbus.
+
+**Aggregated fields (from Model 103):**
+- `AC_Power` (W): sum of all devices
+- `AC_Current` (A): sum of all devices per phase (L1/L2/L3)
+- `AC_Energy` (Wh): sum of all devices
+- `DC_Power` (W): sum of all devices
+- `DC_Voltage` (V): weighted average by power (informational only)
+- `DC_Current` (A): sum of all devices
+- `Temperature`: max across all devices (worst-case for safety)
+- `Status`: worst-case (FAULT > THROTTLED > MPPT > SLEEPING > OFF)
+
+**Aggregated fields (from Model 120 Nameplate):**
+- `WRtg` (rated power): sum of all devices' rated power
+
+**How it works:**
+```
+DeviceRegistry.device_collectors
+    |
+    v (each collector produces a snapshot dict after poll)
+AggregationLayer.recalculate()
+    |
+    v  synthesizes aggregated common_registers + inverter_registers
+RegisterCache.update(COMMON_CACHE_ADDR, aggregated_common)
+RegisterCache.update(INVERTER_CACHE_ADDR, aggregated_inverter)
+    |
+    v  Venus OS reads from cache via ModbusTcpServer (unchanged)
+```
+
+**Trigger:** Called after any device's poll completes. Not on a timer -- event-driven from poll success callbacks.
+
+**Staleness:** The aggregated cache is stale if ALL active devices are stale. If at least one device is providing fresh data, the aggregated output is fresh. This prevents Venus OS from seeing the proxy as dead when one of several inverters goes offline.
+
+### 4. PowerLimitDistributor (NEW: `power_distributor.py`)
+
+Distributes Venus OS power limit commands across multiple physical inverters based on a configurable priority order.
+
+**Algorithm:**
+1. Venus OS writes `WMaxLimPct` (e.g., 50%) to Model 123
+2. Distributor calculates absolute limit: `total_rated_W * limit_pct / 100`
+3. Iterates devices in priority order (configurable)
+4. Each device gets `min(its_rated_W, remaining_budget_W)`
+5. Converts per-device absolute limit back to percentage of that device's rating
+6. Calls `device.plugin.write_power_limit(enable, device_pct)`
+
+**Priority config (in `config.yaml`):**
+```yaml
+power_limit:
+  priority:
+    - device_id_1   # throttled last (highest priority = most important)
+    - device_id_2   # throttled first (lowest priority = least important)
+  excluded:
+    - device_id_3   # never throttled, always runs at 100%
+```
+
+**Why priority-based:** The user's SolarEdge SE30K (30kW) is the primary inverter. Hoymiles micro-inverters (e.g., 2x 800W) are secondary. When Venus OS limits total PV output, throttle the small inverters first before touching the big one (or vice versa -- user-configurable).
+
+### 5. Modified: proxy.py
+
+**Changes:**
+- `run_proxy()` no longer creates a plugin or poll loop. It receives an `AggregationLayer` that provides the RegisterCache.
+- `StalenessAwareSlaveContext` no longer holds a single plugin. Instead, write interceptions go to the `PowerLimitDistributor`.
+- The `_poll_loop` function moves to `DeviceRegistry` (it becomes per-device, managed by the registry).
+- `run_proxy()` becomes a thin wrapper: build ModbusTcpServer, serve from aggregated cache.
+
+**Backward compatibility:** When only one device is configured (common case during migration), the aggregation layer is a passthrough -- no behavioral change.
+
+### 6. Modified: DashboardCollector
+
+**Per-device collectors (unchanged internally):** Each device gets its own `DashboardCollector` instance. The collector's `collect()` method works identically -- it decodes SunSpec registers from a cache/datablock, regardless of which plugin produced them.
+
+**New aggregated snapshot:** The webapp needs both per-device and aggregated snapshots. The `AggregationLayer` produces an aggregated `DashboardCollector` snapshot for the "Virtual Inverter" view.
+
+**Snapshot format evolution:**
+```python
+# v3.1 (current): single inverter snapshot
+{
+    "ts": ...,
+    "inverter": { "ac_power_w": ..., ... },
+    "inverter_name": "SolarEdge SE30K",
+    "control": { ... },
+    "connection": { ... },
+    ...
+}
+
+# v4.0: multi-device snapshot
+{
+    "ts": ...,
+    "devices": {
+        "abc123def456": {
+            "inverter": { "ac_power_w": ..., ... },
+            "inverter_name": "SolarEdge SE30K",
+            "device_type": "solaredge",
+            "connection": { ... },
+        },
+        "789xyz012abc": {
+            "inverter": { "ac_power_w": ..., ... },
+            "inverter_name": "HM-800 via OpenDTU",
+            "device_type": "opendtu",
+            "connection": { ... },
+        },
+    },
+    "virtual": {
+        "inverter": { "ac_power_w": ..., ... },  # aggregated
+        "inverter_name": "Virtual PV Inverter",
+        "rated_power_w": 31600,  # sum
+    },
+    "control": { ... },   # applies to virtual/aggregated
+    "venus_os": { ... },
+    "venus_mqtt_connected": ...,
+    ...
+}
+```
+
+### 7. Modified: config.py
+
+**New config structure:**
+```yaml
+inverters:
+  - id: abc123def456
+    type: solaredge       # NEW field
+    host: 192.168.3.18
+    port: 1502
+    unit_id: 1
+    enabled: true
+    manufacturer: SolarEdge
+    model: SE30K
+    serial: RW00IBNM4
+
+  - id: 789xyz012abc
+    type: opendtu          # NEW field
+    host: 192.168.3.98
+    port: 80               # HTTP port
+    unit_id: 1             # ignored for OpenDTU
+    enabled: true
+    manufacturer: Hoymiles
+    model: HM-800
+    serial: 116180123456
+    # OpenDTU-specific:
+    opendtu_serial: "116180123456"   # inverter serial for API calls
+    opendtu_auth_user: admin
+    opendtu_auth_pass: openDTU42
+
+virtual_inverter:
+  name: "PV Anlage"        # user-configurable name shown to Venus OS
+
+power_limit:
+  priority: []              # device IDs in priority order
+  excluded: []              # device IDs excluded from limiting
+```
+
+**InverterEntry changes:**
+- Add `type: str = "solaredge"` field (default preserves backward compatibility)
+- Add `opendtu_serial: str = ""` for OpenDTU-specific config
+- Add `opendtu_auth_user: str = "admin"` and `opendtu_auth_pass: str = "openDTU42"`
+
+**New dataclasses:**
+```python
+@dataclass
+class VirtualInverterConfig:
+    name: str = "PV Anlage"
+
+@dataclass
+class PowerLimitConfig:
+    priority: list[str] = field(default_factory=list)
+    excluded: list[str] = field(default_factory=list)
+```
+
+### 8. Modified: __main__.py
+
+**Current:** Creates single `SolarEdgePlugin`, calls `run_proxy(plugin, ...)`.
+**New:** Creates `DeviceRegistry` from config, creates `AggregationLayer`, creates `PowerLimitDistributor`, starts everything.
+
+```python
+# Pseudocode for new startup flow
+device_registry = DeviceRegistry(config)
+aggregation = AggregationLayer(device_registry, cache)
+distributor = PowerLimitDistributor(device_registry, config.power_limit)
+
+# Start per-device poll loops
+await device_registry.start_all()
+
+# Start proxy with aggregated cache
+proxy_task = asyncio.create_task(
+    run_proxy(aggregation, distributor, shared_ctx)
+)
+
+# Start webapp with device registry (not single plugin)
+runner = await create_webapp(shared_ctx, config, config_path, device_registry)
+```
+
+### 9. Modified: webapp.py
 
 **New REST endpoints:**
+
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `POST /api/config/venus-test` | POST | Test MQTT connection to provided host:1883 |
+| `/api/devices` | GET | List all devices with status |
+| `/api/devices/{id}` | GET | Single device detail + snapshot |
+| `/api/devices/{id}/registers` | GET | Per-device register viewer data |
+| `/api/devices/{id}/config` | GET/PUT | Per-device configuration |
+| `/api/devices` | POST | Add new device |
+| `/api/devices/{id}` | DELETE | Remove device |
+| `/api/devices/{id}/enable` | POST | Enable device |
+| `/api/devices/{id}/disable` | POST | Disable device |
+| `/api/virtual` | GET | Aggregated virtual inverter snapshot |
+| `/api/power-limit/config` | GET/PUT | Priority order + exclusions |
 
-**Status bobble data source:** The existing `/api/status` endpoint already returns `solaredge` state. Extend it to include `venus_mqtt: "connected" / "disconnected" / "not_configured"`.
+**WebSocket changes:** The broadcast snapshot format changes to include `devices` dict and `virtual` aggregated data. The frontend must handle both formats during migration (check for `devices` key).
 
-**Connection bobble states:**
+### 10. Modified: Frontend (index.html, app.js, style.css)
+
+**Navigation model change:**
 ```
-Green (pulsing)  = connected
-Red (static)     = configured but disconnected
-Grey (static)    = not configured
-```
+v3.1: Dashboard | Config | Registers   (fixed tabs)
 
-### 4. Venus OS Auto-Config After Modbus Connection
-
-**Current state:** When Venus OS connects to the proxy's Modbus server on port 502, the proxy has no awareness of who connected. pymodbus `ModbusTcpServer` does not expose client connection events.
-
-**Approach: Detect first Modbus write to Model 123.**
-
-Venus OS writes `WMaxLimPct` (register 40154) within seconds of connecting. The `StalenessAwareSlaveContext.async_setValues` already intercepts these. This is the detection point — no network-level connection tracking needed.
-
-**Files modified:**
-| File | Change |
-|------|--------|
-| `proxy.py` | In `_handle_control_write`, on first Venus OS write, if venus config is empty, set `shared_ctx["venus_autodetect_triggered"] = True` |
-| `webapp.py` | New `GET /api/venus-autodetect` endpoint returns autodetect status. New `POST /api/venus-autodetect/apply` saves detected config |
-| `app.js` | Poll autodetect status or receive via WebSocket. Show banner: "Venus OS detected! Configure MQTT to enable full integration." with one-click setup |
-| `index.html` | Auto-config banner component in config page |
-
-**What auto-detect can determine:**
-- Venus OS is connected (it wrote to our Modbus server) -- YES
-- Venus OS IP address -- NO (pymodbus does not expose client IP in async_setValues context)
-- Portal ID -- NO (requires MQTT discovery or user input)
-
-**Realistic auto-detect flow:**
-1. Venus OS writes to Model 123 registers
-2. Proxy detects first write, sets flag in shared_ctx
-3. Config page shows: "Venus OS is connected to your proxy! To enable full dashboard features, enter Venus OS IP and Portal ID below."
-4. User enters Venus OS IP (they know it — it is their Victron device)
-5. Proxy attempts MQTT connection to that IP, reads portal ID from MQTT topic prefix
-6. If successful, saves config and starts venus_mqtt_loop
-
-**Portal ID auto-discovery:** Connect to MQTT, subscribe to `N/+/system/0/Serial`, read the portal ID from the topic. This avoids user needing to know the hex portal ID.
-
-**Files modified (additional):**
-| File | Change |
-|------|--------|
-| `venus_reader.py` | Add `discover_portal_id(host: str) -> str | None` function: connect MQTT, subscribe wildcard, parse portal ID from first N/ topic |
-| `webapp.py` | `POST /api/config/venus-test` also calls `discover_portal_id` and returns it |
-
-### 5. Dashboard Element Grey-out (MQTT not connected)
-
-Covered in feature 2 above. Implementation detail:
-
-**HTML structure change:**
-```html
-<!-- Wrap Venus-dependent widgets -->
-<div id="venus-widgets" class="venus-dependent">
-  <!-- Lock toggle, Override, ESS settings, Grid power -->
-</div>
+v4.0: Virtual PV   | SE30K      | HM-800     | Venus OS | Config
+      (aggregated)  (per-device)  (per-device)  (status)  (global)
 ```
 
-**JS logic:**
-```javascript
-// In snapshot handler
-const venusSection = document.getElementById('venus-widgets');
-if (snapshot.venus_mqtt_connected) {
-    venusSection.classList.remove('mqtt-disconnected');
-} else {
-    venusSection.classList.add('mqtt-disconnected');
-}
-```
+**Device menu items:** Dynamically generated from `/api/devices`. Each device gets a nav entry with status dot (green/orange/red). Clicking a device shows its dashboard + registers.
 
-**CSS:**
-```css
-.mqtt-disconnected {
-    opacity: 0.35;
-    pointer-events: none;
-    position: relative;
-}
-.mqtt-disconnected::after {
-    content: 'MQTT not connected';
-    /* overlay text */
-}
-```
+**Virtual PV page:** Shows aggregated gauge, aggregated sparklines, combined 3-phase details. This is the "main" view equivalent to today's dashboard.
 
-### 6. Install Script Improvements
+**Per-device pages:** Each shows the same dashboard layout as today but with that device's data only. Register viewer shows that device's registers.
 
-**Current gaps identified:**
-- Config template uses `solaredge:` key but `config.py` expects `inverter:` key (mismatch on line 94 of install.sh vs config.py dataclass)
-- No Venus OS section in config template
-- No version pinning or update mechanism
-- No pre-flight check for port 502 availability
-- Starts service immediately without user editing config first
+**Config page:** Becomes device-centric. "+" button to add device (SolarEdge or OpenDTU). Each device has inline config. Power limit priority is a drag-reorder list.
 
-**Files modified:**
-| File | Change |
-|------|--------|
-| `install.sh` | Fix config key mismatch. Add venus section. Add port check. Print setup URL at end. |
-
-## Component Boundary Map
+## Data Flow Diagram
 
 ```
-+-----------------------------------------------------------+
-|                    __main__.py                             |
-|  Orchestrator: loads config, starts tasks, shutdown       |
-|  MODIFIED: conditional venus_mqtt_loop start              |
-+------+----------------+------------------+----------------+
-       |                |                  |
-+------v------+  +------v------+  +-------v--------+
-|  proxy.py   |  |  webapp.py  |  | venus_reader.py|
-|             |  |             |  |                |
-| poll_loop   |  | REST API    |  | MQTT subscribe |
-| ModbusTCP   |  | WebSocket   |  | MQTT publish   |
-| server      |  | Static files|  |                |
-|             |  |             |  | NEW: discover  |
-| MODIFIED:   |  | MODIFIED:   |  | portal_id()    |
-| autodetect  |  | venus config|  |                |
-| flag on     |  | endpoints   |  | MODIFIED:      |
-| first write |  | venus-test  |  | parameterized  |
-|             |  | autodetect  |  | host/portal    |
-|             |  | status API  |  | connection     |
-+-------------+  +-------------+  | state flag     |
-                                   +----------------+
-       |                |                  |
-       +----------------+------------------+
-                        |
-                 shared_ctx (dict)
-                        |
-           +------------+----------------+
-           |            |                |
-    +------v------+  +--v-----+  +------v------+
-    |  config.py  |  |app.js  |  | index.html  |
-    |             |  |        |  |             |
-    | MODIFIED:   |  |MODIFIED|  | MODIFIED:   |
-    | +VenusConfig|  |venus UI|  | venus config|
-    |             |  |greyout |  | section     |
-    |             |  |bobbles |  | bobbles     |
-    |             |  |autodet |  | autodetect  |
-    +-------------+  +--------+  | banner      |
-                                  +-------------+
+                    OpenDTU REST              SolarEdge Modbus TCP
+                    192.168.3.98              192.168.3.18:1502
+                         |                          |
+              OpenDTUPlugin.poll()       SolarEdgePlugin.poll()
+                         |                          |
+                    PollResult                 PollResult
+                   (synthesized                (native SunSpec
+                    SunSpec regs)               registers)
+                         |                          |
+               DeviceRegistry: per-device poll tasks
+                    |                          |
+           device_collector.collect()  device_collector.collect()
+                    |                          |
+                    +------- both feed --------+
+                              |
+                     AggregationLayer.recalculate()
+                              |
+                    aggregated_registers -> RegisterCache -> ModbusTcpServer
+                              |                                    |
+                    aggregated_snapshot                     Venus OS reads
+                              |                            Venus OS writes
+                         WebSocket                               |
+                         broadcast                    PowerLimitDistributor
+                              |                     distributes to plugins
+                         Browser
+                    (per-device + virtual views)
 ```
 
-## New vs Modified Components
+## What Changes vs What Extends
 
-### New Components: NONE
-No new Python modules needed. All features integrate into existing files.
+### New Files (5)
 
-### New Functions (within existing modules):
-| Module | Function | Purpose |
-|--------|----------|---------|
-| `venus_reader.py` | `discover_portal_id(host: str) -> str \| None` | Connect to MQTT, sniff portal ID from topic prefix |
-| `webapp.py` | `venus_test_handler()` | Test MQTT connectivity + discover portal ID |
-| `webapp.py` | `venus_autodetect_handler()` | Return autodetect status |
+| File | Purpose | Estimated LOC |
+|------|---------|---------------|
+| `device_registry.py` | Device lifecycle management | ~200 |
+| `plugins/opendtu.py` | OpenDTU/Hoymiles plugin | ~180 |
+| `aggregation.py` | Multi-device sum into virtual inverter | ~150 |
+| `power_distributor.py` | Priority-based limit distribution | ~120 |
+| `plugins/__init__.py` | Plugin factory: `create_plugin(type, config)` | ~30 |
 
-### Modified Functions:
-| Module | Function | Change |
-|--------|----------|--------|
-| `config.py` | `Config` dataclass | Add `venus: VenusConfig` field |
-| `config.py` | `load_config()` | Parse `venus:` section |
-| `venus_reader.py` | `venus_mqtt_loop()` | Accept host/portal params, write connection state to shared_ctx |
-| `webapp.py` | `config_get_handler()` | Return venus config fields |
-| `webapp.py` | `config_save_handler()` | Accept/save venus config fields |
-| `webapp.py` | `status_handler()` | Include `venus_mqtt` connection state |
-| `webapp.py` | `venus_write_handler()` | Read host from config instead of hardcoded |
-| `webapp.py` | `_mqtt_write_venus()` | Read host/portal from config |
-| `webapp.py` | `venus_dbus_handler()` | Read host/portal from config |
-| `proxy.py` | `_handle_control_write()` | Set autodetect flag on first Venus write |
-| `__main__.py` | `run_with_shutdown()` | Conditional venus_mqtt_loop start |
-| `dashboard.py` | `collect()` | Include `venus_mqtt_connected` in snapshot |
+### Modified Files (7)
 
-### Frontend Changes:
-| File | Change |
-|------|--------|
-| `index.html` | Venus config section in config page, connection bobbles, autodetect banner, `.venus-dependent` wrapper |
-| `app.js` | Venus config form handling, bobble animation, grey-out logic, autodetect polling |
-| `style.css` | Bobble styles, `.mqtt-disconnected` styles, autodetect banner styles |
+| File | Change Scope | What Changes |
+|------|-------------|--------------|
+| `config.py` | Medium | Add `type` to InverterEntry, add VirtualInverterConfig, PowerLimitConfig |
+| `proxy.py` | Large | Decouple from single plugin, accept AggregationLayer + PowerLimitDistributor |
+| `__main__.py` | Large | Orchestrate DeviceRegistry, AggregationLayer, PowerLimitDistributor |
+| `webapp.py` | Large | Device CRUD endpoints, per-device register viewer, multi-device WebSocket |
+| `plugin.py` | Small | Add optional `device_type` property, maybe `rated_power_w` property |
+| `dashboard.py` | Small | DashboardCollector unchanged internally; snapshot wrapper adds `devices` dict |
+| `connection.py` | None | Already generic, works per-device as-is |
 
-## Suggested Build Order
+### Unchanged Files (5)
 
-Build order is driven by dependency chains and testability:
-
-### Phase 1: Config Foundation (backend only, no UI)
-**What:** Add `VenusConfig` to config.py, parameterize venus_reader.py, thread config through __main__.py
-**Why first:** Everything else depends on venus config being in the config system. Pure backend, easy to test in isolation.
-**Files:** config.py, venus_reader.py, __main__.py
-**Test:** Unit test config loading with venus section, verify venus_mqtt_loop accepts params
-
-### Phase 2: MQTT Connection State
-**What:** Write `shared_ctx["venus_mqtt_connected"]` in venus_reader.py, include in dashboard snapshot
-**Why second:** Required by UI grey-out and config bobbles. Small change, high value.
-**Files:** venus_reader.py, dashboard.py
-**Test:** Unit test state transitions (connected/disconnected/reconnecting)
-
-### Phase 3: De-hardcode webapp.py
-**What:** Replace all hardcoded `192.168.3.146` and `88a29ec1e5f4` in webapp.py with config reads
-**Why third:** Depends on Phase 1 config being available. Eliminates all hardcoded references.
-**Files:** webapp.py
-**Test:** Verify venus_write_handler, venus_dbus_handler use config values
-
-### Phase 4: Config Page UI (venus section + bobbles)
-**What:** Add Venus OS fields to config page, connection status bobbles, venus-test endpoint
-**Why fourth:** Depends on Phases 1-3. This is the primary user-facing setup experience.
-**Files:** index.html, app.js, style.css, webapp.py (new endpoint)
-**Test:** Manual — fill in Venus IP, test connection, save, verify MQTT starts
-
-### Phase 5: Portal ID Auto-Discovery
-**What:** `discover_portal_id()` function, integrate into venus-test endpoint
-**Why fifth:** Quality-of-life improvement. User enters IP, portal ID is found automatically.
-**Files:** venus_reader.py, webapp.py
-**Test:** Integration test against real Venus OS MQTT broker
-
-### Phase 6: Dashboard Grey-out
-**What:** CSS grey-out for Venus-dependent widgets when MQTT disconnected
-**Why sixth:** Depends on Phase 2 (connection state in snapshot). Pure frontend.
-**Files:** index.html, app.js, style.css
-**Test:** Manual — disconnect MQTT, verify widgets grey out
-
-### Phase 7: Venus OS Auto-Detect Banner
-**What:** Detect first Modbus write, show banner in config page prompting MQTT setup
-**Why seventh:** Nice-to-have onboarding hint. Depends on Phases 4-5.
-**Files:** proxy.py, webapp.py, app.js, index.html
-**Test:** Manual — connect Venus OS to proxy without MQTT config, verify banner appears
-
-### Phase 8: Install Script Polish
-**What:** Fix config key mismatch, add venus section, port check, setup URL
-**Why last:** Independent of code changes. Can be done anytime but makes sense after config format is finalized.
-**Files:** install.sh
-**Test:** Fresh install on clean Debian 13 LXC
+| File | Why Unchanged |
+|------|---------------|
+| `register_cache.py` | Already generic -- wraps any datablock |
+| `sunspec_models.py` | Static SunSpec constants -- unchanged |
+| `timeseries.py` | Already generic -- TimeSeriesBuffer per metric |
+| `scanner.py` | Scans for SunSpec devices -- still useful for SolarEdge discovery |
+| `venus_reader.py` | MQTT to Venus OS -- independent of inverter count |
 
 ## Patterns to Follow
 
-### Pattern: Config Hot-Reload for Venus Settings
-The existing inverter config hot-reload pattern (`config_save_handler` -> `plugin.reconfigure()`) should be replicated for Venus config. When user saves new Venus host/portal:
-1. Save to config.yaml (atomic write)
-2. Cancel existing venus_mqtt_loop task
-3. Start new venus_mqtt_loop with updated params
-
-**Implementation:** Store the venus_task reference in `shared_ctx["venus_task"]`. On config save, cancel it and create a new one.
-
-### Pattern: shared_ctx as State Bus
-Every new state flows through shared_ctx. Do not create parallel state channels.
+### Pattern: Plugin Factory
 ```python
-# Good
-shared_ctx["venus_mqtt_connected"] = True
-
-# Bad -- new WebSocket message type
-await ws.send_json({"type": "mqtt_status", "connected": True})
+# plugins/__init__.py
+def create_plugin(entry: InverterEntry) -> InverterPlugin:
+    if entry.type == "solaredge":
+        return SolarEdgePlugin(host=entry.host, port=entry.port, unit_id=entry.unit_id)
+    elif entry.type == "opendtu":
+        return OpenDTUPlugin(
+            host=entry.host,
+            serial=entry.opendtu_serial,
+            auth=(entry.opendtu_auth_user, entry.opendtu_auth_pass),
+        )
+    raise ValueError(f"Unknown device type: {entry.type}")
 ```
 
-This follows the existing "client-side event detection" decision: extend the snapshot, not the protocol.
+### Pattern: Per-Device Poll Loop (extracted from proxy.py)
+Each device runs its own `_poll_loop` as an asyncio task. The DeviceRegistry manages task lifecycle. When a device is disabled, its poll task is cancelled. When re-enabled, a new task starts.
 
-### Pattern: Graceful Degradation
-The proxy must work fully without Venus MQTT. Current hardcoded values break the app if Venus OS is unreachable. After this milestone:
-- No Venus config = proxy runs fine, dashboard shows inverter data only
-- Venus config set but MQTT down = dashboard shows inverter data, Venus widgets greyed out
-- Venus config set and MQTT up = full dashboard
+The existing `_poll_loop` in proxy.py is almost reusable as-is. Extract it to DeviceRegistry or a shared module, parametrize to callback on success instead of directly updating the aggregated cache.
+
+### Pattern: Event-Driven Aggregation
+```python
+# After each device poll succeeds:
+async def on_device_poll_success(device_id: str):
+    device = self.registry.get_device(device_id)
+    device.collector.collect(device.cache, ...)
+
+    # Recalculate aggregated output
+    self.aggregation.recalculate()
+
+    # Broadcast to WebSocket
+    snapshot = self.build_multi_device_snapshot()
+    await broadcast_to_clients(self.app, snapshot)
+```
+
+### Pattern: Backward-Compatible Snapshot
+During migration, support both old format (single inverter) and new format (multi-device). Frontend checks:
+```javascript
+if (snapshot.devices) {
+    // v4.0 multi-device format
+    renderMultiDevice(snapshot);
+} else {
+    // v3.1 legacy format
+    renderSingleDevice(snapshot);
+}
+```
+
+### Pattern: shared_ctx as State Bus (continued)
+All device state flows through shared_ctx. The DeviceRegistry is stored at `shared_ctx["device_registry"]`.
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern: New Python Module for Auto-Detect
-Do not create a separate `autodetect.py` module. The detection is a single flag set in `_handle_control_write`. Keep it inline.
+### Anti-Pattern: Global RegisterCache for Per-Device Data
+Do NOT put per-device raw registers into the shared Modbus-facing RegisterCache. That cache is only for the aggregated virtual inverter that Venus OS reads. Per-device data stays in per-device collectors and is served via REST/WebSocket only.
 
-### Anti-Pattern: Polling for Connection Status
-Do not add a separate polling loop for MQTT status. The existing `venus_mqtt_loop` already runs continuously — just have it write status to shared_ctx.
+### Anti-Pattern: Thread-per-Plugin
+Do NOT use threads for parallel polling. All plugins use async I/O (pymodbus is async, aiohttp client is async). asyncio tasks are the correct concurrency primitive. Keep the existing single-process, single-thread, async-everything model.
 
-### Anti-Pattern: WebSocket Message Types for Status
-Do not add `{"type": "mqtt_status"}` WebSocket messages. Include `venus_mqtt_connected` in the existing snapshot. This follows the locked decision "extend snapshot, not protocol."
+### Anti-Pattern: Abstract Base Class Proliferation
+Do NOT create abstract classes for AggregationLayer, PowerLimitDistributor, DeviceRegistry. They each have exactly one implementation. Use concrete classes. The InverterPlugin ABC is correct because it has multiple implementations (SolarEdge, OpenDTU).
 
-### Anti-Pattern: Frontend Framework for Config Page
-Keep vanilla JS. The config page is a simple form. No React/Vue/Svelte needed.
+### Anti-Pattern: Per-Device Modbus Server
+Do NOT give each device its own Modbus port. Venus OS connects to one proxy on port 502 and sees one virtual inverter. That is the whole point.
 
-## Risk Assessment
+### Anti-Pattern: OpenDTU WebSocket Instead of REST Polling
+OpenDTU supports WebSocket for live data, but the polling approach is simpler, more resilient, and consistent with how the SolarEdge plugin works. REST polling at 1Hz is fine for micro-inverters producing < 1kW.
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| Config key mismatch (install.sh `solaredge:` vs code `inverter:`) already exists | CERTAIN | Medium — fresh installs broken | Fix in Phase 8, or immediately |
-| MQTT reconnect race condition when hot-reloading venus config | Medium | Low — worst case is duplicate MQTT connections | Cancel old task before starting new one, use asyncio.Event for clean shutdown |
-| Portal ID discovery fails (Venus OS MQTT not accessible) | Low | Low — user can enter manually | Show "could not auto-discover" message, provide manual field |
-| pymodbus does not expose client IP in write handlers | CERTAIN | Low — auto-detect can only detect "someone connected" not "who" | Detect via first write, prompt user for Venus IP |
+## Build Order (Dependency-Driven)
+
+### Phase 1: OpenDTU Plugin
+**What:** Implement `plugins/opendtu.py` conforming to `InverterPlugin` ABC.
+**Why first:** Self-contained, testable in isolation. Does not touch existing code. Can be validated against real OpenDTU at 192.168.3.98.
+**Dependencies:** None. Only needs `plugin.py` ABC (unchanged).
+**Deliverable:** Working plugin that can poll OpenDTU and return PollResult, write power limits.
+
+### Phase 2: DeviceRegistry + Plugin Factory
+**What:** `device_registry.py` and `plugins/__init__.py`. Extract poll loop from proxy.py into reusable per-device function.
+**Why second:** Foundation for multi-device operation. Must exist before aggregation or webapp changes.
+**Dependencies:** Phase 1 (OpenDTU plugin exists to instantiate).
+**Deliverable:** Registry that creates plugins from config, starts/stops poll tasks.
+
+### Phase 3: AggregationLayer
+**What:** `aggregation.py` that sums device outputs into RegisterCache.
+**Why third:** Needed before proxy.py can serve aggregated data to Venus OS.
+**Dependencies:** Phase 2 (DeviceRegistry provides device collectors).
+**Deliverable:** Venus OS sees aggregated power from all devices.
+
+### Phase 4: Proxy Decoupling
+**What:** Modify `proxy.py` to use AggregationLayer instead of single plugin. Modify `__main__.py` orchestration.
+**Why fourth:** Integrates Phases 2-3 into the running system. After this, Venus OS sees the virtual inverter.
+**Dependencies:** Phases 2-3.
+**Deliverable:** End-to-end: OpenDTU + SolarEdge -> aggregated -> Venus OS.
+
+### Phase 5: PowerLimitDistributor
+**What:** `power_distributor.py` + modify `StalenessAwareSlaveContext` to route writes to distributor.
+**Why fifth:** Power limiting is the most complex feature. Must work correctly before exposing in UI.
+**Dependencies:** Phase 4 (proxy decoupled from single plugin).
+**Deliverable:** Venus OS power limit distributed across devices by priority.
+
+### Phase 6: Device-Centric REST API
+**What:** New webapp endpoints for device CRUD, per-device snapshots, multi-device WebSocket format.
+**Why sixth:** Backend API must exist before frontend can render device views.
+**Dependencies:** Phase 2 (DeviceRegistry available for CRUD).
+**Deliverable:** Full REST API for device management.
+
+### Phase 7: Device-Centric Frontend
+**What:** Dynamic navigation, per-device pages, virtual PV page, priority config UI.
+**Why last:** Pure frontend, depends on all backend phases.
+**Dependencies:** Phase 6 (REST API available).
+**Deliverable:** Full device-centric UI.
+
+## Scalability Notes
+
+| Concern | 1 device (current) | 3-5 devices (v4.0 target) | 10+ devices |
+|---------|--------------------|-----------------------------|-------------|
+| Polling | 1 task, 1Hz | 3-5 tasks, 1Hz each | Fine, all async |
+| Memory | ~1.3MB ring buffers | ~4-7MB | Acceptable |
+| WebSocket | 1 snapshot/s | 3-5 snapshots/s (or batched) | Batch to 1 combined/s |
+| Aggregation | Passthrough | Sum on each poll (~0.1ms) | Fine |
+| Modbus serving | 1 datablock | 1 datablock (aggregated) | Fine |
+
+**WebSocket optimization for 5+ devices:** Instead of broadcasting after every device poll (up to 5x/second), batch: recalculate aggregation after each poll but only broadcast the combined snapshot at 1Hz max. Use a debounce timer.
 
 ## Sources
 
-- Direct code analysis of all source files in the repository (HIGH confidence)
-- Existing architecture decisions documented in PROJECT.md (HIGH confidence)
-- pymodbus 3.x API (ModbusTcpServer, ModbusDeviceContext) — verified via code usage patterns (HIGH confidence)
-- Venus OS MQTT topic structure — verified from existing venus_reader.py subscriptions: `N/{portal}/...`, `R/{portal}/...`, `W/{portal}/...` (HIGH confidence)
+- Direct code analysis of all source files in repository (HIGH confidence)
+- [OpenDTU Web API documentation](https://www.opendtu.solar/firmware/web_api/) (HIGH confidence)
+- [OpenDTU limit config discussion](https://github.com/tbnobody/OpenDTU/discussions/602) (MEDIUM confidence)
+- [OpenDTU GitHub repository](https://github.com/tbnobody/OpenDTU) (HIGH confidence)
+- Existing architecture decisions in PROJECT.md (HIGH confidence)

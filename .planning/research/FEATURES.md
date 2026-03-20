@@ -1,34 +1,41 @@
-# Feature Landscape: Setup & Onboarding
+# Feature Landscape: Multi-Source Virtual Inverter (v4.0)
 
-**Domain:** IoT Modbus proxy setup/onboarding flow
-**Researched:** 2026-03-19
-**Milestone:** v3.0 Setup & Onboarding
-**Confidence:** HIGH (existing codebase thoroughly analyzed, Venus OS MQTT/Modbus behavior verified against official sources)
+**Domain:** Multi-source PV aggregation proxy with device-centric management
+**Researched:** 2026-03-20
+**Milestone:** v4.0 Multi-Source Virtual Inverter
+**Confidence:** HIGH (existing codebase analyzed, OpenDTU API verified against official docs, Venus OS SunSpec behavior verified)
 
 ## Table Stakes
 
-Features users expect. Missing = setup feels broken or unfinished.
+Features users expect for a multi-source aggregation proxy. Missing = product feels incomplete or untrustworthy.
 
 | Feature | Why Expected | Complexity | Dependencies | Notes |
 |---------|--------------|------------|--------------|-------|
-| **Config page pre-filled defaults** | Every IoT setup tool pre-fills known-good defaults; blank fields force guessing | Low | Existing `config.py` defaults (192.168.3.18:1502, unit 1) | Already have defaults in dataclass; frontend must load them on first visit via `/api/config` |
-| **Connection status bobble after Save** | Users need immediate feedback that config works; "did it save?" anxiety is the #1 onboarding killer | Low | Existing `/api/status` endpoint, `conn_mgr.state` in WebSocket snapshots | Replace Test Connection button with auto-status dot that updates from WebSocket after Save & Apply |
-| **MQTT configurable (Venus OS IP + Portal ID)** | Currently hardcoded in 3 places (`venus_reader.py` VENUS_HOST/PORTAL_ID, `webapp.py` venus_write/dbus handlers). Any user with different Venus OS IP is completely stuck | Medium | Existing `config.py` dataclass pattern | Add `VenusConfig` dataclass with `host`, `port`, `portal_id`; thread through to all MQTT consumers |
-| **Dashboard MQTT gate** | Showing interactive Lock Toggle / Override Detection / Venus Settings when MQTT disconnected is misleading -- users click, nothing happens, assume proxy is broken | Medium | `venus_reader.py` connection state, WebSocket snapshot pipeline | "Responsive enabling" pattern: elements visible but disabled with overlay hint |
-| **MQTT setup guide hint** | MQTT on Venus OS is off by default (must be enabled in Remote Console under Settings -> Services). Users who skip this see a dead dashboard | Low | None (pure frontend hint card) | Inline card when MQTT status disconnected; step-by-step Venus OS instructions |
-| **Install script fix** | Generated YAML uses `solaredge:` key but `config.py` expects `inverter:` key -- fresh installs produce broken config | Low | Existing `install.sh` | Fix key mismatch, add Venus OS IP/Portal ID fields to generated YAML |
-| **README with setup flow** | No documentation for install-to-working flow; GitHub visitors have zero guidance | Low | All other features (documents them) | Linear: Install -> Config -> Enable Venus OS MQTT -> Verify Dashboard |
+| **OpenDTU plugin (poll + display)** | Core promise of v4.0. Without Hoymiles data, there is nothing to aggregate. Users see OpenDTU at 192.168.3.98 and expect it to "just work" like SolarEdge | Medium | Existing `InverterPlugin` ABC, aiohttp (already in stack) | REST polling via `/api/livedata/status`. Must map OpenDTU JSON fields (AC Power/Voltage/Current, DC per-channel, YieldDay/Total) into SunSpec register format matching `PollResult` |
+| **OpenDTU power limit control** | SolarEdge already has power limiting. Hoymiles via OpenDTU must match. Venus OS sends one limit command to the virtual inverter; proxy must distribute | Medium | OpenDTU plugin, `POST /api/limit/config` with Basic Auth | Limit takes ~25s to activate on Hoymiles (vs instant on SolarEdge). Must handle async confirmation via `/api/limit/status` polling. Limit type 1 = relative percentage |
+| **Virtual inverter aggregation** | The entire v4.0 value proposition. Venus OS sees ONE Fronius inverter. All active source inverters must sum into that single SunSpec register set | High | All source plugins polling, `RegisterCache`, `proxy.py` poll loop | Sum: AC Power (W), AC Current (A per phase). Weighted average: AC Voltage, Frequency. Sum: DC Power. Sum: Energy (Wh). Synthesize single Common Model identity |
+| **Aggregated Model 120 nameplate** | Venus OS reads Model 120 for rated power (WRtg). Virtual inverter must report combined capacity (e.g., SE30K 30kW + Hoymiles 800W = 30800W) | Low | Virtual inverter, all source nameplates known | Recalculate on source add/remove. WRtg = sum of all active source WRtg values |
+| **Per-inverter dashboard** | Users want to see individual inverter performance, not just the aggregate. "How much is the Hoymiles producing vs the SolarEdge?" is the first question after setup | High | Device-centric navigation, per-source WebSocket data, existing dashboard components | Reuse existing gauge/sparkline/phase components. Each inverter gets own data stream in WebSocket snapshot |
+| **Per-inverter register viewer** | Already exists for SolarEdge. Users expect same register-level debugging for every source. Essential for troubleshooting connection issues | Medium | Per-source poll data in `shared_ctx`, existing register viewer component | SolarEdge: existing Modbus registers. OpenDTU: show raw JSON fields mapped to SunSpec equivalents |
+| **Per-inverter config** | Each source needs its own connection settings (host, port, unit_id for Modbus; URL, auth for REST). Must be editable without affecting other sources | Medium | Existing config page patterns, `InverterEntry` dataclass | Extend `InverterEntry` with `type` field ("solaredge", "opendtu") and type-specific connection params |
+| **Device sidebar navigation** | With multiple inverters + Venus OS as separate sections, the current 3-tab nav (Dashboard/Config/Registers) breaks down. Users need per-device navigation | High | Frontend restructure, URL hash routing update | Sidebar: Virtual Inverter (aggregate dashboard), SE30K (dashboard/registers/config), Hoymiles (dashboard/registers/config), Venus OS (ESS/MQTT/status), "+" add device |
+| **Aggregate dashboard (virtual inverter view)** | The "home" view showing combined power, total yield, all-source health at a glance. This is what users land on | Medium | Virtual inverter data, existing dashboard components | Reuse gauge (now showing aggregate power with combined capacity), sparkline (aggregate), phase table (combined). Add source breakdown bar or mini-cards |
+| **Source health indicators** | When one source goes offline, the aggregate still works but users must know which source is down and why | Low | Per-source `ConnectionManager` state, existing `ve-dot` component | Green/amber/red dot per source in sidebar and aggregate dashboard. Night mode state per source independently |
 
 ## Differentiators
 
-Features that set this apart from typical "edit YAML and restart" IoT tools.
+Features that set this apart. Not expected, but make the product feel polished and professional.
 
 | Feature | Value Proposition | Complexity | Dependencies | Notes |
 |---------|-------------------|------------|--------------|-------|
-| **Venus OS auto-config detection** | After proxy starts, Venus OS dbus-fronius scans all LAN IPs with SunSpec Modbus requests and finds the proxy automatically. Detecting this incoming connection and confirming "Venus OS found us!" eliminates the scariest setup step | Medium | Modbus server running (already is), need to track incoming TCP client IPs | dbus-fronius scans are automatic; feature is about *detecting and surfacing* the connection, not creating it |
-| **Live connection status bobble** | Persistent colored dot instead of Test Connection button. Green/red/amber updates in real-time from WebSocket. Feels alive, reduces testing anxiety | Low | Existing WebSocket pipeline, `conn_mgr.state` already tracked | Remove Test Connection button from UI. Dot driven by `data.connection.state`: connected=green, reconnecting=amber, night_mode=blue, error=red |
-| **Progressive setup checklist** | Banner showing completion: [x] Inverter configured [x] SolarEdge connected [ ] MQTT enabled [ ] Venus OS detected. Clear path and progress sense | Low | All status fields already exist in snapshot data | Pure frontend. Disappears when all items complete. No persistence needed |
-| **Portal ID auto-discovery** | Venus OS publishes portal ID on MQTT `N/+/system/0/Serial`. If user provides Venus IP but not portal ID, proxy subscribes and discovers automatically | Medium | MQTT connection working | Saves user from digging through Venus OS menus for portal ID |
+| **Priority-based power limiting** | Venus OS sends one limit (e.g., "reduce to 50%"). User defines which inverters throttle first. Example: throttle Hoymiles first (cheaper panels), keep SolarEdge at full power longer | High | Virtual inverter, all source plugins with `write_power_limit`, priority config | Distribution algorithm: ordered list of sources. Reduce highest-priority source first until its minimum, then next source. Must handle mixed capabilities (SolarEdge instant vs OpenDTU 25s delay) |
+| **Per-inverter exclusion from limiting** | Mark specific inverters as "never throttle". Example: Hoymiles on battery backup should always produce 100% | Low | Priority config, limiting algorithm | Boolean `exclude_from_limiting` per `InverterEntry`. Excluded sources produce at 100%, remaining sources absorb the full reduction |
+| **Custom virtual inverter name** | User names the aggregate device (e.g., "Dach PV Gesamt") instead of seeing "Fronius Proxy" | Low | Config dataclass, Common Model manufacturer/model string | Stored in config, applied to SunSpec Common Model C_Model field. Default: "PV Aggregator" or similar |
+| **Venus OS as own device section** | Venus OS gets its own sidebar entry with ESS status, MQTT connection health, Portal ID, Grid/Battery power (if available), override log | Medium | Existing `venus_reader.py` MQTT data, sidebar navigation | Consolidates scattered Venus OS info (currently split across dashboard widgets and config page) into one coherent view |
+| **Central "+" device management** | Single entry point to add new inverters or configure Venus OS. Guides user through type selection (SolarEdge/OpenDTU) and connection setup | Medium | Config API, plugin factory, sidebar navigation | Replaces current "add inverter" in config page. Flow: click "+" -> select type -> fill connection params -> test -> save |
+| **Source contribution breakdown** | Visual bar or mini-chart showing "SE30K: 85% / Hoymiles: 15%" of total production. Makes multi-source value visible at a glance | Low | Aggregate dashboard, per-source power data | Simple stacked bar or percentage labels. Updates in real-time from WebSocket |
+| **Graceful degradation on source loss** | When one source goes offline, aggregate continues with remaining sources. No crash, no stale data for the lost source (zero-fill like night mode). Venus OS sees reduced but valid power | Medium | Per-source `ConnectionManager`, virtual inverter aggregation | Each source has independent night mode state machine. Aggregate recalculates from available sources only. Venus OS never sees stale data |
+| **OpenDTU auto-discovery** | Like SolarEdge auto-discovery but for OpenDTU devices on the LAN. Scan for HTTP endpoints responding to `/api/system/status` | Medium | aiohttp, network scanning infrastructure from v3.1 | Different protocol than Modbus scan: HTTP GET to candidate IPs. Slower but reliable. Could reuse scan progress UI |
 
 ## Anti-Features
 
@@ -36,172 +43,200 @@ Features to explicitly NOT build.
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| **Multi-step setup wizard (Next/Back)** | Over-engineering for 6 fields total. Wizard UX adds navigation state, breaks browser back button, feels patronizing for users who run LXC containers | Single config page with all fields visible, grouped by section (Inverter / Venus OS). Setup checklist provides progressive guidance without wizard overhead |
-| **Network scanner for SolarEdge** | Scanning 254 IPs with Modbus TCP probes takes 5+ minutes, generates noise, and the user already knows their inverter IP from SolarEdge portal | Pre-fill default IP, let user correct it. Connection bobble confirms instantly |
-| **Venus OS auto-provisioning (writing dbus)** | Writing to Venus OS dbus to force-add proxy is fragile across firmware versions, bypasses consent, could conflict with existing configs | Document the Venus OS side: dbus-fronius auto-scans and finds the proxy within ~2 minutes. The proxy already responds correctly to SunSpec queries |
-| **Separate onboarding page / first-run** | Adds routing, another HTML page, and "has user completed onboarding" state management. For a single-page LAN tool, overkill | Setup checklist banner on existing config page, auto-dismisses when complete |
-| **Live Modbus probe on every keystroke** | Excessive Modbus traffic confuses SE30K, adds latency to typing | Validate format client-side (`validate_inverter_config`), test connection on Save only, show result via status bobble |
-| **Full service restart for config change** | `plugin.reconfigure()` already hot-reloads inverter settings. Service restart risks downtime and loses in-memory state | Extend hot-reload pattern to MQTT: reconnect `venus_mqtt_loop` with new host/portal_id without restarting service |
-| **Config validation modal / popup** | Modal dialogs interrupt flow and feel heavy for inline validation | Inline validation errors below fields (red text), status bobble for connection result |
+| **Per-phase power distribution across sources** | Venus OS expects one inverter with consistent L1/L2/L3. Splitting phases across sources (e.g., Hoymiles on L1, SolarEdge on L2/L3) creates impossible SunSpec register states and confuses Venus OS ESS | Sum all sources per phase. If a source is single-phase (Hoymiles), add its power to L1 only. Document this behavior |
+| **Real-time limit synchronization display** | Showing "SolarEdge: applied, Hoymiles: pending (15s remaining)" sounds useful but creates anxiety and false error signals. OpenDTU limit latency (25s) is normal, not an error | Show limit status per source as simple state: "Active" / "Applying..." / "Unavailable". No countdown timer |
+| **Dynamic priority rebalancing** | Auto-adjusting priority order based on current production, panel efficiency, or weather predictions. Over-engineered, unpredictable, hard to debug | Static user-defined priority list. User knows their setup best. Reorder via drag-and-drop or up/down buttons |
+| **Multi-virtual-inverter support** | Running multiple separate virtual inverters for different Venus OS instances from one proxy. Massively increases state complexity for zero real-world demand | One virtual inverter per proxy instance. If user needs two, run two proxy instances |
+| **Battery/Grid data aggregation** | Tempting to pull battery SOC or grid power from Venus OS MQTT and show in proxy dashboard. But proxy only has PV data; mixing in consumption data creates a confusing half-complete energy flow | Show Venus OS connection status and ESS mode only. Link to Venus OS Remote Console for full energy flow |
+| **OpenDTU WebSocket streaming** | OpenDTU supports WebSocket for live data push instead of REST polling. Adds complexity (two WS connections: one to OpenDTU, one from browser) for marginal latency improvement | Poll OpenDTU REST API at 2-5s interval. More than fast enough for Venus OS (which polls proxy at 1s). Simpler error handling, no reconnection state for WS client |
+| **Plugin hot-swap (add source type at runtime)** | Dynamically loading new plugin types without restart. Way over-engineered for 2 plugin types | Restart proxy after config change that adds a new source type. Plugin instances can be hot-reloaded (existing pattern), but new plugin classes require restart |
 
 ## Feature Dependencies
 
 ```
-Config pre-filled defaults ---------> (standalone, no deps)
+OpenDTU Plugin (poll) ──────────────────┐
+                                        ├──> Virtual Inverter Aggregation ──> Aggregated Nameplate
+SolarEdge Plugin (existing) ────────────┘           │
+                                                    ├──> Aggregate Dashboard
+Per-inverter Dashboard ─────────────────────────────┤
+Per-inverter Register Viewer ───────────────────────┤
+Per-inverter Config ────────────────────────────────┤
+                                                    │
+Device Sidebar Navigation <─────────────────────────┘
+        │
+        ├──> Venus OS Device Section
+        ├──> Central "+" Device Management
+        └──> URL Hash Routing (per-device pages)
 
-MQTT configurable (VenusConfig) ----> Dashboard MQTT gate
-                                  |-> MQTT setup guide (needs connection status to show/hide)
-                                  |-> Portal ID auto-discovery
-                                  |-> Venus OS auto-config detection (needs Venus IP for identification)
+OpenDTU Power Limit Control ────┐
+                                ├──> Priority-based Power Limiting
+SolarEdge write_power_limit ────┘           │
+                                            ├──> Per-inverter Exclusion
+                                            └──> (requires Virtual Inverter)
 
-Connection status bobble -----------> (depends on existing WebSocket, standalone otherwise)
-
-Install script fix -----------------> README (README references install command)
-
-Setup checklist --------------------> All other features (aggregates their status signals)
+Source Health Indicators ──────────> (standalone, per-source ConnectionManager)
+Source Contribution Breakdown ─────> (requires Aggregate Dashboard)
+Custom Virtual Inverter Name ──────> (standalone config change)
 ```
 
-**Critical path:** MQTT configurable must ship first because Dashboard MQTT gate, setup guide, and auto-discovery all depend on it.
+**Critical path:** OpenDTU Plugin must ship first. Virtual Inverter Aggregation depends on having at least two sources. Device Sidebar Navigation is the structural prerequisite for all per-device views.
 
 ## MVP Recommendation
 
-### Must Ship (table stakes -- without these, v3.0 does not solve onboarding):
+### Must Ship (table stakes -- without these, v4.0 has no value):
 
-1. **MQTT configurable** -- Highest priority. Hardcoded in 3 places. No other user can run this proxy without modifying source code. This is a blocker.
-2. **Config page pre-filled defaults** -- Trivial, high impact. Load defaults into form on first visit.
-3. **Connection status bobble** -- Replace Test Connection with live dot. Immediate feedback after Save.
-4. **Dashboard MQTT gate** -- Grey out Lock Toggle, Override Detection, Venus Settings when MQTT disconnected. CSS `opacity: 0.3` + `pointer-events: none` + overlay hint.
-5. **MQTT setup guide** -- Inline hint: "Enable MQTT on LAN in Venus OS Remote Console: Settings -> Services -> MQTT on LAN -> Enable."
-6. **Install script fix** -- Fix `solaredge:` / `inverter:` YAML key mismatch. Add venus config section.
-7. **README** -- Last to write, documents everything else.
+1. **OpenDTU plugin (poll + display)** -- Without this, there is only one source and nothing to aggregate. Foundation for everything.
+2. **Virtual inverter aggregation** -- The core value proposition. Sum N sources into one Fronius for Venus OS.
+3. **Aggregated Model 120 nameplate** -- Venus OS needs correct WRtg for ESS calculations. Wrong nameplate = wrong power limiting behavior.
+4. **Device sidebar navigation** -- Structural prerequisite for per-device views. Current 3-tab nav cannot accommodate N devices.
+5. **Per-inverter dashboard** -- Users must see individual source performance. Reuses existing components.
+6. **Aggregate dashboard** -- The "home" view showing combined power. Reuses existing gauge/sparkline with aggregate data.
+7. **Per-inverter config** -- Each source needs editable connection settings.
+8. **Source health indicators** -- Without these, users cannot diagnose which source is down.
+9. **OpenDTU power limit control** -- Venus OS ESS sends limit commands. If Hoymiles cannot be limited, it defeats the purpose of aggregation for zero-export setups.
 
-### Should Ship (differentiators):
+### Should Ship (differentiators that make v4.0 feel complete):
 
-8. **Venus OS auto-config detection** -- Track incoming Modbus TCP connections, show "Venus OS connected from 192.168.3.146!" Medium effort, high confidence boost.
-9. **Progressive setup checklist** -- Pure frontend, aggregates existing status signals. Low effort once others exist.
+10. **Priority-based power limiting** -- Core differentiator. Without it, the proxy just splits limits equally, which is rarely what users want.
+11. **Per-inverter exclusion from limiting** -- Simple boolean, huge value for users with mixed setups.
+12. **Venus OS as own device section** -- Consolidates existing scattered Venus info into coherent view.
+13. **Custom virtual inverter name** -- Low effort, nice personalization.
+14. **Source contribution breakdown** -- Visual proof that multi-source is working.
 
-### Defer to later milestone:
+### Defer to v4.1+:
 
-10. **Portal ID auto-discovery** -- Nice but not essential. User already needs to provide Venus OS IP for MQTT; portal ID is one more field (30s lookup in Venus OS Remote Console). Auto-discovery adds MQTT client initialization complexity.
+15. **Central "+" device management** -- Nice UX but not blocking. Users can add devices via config page initially.
+16. **Per-inverter register viewer** -- Useful for debugging but not essential for basic operation. SolarEdge viewer already exists; OpenDTU equivalent can come later.
+17. **OpenDTU auto-discovery** -- Different protocol than Modbus scan. Lower priority since users typically know their OpenDTU IP.
+18. **Graceful degradation on source loss** -- Important for reliability but complex. Initially, a source going offline can show error state while aggregate zeroes that source's contribution.
 
 ## Implementation Notes
 
-### Connection Status Bobble
+### OpenDTU Plugin Data Mapping
 
-Current flow: fill form -> Test Connection -> see result -> Save & Apply.
-New flow: fill form -> Save & Apply -> dot goes amber (connecting) -> green or red within 1-2s from WebSocket snapshot.
+OpenDTU `/api/livedata/status` JSON maps to SunSpec registers as follows:
 
-Backend: Keep `/api/config/test` for backward compat but remove from UI. `config_save_handler` already calls `plugin.reconfigure()`. `conn_mgr.state` reflects result in next WebSocket broadcast.
+| OpenDTU JSON Field | SunSpec Register | Notes |
+|-------------------|-----------------|-------|
+| `inverters[].AC.Power.v` | Model 103 W (offset 14) | Total AC power in watts |
+| `inverters[].AC.Voltage.v` | Model 103 PhVphA (offset 8) | Phase A voltage |
+| `inverters[].AC.Current.v` | Model 103 A (offset 2) | Total AC current |
+| `inverters[].AC.Frequency.v` | Model 103 Hz (offset 16) | Grid frequency |
+| `inverters[].DC[n].Power.v` | Model 103 DCW (offset 18) | Sum all DC channel power |
+| `inverters[].DC[n].Voltage.v` | Model 103 DCV (offset 20) | Average DC voltage |
+| `inverters[].INV.YieldTotal.v` | Model 103 WH (offset 26-27) | Total energy in Wh (uint32) |
+| `inverters[].INV.YieldDay.v` | Used for dashboard only | Not in SunSpec, display only |
 
-Frontend: Colored dot next to "SolarEdge" label. Color from `data.connection.state`:
-- `connected` = green (#2ECC71)
-- `reconnecting` = amber (#F1C40F, CSS pulse animation)
-- `night_mode` = blue (#387DC5)
-- anything else = red (#E74C3C)
+OpenDTU reports single-phase AC (Hoymiles micro-inverters are single-phase). Map to L1 only in 3-phase SunSpec model.
 
-### MQTT Gate Pattern
+### Virtual Inverter Aggregation Logic
 
-`venus_settings` in WebSocket snapshot is only populated when `venus_mqtt_loop` connects. When absent or stale (ts > 30s ago):
-
-```css
-.mqtt-gated {
-    opacity: 0.3;
-    pointer-events: none;
-    position: relative;
-}
-.mqtt-gated::after {
-    content: 'Requires MQTT connection to Venus OS';
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    color: var(--ve-text-muted);
-    font-size: 0.85rem;
-}
+```
+For each poll cycle:
+  1. Collect PollResult from each active source
+  2. Sum AC power (W), AC current (A) per phase
+  3. Weighted-average AC voltage and frequency (weight = power contribution)
+  4. Sum DC power, weighted-average DC voltage
+  5. Sum energy counters (WH)
+  6. Build single PollResult with aggregated registers
+  7. Update RegisterCache (Venus OS reads this)
 ```
 
-**Gate these elements:** Venus OS Lock Toggle, Venus OS ESS Settings, Override Detection log, Grid power display.
-**Keep enabled without MQTT:** Power gauge, phase cards, sparklines, inverter status, power control slider (writes directly to SE30K via Modbus).
+Scale factors: Use the most conservative (most negative) scale factor from any source. For mixed sources where one uses SF=-2 and another SF=0, normalize all values to the most precise SF before summing.
 
-### VenusConfig Dataclass
+### Power Limit Distribution Algorithm
+
+```
+Given: Venus OS requests X% limit on virtual inverter
+Given: Priority list [Source A (priority 1), Source B (priority 2)]
+Given: Each source has max_power (WRtg from nameplate)
+
+Target watts = X% * sum(all source WRtg)
+Remaining watts = Target watts
+
+For each source in priority order (lowest priority = throttled first):
+  If source.exclude_from_limiting:
+    Remaining watts -= source.current_power  # This source keeps producing
+    Continue
+
+  source_limit = min(remaining_watts, source.max_power)
+  source_pct = (source_limit / source.max_power) * 100
+  await source.write_power_limit(True, source_pct)
+  Remaining watts -= source_limit
+```
+
+### OpenDTU Authentication
+
+OpenDTU requires HTTP Basic Auth for write operations (`/api/limit/config`). Store credentials in `InverterEntry`:
 
 ```python
 @dataclass
-class VenusConfig:
-    host: str = ""          # Empty = MQTT disabled (initial state)
-    port: int = 1883
-    portal_id: str = ""     # Empty = try auto-discovery (future)
+class InverterEntry:
+    # ... existing fields ...
+    type: str = "solaredge"      # "solaredge" | "opendtu"
+    api_url: str = ""            # OpenDTU base URL (e.g., "http://192.168.3.98")
+    api_user: str = "admin"      # OpenDTU auth username
+    api_password: str = "openDTU42"  # OpenDTU auth password (default)
+    opendtu_serial: str = ""     # Hoymiles serial number for API calls
 ```
 
-Empty `host` means MQTT intentionally disabled (user hasn't configured Venus OS yet). This is the normal initial state for new installs. `venus_mqtt_loop` checks `if not config.venus.host: return` and dashboard shows setup guide hint.
+### Sidebar Navigation Structure
 
-Three hardcoded locations to update:
-1. `venus_reader.py` lines 19-20: `PORTAL_ID` and `VENUS_HOST` constants
-2. `webapp.py` line 598: `venus_write_handler` uses `"192.168.3.146"` directly
-3. `webapp.py` line 677: `_mqtt_write_venus` called with hardcoded host/portal_id
+```
+[Virtual Inverter]     <-- aggregate dashboard (home)
+  Dashboard            <-- gauge + phases + sparkline (aggregate)
 
-### Venus OS Auto-Config Detection
+[SE30K]                <-- per-device section
+  Dashboard            <-- individual gauge + phases
+  Registers            <-- existing register viewer
+  Config               <-- connection settings
 
-dbus-fronius on Venus OS scans LAN IPs by sending SunSpec Modbus TCP read requests (reads register 40000 for SunSpec "SunS" marker, then model chain). The proxy already responds correctly.
+[Hoymiles HM-800]     <-- per-device section
+  Dashboard            <-- individual gauge (single phase)
+  Config               <-- OpenDTU URL, serial, auth
 
-Implementation: Track incoming Modbus TCP client IPs in pymodbus server callbacks. When a non-localhost IP connects and successfully reads SunSpec registers, add it to a tracked set and expose in snapshot:
+[Venus OS]             <-- system section
+  Status               <-- ESS mode, MQTT health, Portal ID
+  Config               <-- Venus IP, MQTT port
 
-```python
-# Add to snapshot
-"venus_os_detected": {
-    "connected": True,
-    "client_ip": "192.168.3.146",
-    "last_contact_ts": 1710850000.0
-}
+[+]                    <-- add device
 ```
 
-### Install Script YAML Fix
+URL hash format: `#device/{id}/dashboard`, `#device/{id}/registers`, `#device/{id}/config`, `#venus/status`, `#add-device`
 
-Current generated YAML:
-```yaml
-solaredge:    # WRONG -- config.py expects "inverter"
-  host: "192.168.3.18"
-```
+### OpenDTU Poll Interval
 
-Should be:
-```yaml
-inverter:
-  host: "192.168.3.18"
-  port: 1502
-  unit_id: 1
-
-venus:
-  host: ""              # Venus OS IP (e.g., 192.168.3.146)
-  port: 1883
-  portal_id: ""         # Venus OS Portal ID (found in Remote Console)
-```
+OpenDTU REST API is served by ESP32 with limited resources. Poll at 3-5 second interval (not 1s like SolarEdge Modbus). The ESP32 can handle ~1 req/s but running close to that limit causes occasional timeouts. 3s is conservative and sufficient since Venus OS polls the proxy at 1s anyway -- the aggregate will update with slightly stale OpenDTU data between polls.
 
 ## Complexity Budget
 
 | Feature | Backend LOC | Frontend LOC | Total Effort |
 |---------|-------------|--------------|--------------|
-| Config pre-filled defaults | 0 | ~20 | Low |
-| Connection status bobble | 0 | ~40 | Low |
-| MQTT configurable | ~80 | ~60 | Medium |
-| Dashboard MQTT gate | ~10 | ~50 | Medium |
-| MQTT setup guide | 0 | ~40 | Low |
-| Install script fix | ~30 | 0 | Low |
-| README | 0 | 0 (~200 lines md) | Low |
-| Venus OS auto-config | ~60 | ~30 | Medium |
-| Setup checklist | 0 | ~80 | Low |
+| OpenDTU plugin (poll) | ~200 | 0 | Medium |
+| OpenDTU power limit | ~80 | 0 | Medium |
+| Virtual inverter aggregation | ~250 | 0 | High |
+| Aggregated nameplate | ~30 | 0 | Low |
+| Device sidebar navigation | ~20 (API routes) | ~300 | High |
+| Per-inverter dashboard | ~50 (snapshot restructure) | ~250 | High |
+| Aggregate dashboard | ~30 | ~150 | Medium |
+| Per-inverter config | ~60 | ~150 | Medium |
+| Source health indicators | ~20 | ~60 | Low |
+| Priority-based limiting | ~150 | ~100 | High |
+| Per-inverter exclusion | ~20 | ~30 | Low |
+| Venus OS device section | ~30 | ~120 | Medium |
+| Custom virtual inverter name | ~15 | ~20 | Low |
+| Source contribution breakdown | ~10 | ~60 | Low |
 
-**Total: ~180 LOC backend, ~320 LOC frontend, ~200 lines markdown**
+**Total estimate: ~965 LOC backend, ~1,240 LOC frontend**
 
 ## Sources
 
-- [Scenic West - IoT User Onboarding Guide](https://www.scenicwest.co/blog/a-fresh-approach-to-iot-user-onboarding-a-b2b-ux-designers-guide)
-- [grandcentrix - IoT Onboarding Guide](https://medium.com/@janinerchrtz/your-iot-onboarding-guide-2e009535c050)
-- [WithIntent - User-friendly Onboarding for IoT](https://www.withintent.com/blog/user-friendly-onboarding/)
-- [Carbon Design System - Status Indicator Patterns](https://carbondesignsystem.com/patterns/status-indicator-pattern/)
-- [KoruUX - Status Indicator Best Practices](https://www.koruux.com/blog/ux-best-practices-designing-status-indicators/)
-- [LogRocket - Progressive Disclosure in UX](https://blog.logrocket.com/ux-design/progressive-disclosure-ux-types-use-cases/)
-- [Medium - Responsive Enabling Pattern](https://medium.com/design-bootcamp/enhancing-ux-with-responsive-enabling-and-progressive-disclosure-patterns-92c07029a46a)
-- [victronenergy/dbus-fronius - Inverter Detection](https://github.com/victronenergy/dbus-fronius)
-- [victronenergy/dbus-mqtt - Venus MQTT Service](https://github.com/victronenergy/dbus-mqtt)
-- [Venus OS MQTT Community Discussion](https://community.victronenergy.com/t/venus-os-v3-53-mqtt-local-communication-on-mqtt-explorer/18199)
-- [Venus OS - Scan for Modbus Devices](https://community.victronenergy.com/t/venus-os-scan-for-modbus-devices/23121)
-- Codebase analysis: `config.py`, `venus_reader.py`, `webapp.py`, `install.sh`, `app.js`
+- [OpenDTU Web API Documentation](https://www.opendtu.solar/firmware/web_api/) -- Official REST API endpoints, authentication, response formats
+- [OpenDTU GitHub - Power Limit Latency (Issue #571)](https://github.com/tbnobody/OpenDTU/issues/571) -- Limit activation takes ~25s on Hoymiles
+- [OpenDTU GitHub - Setting limit via API (Discussion #602)](https://github.com/tbnobody/OpenDTU/discussions/602) -- limit_type and limit_value parameters
+- [OpenDTU GitHub - API limit types (Discussion #742)](https://github.com/tbnobody/OpenDTU/discussions/742) -- Limit type 0=absolute, 1=relative
+- [victronenergy/dbus-fronius](https://github.com/victronenergy/dbus-fronius) -- Venus OS Fronius driver, SunSpec power limiting via Model 123/704
+- [Venus OS SunSpec Inverter Support](https://community.victronenergy.com/t/support-of-sunspec-inverters-via-modbus-rtu-and-extended-sunspec-support/34855) -- Multi-inverter handling in Venus OS
+- [OpenDTU-OnBattery Dynamic Power Limiter](https://github.com/hoylabs/OpenDTU-OnBattery/wiki/Dynamic-Power-Limiter) -- Power distribution strategies for Hoymiles
+- [dbus-opendtu Integration](https://github.com/henne49/dbus-opendtu) -- Existing OpenDTU-to-Venus-OS bridge (different approach: dbus driver vs proxy)
+- Codebase analysis: `plugin.py`, `plugins/solaredge.py`, `proxy.py`, `config.py`, `app.js`, `webapp.py`
