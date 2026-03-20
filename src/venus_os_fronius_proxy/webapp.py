@@ -513,9 +513,11 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
     try:
         collector = request.app["shared_ctx"].get("dashboard_collector")
 
-        # Send latest snapshot if available
+        # Send latest snapshot if available, or no_inverter if polling paused
         if collector is not None and collector.last_snapshot is not None:
             await ws.send_json({"type": "snapshot", "data": collector.last_snapshot})
+        elif request.app["shared_ctx"].get("polling_paused"):
+            await ws.send_json({"type": "no_inverter"})
 
         # Send downsampled history for sparklines
         if collector is not None:

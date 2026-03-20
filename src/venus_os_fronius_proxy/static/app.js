@@ -248,31 +248,50 @@ function updateAutoDetectBanner(snapshot) {
 
 // ===== No Inverter Handler =====
 
+var _noInverterActive = false;
 function handleNoInverter() {
-    // Clear gauge
-    updateGauge(0);
-    updateGaugeStatus('No Inverter');
+    _noInverterActive = true;
+    var page = document.getElementById('page-dashboard');
+    if (!page) return;
 
-    // Clear 3-phase table
-    ['l1','l2','l3'].forEach(function(phase) {
-        var vEl = document.getElementById(phase + '-voltage');
-        var aEl = document.getElementById(phase + '-current');
-        var wEl = document.getElementById(phase + '-power');
-        if (vEl) vEl.textContent = '-- V';
-        if (aEl) aEl.textContent = '-- A';
-        if (wEl) wEl.textContent = '-- W';
+    // Hide all dashboard content
+    Array.from(page.children).forEach(function(child) {
+        if (!child.classList.contains('ve-no-inverter-hint')) {
+            child.style.display = 'none';
+        }
     });
 
-    // Clear status panel fields
-    var statusFields = ['inv-status','inv-temp','inv-dc-power','inv-dc-voltage','inv-freq',
-                        'inv-energy-today','inv-peak-power','inv-operating-hours','inv-efficiency'];
-    statusFields.forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.textContent = '--';
-    });
+    // Show hint card if not already present
+    if (!page.querySelector('.ve-no-inverter-hint')) {
+        var hint = document.createElement('div');
+        hint.className = 've-no-inverter-hint';
+        hint.innerHTML =
+            '<div class="ve-hint-card" style="max-width:420px;margin:80px auto;text-align:center;padding:32px">' +
+            '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" style="margin-bottom:16px;opacity:0.5">' +
+            '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="var(--ve-text-dim)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+            '</svg>' +
+            '<h3 style="margin:0 0 8px;color:var(--ve-text)">Kein Inverter konfiguriert</h3>' +
+            '<p style="margin:0;color:var(--ve-text-dim);font-size:0.9rem">Gehe zu <a href="#config" style="color:var(--ve-blue)">Config</a> um einen Inverter hinzuzufuegen oder Auto-Discover zu starten.</p>' +
+            '</div>';
+        page.appendChild(hint);
+    }
 
-    // Show hint to configure
-    showToast('Kein aktiver Inverter konfiguriert', 'warning');
+    previousSnapshot = null;
+}
+
+function handleInverterRestored() {
+    _noInverterActive = false;
+    var page = document.getElementById('page-dashboard');
+    if (!page) return;
+
+    // Show all dashboard content again
+    Array.from(page.children).forEach(function(child) {
+        if (child.classList.contains('ve-no-inverter-hint')) {
+            child.remove();
+        } else {
+            child.style.display = '';
+        }
+    });
 }
 
 // ===== Snapshot Handler =====
@@ -280,6 +299,9 @@ function handleNoInverter() {
 function handleSnapshot(data) {
     const inv = data.inverter;
     if (!inv) return;
+
+    // Restore dashboard if it was hidden
+    if (_noInverterActive) handleInverterRestored();
 
     // Update rated power from snapshot (dynamic per inverter)
     if (data.rated_power_w && data.rated_power_w > 0) {
