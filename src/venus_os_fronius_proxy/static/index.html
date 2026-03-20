@@ -259,25 +259,29 @@
         </div>
         <form id="config-form">
           <div class="ve-config-grid">
-          <div class="ve-panel">
+          <div class="ve-panel" id="inverter-panel">
             <div class="ve-panel-header">
-              <h2><span class="ve-dot ve-dot--dim" id="cfg-se-dot"></span> SolarEdge Inverter</h2>
-              <span class="ve-btn-pair" id="btn-pair-se" style="display:none">
-                <button type="button" class="ve-btn ve-btn--sm ve-btn--cancel" id="btn-cancel-se">Cancel</button>
-                <button type="button" class="ve-btn ve-btn--sm ve-btn--save" id="btn-save-se">Save</button>
+              <h2>Inverters</h2>
+              <button type="button" class="ve-btn ve-btn--sm ve-btn--primary" id="btn-add-inverter" title="Add Inverter">+</button>
+            </div>
+            <div id="inverter-list"></div>
+            <div id="inverter-add-form" class="ve-inv-add-form" style="display:none">
+              <div class="ve-form-group">
+                <label>Host</label>
+                <input type="text" class="ve-input" id="add-inv-host" placeholder="192.168.1.100">
+              </div>
+              <div class="ve-form-group">
+                <label>Port</label>
+                <input type="number" class="ve-input" id="add-inv-port" value="1502" min="1" max="65535">
+              </div>
+              <div class="ve-form-group">
+                <label>Unit ID</label>
+                <input type="number" class="ve-input" id="add-inv-unit" value="1" min="1" max="247">
+              </div>
+              <span class="ve-btn-pair">
+                <button type="button" class="ve-btn ve-btn--sm ve-btn--cancel" id="btn-add-inv-cancel">Cancel</button>
+                <button type="button" class="ve-btn ve-btn--sm ve-btn--save" id="btn-add-inv-save">Add</button>
               </span>
-            </div>
-            <div class="ve-form-group">
-              <label for="se-host">SolarEdge IP</label>
-              <input type="text" id="se-host" class="ve-input" placeholder="192.168.3.18">
-            </div>
-            <div class="ve-form-group">
-              <label for="se-port">Modbus Port</label>
-              <input type="number" id="se-port" class="ve-input" placeholder="1502" min="1" max="65535">
-            </div>
-            <div class="ve-form-group">
-              <label for="se-unit">Unit ID</label>
-              <input type="number" id="se-unit" class="ve-input" placeholder="1" min="1" max="247">
             </div>
           </div>
           <div class="ve-panel">
