@@ -45,15 +45,17 @@ Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie ei
 - ✓ Install Script poliert (curl one-liner, sichere Flags, pre-flight checks) — v3.0
 - ✓ README mit vollstaendigem v3.0 Setup-Flow — v3.0
 
+- ✓ Auto-Discovery: Netzwerk-Scan findet SunSpec-Inverter automatisch — v3.1
+- ✓ Auto-Scan bei Ersteinrichtung wenn kein Inverter konfiguriert — v3.1
+- ✓ Manueller Re-Scan ueber Config-UI mit Fortschrittsbalken — v3.1
+- ✓ Multi-Inverter Config mit Enable/Disable Toggle und Loeschen — v3.1
+- ✓ Inverter-Eintraege aus Scan-Ergebnissen automatisch angelegt — v3.1
+- ✓ Konfigurierbare Scan-Ports (Default: 502, 1502) persistent — v3.1
+- ✓ Unit ID Scan (Default: 1, optional 2-10 fuer RS485 Chains) — v3.1
+
 ### Active
 
-- [ ] Auto-Discovery: Netzwerk-Scan findet SolarEdge-Inverter automatisch (Subnet, Ports 502/1502, SunSpec-Verifikation)
-- [ ] Auto-Scan bei Ersteinrichtung wenn kein Inverter konfiguriert
-- [ ] Manueller Re-Scan ueber Config-UI
-- [ ] Multi-Inverter Config: Liste mit Enable/Disable Toggle und Loeschen
-- [ ] Inverter-Eintraege werden automatisch aus Scan-Ergebnissen angelegt (IP, Port, Unit ID, Model, Serial)
-- [ ] Konfigurierbare Scan-Ports (Default: 502, 1502)
-- [ ] Unit ID Scan (Default: 1, optional 2-10 fuer RS485 Chains)
+(None — planning next milestone)
 
 ### Out of Scope
 
@@ -117,17 +119,19 @@ Tech stack: Python 3.12, pymodbus 3.8+, aiohttp (HTTP + WebSocket), paho-mqtt, s
 | Model 123 Write Detection | Venus OS Erkennung ueber Modbus Write | ✓ Good — zuverlaessig, kein False Positive |
 | No Auto-Save bei Detection | User muss Config bestaetigen | ✓ Good — Safety first |
 
-## Current Milestone: v3.1 Auto-Discovery & Inverter Management
+## Context
 
-**Goal:** SolarEdge-Inverter werden automatisch im LAN gefunden und in die Config eingetragen. Multi-Inverter Management mit Aktivierung/Deaktivierung/Loeschung.
+**Shipped v3.1** with ~8,650 LOC total (Python src + HTML/CSS/JS + tests). 20 phases across 5 milestones shipped.
 
-**Target features:**
-- Netzwerk-Scan (ganzes Subnet, Ports 502+1502, SunSpec "SunS" Verifikation)
-- SunSpec-Identifikation (Manufacturer, Model, Serial Number, Unit ID)
-- Auto-Scan bei Ersteinrichtung (kein Inverter konfiguriert)
-- Manueller Re-Scan via Config-UI (Auto-Discover Button + Port-Feld)
-- Multi-Inverter Config-Management (Liste, Enable/Disable Slider, Loeschen)
-- Ein aktiver Inverter fuer Proxy (Multi-Proxy als Future Scope)
+Tech stack: Python 3.12, pymodbus 3.8+, aiohttp (HTTP + WebSocket), paho-mqtt, structlog, PyYAML, vanilla JS.
+
+**Infrastructure:**
+- SolarEdge SE30K: 192.168.3.18:1502 (Modbus TCP)
+- Venus OS (Victron Cerbo/RPi5): 192.168.3.146 (v3.71)
+- LXC Container: 192.168.3.191 (Debian 13, Proxmox)
+- Proxy: Port 502 (Modbus) + Port 80 (Webapp)
+
+**Live verified:** Full-featured dashboard with inline power control, Venus OS lock toggle, peak statistics. Config page with inverter management, auto-discovery with progress bar, auto-scan on empty config. curl one-liner install.
 
 ---
-*Last updated: 2026-03-20 after v3.1 milestone start*
+*Last updated: 2026-03-20 after v3.1 milestone shipped*
