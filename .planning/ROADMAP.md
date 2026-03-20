@@ -92,10 +92,11 @@ Plans:
   2. Existing single-inverter config files are automatically migrated to the list format on first load without data loss
   3. REST API exposes endpoints to list, add, update, and remove inverter entries
   4. The proxy uses the first enabled inverter as the active proxy target (backward compatible behavior)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 18-01: Multi-inverter config model + migration + API
+- [ ] 18-01-PLAN.md -- InverterEntry dataclass, Config migration, get_active_inverter, __main__.py + config.example.yaml
+- [ ] 18-02-PLAN.md -- CRUD /api/inverters endpoints, updated config handlers, scanner skip_ips
 
 ### Phase 19: Inverter Management UI
 **Goal**: User can view, enable/disable, and delete inverter entries from the config page
@@ -150,6 +151,6 @@ Plans:
 | 15. Venus OS Auto-Detect | v3.0 | 1/1 | Complete | 2026-03-19 |
 | 16. Install Script & README | v3.0 | 1/1 | Complete | 2026-03-19 |
 | 17. Discovery Engine | 2/2 | Complete    | 2026-03-20 | - |
-| 18. Multi-Inverter Config | v3.1 | 0/1 | Not started | - |
+| 18. Multi-Inverter Config | v3.1 | 0/2 | Not started | - |
 | 19. Inverter Management UI | v3.1 | 0/1 | Not started | - |
 | 20. Discovery UI & Onboarding | v3.1 | 0/2 | Not started | - |
