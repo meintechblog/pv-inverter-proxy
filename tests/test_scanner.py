@@ -516,3 +516,112 @@ class TestUnitIdScan:
 
         assert len(result) == 1
         assert result[0].unit_id == 1
+
+
+# ── Scanner REST API ───────────────────────────────────────────
+
+import time
+import weakref
+
+from aiohttp.test_utils import TestClient, TestServer
+
+from venus_os_fronius_proxy.config import Config
+from venus_os_fronius_proxy.connection import ConnectionManager
+from venus_os_fronius_proxy.control import ControlState, OverrideLog
+from venus_os_fronius_proxy.register_cache import RegisterCache
+from venus_os_fronius_proxy.sunspec_models import build_initial_registers, DATABLOCK_START
+from pymodbus.datastore import ModbusSequentialDataBlock
+
+
+@pytest.fixture
+async def scanner_client(tmp_path):
+    """Create an aiohttp test client with scanner endpoint."""
+    from venus_os_fronius_proxy.webapp import create_webapp
+
+    initial_values = build_initial_registers()
+    datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
+    cache = RegisterCache(datablock, staleness_timeout=30.0)
+    cache.last_successful_poll = time.monotonic()
+    cache._has_been_updated = True
+
+    conn_mgr = ConnectionManager(poll_interval=1.0)
+
+    shared_ctx = {
+        "cache": cache,
+        "conn_mgr": conn_mgr,
+        "control_state": ControlState(),
+        "override_log": OverrideLog(),
+        "poll_counter": {"success": 50, "total": 55},
+        "last_se_poll": {},
+    }
+
+    config = Config()
+    config.inverter.host = "192.168.3.18"
+    config_path = str(tmp_path / "config.yaml")
+
+    plugin = AsyncMock()
+    plugin.host = "192.168.3.18"
+    plugin.port = 1502
+    plugin.unit_id = 1
+
+    runner = await create_webapp(shared_ctx, config, config_path, plugin)
+    app = runner.app
+    server = TestServer(app)
+    client = TestClient(server)
+    await client.start_server()
+    yield client
+    await client.close()
+
+
+class TestScannerAPI:
+    """Tests for POST /api/scanner/discover endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_discover_endpoint_returns_devices(self, scanner_client):
+        device = DiscoveredDevice(
+            ip="192.168.3.100", port=502, unit_id=1,
+            manufacturer="SolarEdge", model="SE30K",
+            serial_number="ABC123", firmware_version="4.18",
+        )
+        with patch("venus_os_fronius_proxy.webapp.scan_subnet",
+                    new_callable=AsyncMock, return_value=[device]):
+            resp = await scanner_client.post("/api/scanner/discover", json={})
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["success"] is True
+        assert data["count"] == 1
+        assert len(data["devices"]) == 1
+        assert data["devices"][0]["ip"] == "192.168.3.100"
+        assert data["devices"][0]["supported"] is True
+
+    @pytest.mark.asyncio
+    async def test_discover_endpoint_empty_result(self, scanner_client):
+        with patch("venus_os_fronius_proxy.webapp.scan_subnet",
+                    new_callable=AsyncMock, return_value=[]):
+            resp = await scanner_client.post("/api/scanner/discover", json={})
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["success"] is True
+        assert data["devices"] == []
+        assert data["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_discover_endpoint_error(self, scanner_client):
+        with patch("venus_os_fronius_proxy.webapp.scan_subnet",
+                    new_callable=AsyncMock, side_effect=RuntimeError("No interface")):
+            resp = await scanner_client.post("/api/scanner/discover", json={})
+        assert resp.status == 500
+        data = await resp.json()
+        assert data["success"] is False
+        assert "No interface" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_discover_skips_configured_ip(self, scanner_client):
+        with patch("venus_os_fronius_proxy.webapp.scan_subnet",
+                    new_callable=AsyncMock, return_value=[]) as mock_scan:
+            resp = await scanner_client.post("/api/scanner/discover", json={})
+        assert resp.status == 200
+        # Verify ScanConfig was called with skip_ips containing configured host
+        call_args = mock_scan.call_args
+        scan_config = call_args[0][0]  # first positional arg
+        assert "192.168.3.18" in scan_config.skip_ips

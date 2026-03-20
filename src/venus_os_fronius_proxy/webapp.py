@@ -14,6 +14,8 @@ from aiohttp import web
 
 import asyncio
 
+from dataclasses import asdict
+
 from venus_os_fronius_proxy.config import (
     Config,
     save_config,
@@ -21,7 +23,12 @@ from venus_os_fronius_proxy.config import (
     validate_venus_config,
 )
 from venus_os_fronius_proxy.control import validate_wmaxlimpct
+from venus_os_fronius_proxy.scanner import scan_subnet, ScanConfig
 from venus_os_fronius_proxy.venus_reader import venus_mqtt_loop
+
+import structlog
+
+log = structlog.get_logger()
 
 
 # SunSpec register layout for the register viewer.
@@ -803,6 +810,35 @@ async def venus_lock_handler(request: web.Request) -> web.Response:
     return web.json_response({"success": True})
 
 
+async def scanner_discover_handler(request: web.Request) -> web.Response:
+    """POST /api/scanner/discover -- trigger subnet scan for SunSpec devices."""
+    config: Config = request.app["config"]
+    skip_ips = {config.inverter.host}
+
+    # Optional: accept scan params from request body
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    scan_unit_ids = body.get("scan_unit_ids", [1])
+    scan_config = ScanConfig(skip_ips=skip_ips, scan_unit_ids=scan_unit_ids)
+
+    try:
+        devices = await scan_subnet(scan_config)
+        return web.json_response({
+            "success": True,
+            "devices": [{**asdict(d), "supported": d.supported} for d in devices],
+            "count": len(devices),
+        })
+    except Exception as e:
+        log.error("scanner.discover_failed", error=str(e))
+        return web.json_response(
+            {"success": False, "error": str(e)},
+            status=500,
+        )
+
+
 async def create_webapp(
     shared_ctx: dict,
     config: Config,
@@ -836,6 +872,7 @@ async def create_webapp(
     app.router.add_post("/api/venus-write", venus_write_handler)
     app.router.add_post("/api/venus-dbus", venus_dbus_handler)
     app.router.add_post("/api/venus-lock", venus_lock_handler)
+    app.router.add_post("/api/scanner/discover", scanner_discover_handler)
     app.router.add_get("/static/{filename}", static_handler)
 
     runner = web.AppRunner(app)
