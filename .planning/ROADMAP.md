@@ -149,7 +149,7 @@ Plans:
 | 14. Config Page & Dashboard UX | v3.0 | 2/2 | Complete | 2026-03-19 |
 | 15. Venus OS Auto-Detect | v3.0 | 1/1 | Complete | 2026-03-19 |
 | 16. Install Script & README | v3.0 | 1/1 | Complete | 2026-03-19 |
-| 17. Discovery Engine | 2/2 | Complete   | 2026-03-20 | - |
+| 17. Discovery Engine | 2/2 | Complete    | 2026-03-20 | - |
 | 18. Multi-Inverter Config | v3.1 | 0/1 | Not started | - |
 | 19. Inverter Management UI | v3.1 | 0/1 | Not started | - |
 | 20. Discovery UI & Onboarding | v3.1 | 0/2 | Not started | - |
