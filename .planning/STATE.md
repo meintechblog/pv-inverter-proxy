@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Auto-Discovery & Inverter Management
-status: planning
-stopped_at: Phase 17 context gathered
-last_updated: "2026-03-20T07:24:24.847Z"
-last_activity: 2026-03-20 — Roadmap created (phases 17-20, 6 plans, 13 requirements)
+status: executing
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-03-20T08:04:00.000Z"
+last_activity: 2026-03-20 — Completed 17-01 scanner module (TDD, 22 tests)
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-20)
 ## Current Position
 
 Phase: 17 of 20 (Discovery Engine)
-Plan: Ready to plan
-Status: Roadmap complete, ready to plan Phase 17
-Last activity: 2026-03-20 — Roadmap created (phases 17-20, 6 plans, 13 requirements)
+Plan: 1 of 2 complete
+Status: Executing Phase 17 plans
+Last activity: 2026-03-20 — Completed 17-01 scanner module (TDD, 22 tests)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -48,6 +48,8 @@ Progress: [░░░░░░░░░░] 0%
 - Detection is one-shot: flag set on first Model 123 write only (15-01)
 - [Phase 16]: Migration warning (not auto-migration) for old solaredge: config key
 - [Phase 16]: Port 502 check is warning not hard fail (previous install may hold port)
+- [Phase 17-01]: Used device_id param (not slave) for pymodbus to match solaredge.py
+- [Phase 17-01]: DiscoveredDevice.supported as @property (computed from manufacturer)
 
 ### Pending Todos
 
@@ -59,5 +61,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-20T07:24:24.844Z
-Stopped at: Phase 17 context gathered
+Last session: 2026-03-20T08:04:00Z
+Stopped at: Completed 17-01-PLAN.md
