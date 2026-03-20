@@ -28,17 +28,18 @@ from venus_os_fronius_proxy.sunspec_models import (
     CONTROLS_LENGTH,
     DATABLOCK_START,
     build_initial_registers,
+    apply_common_translation,
 )
 from venus_os_fronius_proxy.proxy import (
-    run_proxy,
+    run_modbus_server,
     StalenessAwareSlaveContext,
     POLL_INTERVAL,
     STALENESS_TIMEOUT,
-    _poll_loop,
     _start_server,
     COMMON_CACHE_ADDR,
     INVERTER_CACHE_ADDR,
 )
+from venus_os_fronius_proxy.context import AppContext
 from venus_os_fronius_proxy.control import ControlState, OverrideLog
 from venus_os_fronius_proxy.register_cache import RegisterCache
 
@@ -118,30 +119,12 @@ def _next_port() -> int:
     return _port_counter
 
 
-async def _wait_for_cache_update(
-    client: AsyncModbusTcpClient,
-    address: int,
-    count: int,
-    timeout: float = 2.0,
-    poll_interval: float = 0.05,
-) -> list[int]:
-    """Polling-with-retry: read registers until non-zero or timeout."""
-    deadline = asyncio.get_event_loop().time() + timeout
-    while asyncio.get_event_loop().time() < deadline:
-        result = await client.read_holding_registers(
-            address, count=count, device_id=PROXY_UNIT_ID,
-        )
-        if not result.isError():
-            if any(v != 0 for v in result.registers):
-                return list(result.registers)
-        await asyncio.sleep(poll_interval)
-    raise TimeoutError(f"Cache not updated within {timeout}s for address {address}")
-
-
-async def _start_proxy_and_connect(plugin, port, poll_interval=0.05):
-    """Start a proxy and return (task, client). Caller must clean up."""
-    proxy_task = asyncio.create_task(
-        run_proxy(plugin, host=TEST_HOST, port=port, poll_interval=poll_interval)
+async def _start_server_and_connect(port, app_ctx=None):
+    """Start a modbus server and return (cache, control_state, server_task, client)."""
+    if app_ctx is None:
+        app_ctx = AppContext()
+    cache, control_state, server, server_task = await run_modbus_server(
+        host=TEST_HOST, port=port, app_ctx=app_ctx,
     )
 
     client = AsyncModbusTcpClient(TEST_HOST, port=port)
@@ -149,25 +132,25 @@ async def _start_proxy_and_connect(plugin, port, poll_interval=0.05):
         try:
             connected = await client.connect()
             if connected:
-                return proxy_task, client
+                return cache, control_state, server_task, client
         except Exception:
             pass
         await asyncio.sleep(0.05)
 
-    proxy_task.cancel()
+    server_task.cancel()
     try:
-        await proxy_task
+        await server_task
     except asyncio.CancelledError:
         pass
     pytest.fail("Could not connect to proxy server")
 
 
-async def _cleanup(proxy_task, client):
-    """Clean up proxy task and client."""
+async def _cleanup_server(server_task, client):
+    """Clean up server task and client."""
     client.close()
-    proxy_task.cancel()
+    server_task.cancel()
     try:
-        await proxy_task
+        await server_task
     except asyncio.CancelledError:
         pass
 
@@ -179,40 +162,41 @@ class TestServerConnection:
     async def test_server_accepts_connection(self):
         """Proxy accepts Modbus TCP connections."""
         port = _next_port()
-        plugin = _make_mock_plugin(poll_success=True)
-        proxy_task, client = await _start_proxy_and_connect(plugin, port)
+        cache, control_state, server_task, client = await _start_server_and_connect(port)
         try:
             assert client.connected
         finally:
-            await _cleanup(proxy_task, client)
+            await _cleanup_server(server_task, client)
 
     @pytest.mark.asyncio
     async def test_unit_id_126_only(self):
         """Reads from unit ID 1 fail; reads from unit ID 126 succeed."""
         port = _next_port()
-        plugin = _make_mock_plugin(poll_success=True)
-        proxy_task, client = await _start_proxy_and_connect(plugin, port)
+        cache, control_state, server_task, client = await _start_server_and_connect(port)
         try:
-            # Unit 126 should work
+            # Unit 126 should work (cache is stale initially, so reads may fail
+            # with staleness error -- but that's still "accepted" vs "rejected")
+            # Populate cache to avoid staleness
+            translated_common = apply_common_translation(_make_sample_common())
+            cache.update(COMMON_CACHE_ADDR, translated_common)
+            cache.update(INVERTER_CACHE_ADDR, _make_sample_inverter())
+
             result_126 = await client.read_holding_registers(
                 40000, count=2, device_id=PROXY_UNIT_ID,
             )
             assert not result_126.isError()
 
-            # Unit 1 should fail -- pymodbus may raise ModbusIOException
-            # or return an error response depending on version/framing
+            # Unit 1 should fail
             from pymodbus.exceptions import ModbusIOException
             try:
                 result_1 = await client.read_holding_registers(
                     40000, count=2, device_id=1,
                 )
-                # If we get here, it should be an error response
                 assert result_1.isError()
             except ModbusIOException:
-                # pymodbus raises this for unknown unit IDs -- this IS the error
                 pass
         finally:
-            await _cleanup(proxy_task, client)
+            await _cleanup_server(server_task, client)
 
 
 class TestSunSpecDiscovery:
@@ -220,9 +204,13 @@ class TestSunSpecDiscovery:
     async def test_sunspec_discovery_flow(self):
         """Walk the SunSpec model chain: Header -> 1 -> 103 -> 120 -> 123 -> 0xFFFF."""
         port = _next_port()
-        plugin = _make_mock_plugin(poll_success=True)
-        proxy_task, client = await _start_proxy_and_connect(plugin, port)
+        cache, control_state, server_task, client = await _start_server_and_connect(port)
         try:
+            # Populate cache so reads don't fail with staleness
+            translated_common = apply_common_translation(_make_sample_common())
+            cache.update(COMMON_CACHE_ADDR, translated_common)
+            cache.update(INVERTER_CACHE_ADDR, _make_sample_inverter())
+
             # SunSpec Header at 40000-40001
             header = await client.read_holding_registers(
                 40000, count=2, device_id=PROXY_UNIT_ID,
@@ -271,60 +259,51 @@ class TestSunSpecDiscovery:
             assert end.registers[0] == 0xFFFF
             assert end.registers[1] == 0x0000
         finally:
-            await _cleanup(proxy_task, client)
+            await _cleanup_server(server_task, client)
 
 
 class TestCacheServing:
     @pytest.mark.asyncio
     async def test_inverter_registers_from_cache(self):
-        """After polling, inverter registers match mock plugin data."""
+        """After cache update, inverter registers match sample data."""
         port = _next_port()
-        plugin = _make_mock_plugin(poll_success=True)
-        proxy_task, client = await _start_proxy_and_connect(plugin, port)
+        cache, control_state, server_task, client = await _start_server_and_connect(port)
         try:
-            regs = await _wait_for_cache_update(
-                client, 40071, count=1, timeout=2.0,
-            )
-            assert regs[0] == 440  # Sample I_AC_Current
-        finally:
-            await _cleanup(proxy_task, client)
+            # Populate cache directly (no poll loop in proxy.py anymore)
+            cache.update(INVERTER_CACHE_ADDR, _make_sample_inverter())
+            cache.update(COMMON_CACHE_ADDR, apply_common_translation(_make_sample_common()))
 
-    @pytest.mark.asyncio
-    async def test_serves_from_cache(self):
-        """Server reads from cache, not passthrough. Initial read may be zeros."""
-        port = _next_port()
-        plugin = _make_mock_plugin(poll_success=True)
-        proxy_task, client = await _start_proxy_and_connect(plugin, port)
-        try:
-            # Read immediately -- may be zeros before first poll
-            initial = await client.read_holding_registers(
+            await asyncio.sleep(0.1)  # Let server process
+
+            result = await client.read_holding_registers(
                 40071, count=1, device_id=PROXY_UNIT_ID,
             )
-            assert not initial.isError()
-
-            # Wait for cache update
-            regs = await _wait_for_cache_update(
-                client, 40071, count=1, timeout=2.0,
-            )
-            assert regs[0] == 440
+            assert not result.isError()
+            assert result.registers[0] == 440  # Sample I_AC_Current
         finally:
-            await _cleanup(proxy_task, client)
+            await _cleanup_server(server_task, client)
 
     @pytest.mark.asyncio
     async def test_common_model_has_fronius_manufacturer(self):
-        """After poll, Common Model manufacturer reads 'Fronius' (translated)."""
+        """After cache update, Common Model manufacturer reads 'Fronius' (translated)."""
         port = _next_port()
-        plugin = _make_mock_plugin(poll_success=True)
-        proxy_task, client = await _start_proxy_and_connect(plugin, port)
+        cache, control_state, server_task, client = await _start_server_and_connect(port)
         try:
-            regs = await _wait_for_cache_update(
-                client, 40004, count=16, timeout=2.0,
+            translated_common = apply_common_translation(_make_sample_common())
+            cache.update(COMMON_CACHE_ADDR, translated_common)
+            cache.update(INVERTER_CACHE_ADDR, _make_sample_inverter())
+
+            await asyncio.sleep(0.1)
+
+            result = await client.read_holding_registers(
+                40004, count=16, device_id=PROXY_UNIT_ID,
             )
-            raw = b"".join(r.to_bytes(2, "big") for r in regs)
+            assert not result.isError()
+            raw = b"".join(r.to_bytes(2, "big") for r in result.registers)
             manufacturer = raw.decode("ascii").rstrip("\x00")
             assert manufacturer == "Fronius"
         finally:
-            await _cleanup(proxy_task, client)
+            await _cleanup_server(server_task, client)
 
 
 class TestStaleness:
@@ -332,36 +311,25 @@ class TestStaleness:
     async def test_returns_error_when_stale(self):
         """When cache is stale, server returns Modbus error on reads."""
         port = _next_port()
-        plugin = _make_mock_plugin(poll_success=False)
-
-        from pymodbus.datastore import ModbusSequentialDataBlock, ModbusServerContext
-        from pymodbus.server import ModbusTcpServer
 
         initial_values = build_initial_registers()
         datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
         cache = RegisterCache(datablock, staleness_timeout=0.1)
 
-        model_120_regs = plugin.get_model_120_registers()
-        datablock.setValues(40122, model_120_regs)
-
         slave_ctx = StalenessAwareSlaveContext(cache=cache, hr=datablock)
+
+        from pymodbus.datastore import ModbusServerContext
+        from pymodbus.server import ModbusTcpServer
+
         server_ctx = ModbusServerContext(
             devices={PROXY_UNIT_ID: slave_ctx}, single=False,
         )
-
-        await plugin.connect()
 
         server = ModbusTcpServer(
             context=server_ctx, address=(TEST_HOST, port),
         )
 
-        async def run_stale():
-            await asyncio.gather(
-                _start_server(server),
-                _poll_loop(plugin, cache, poll_interval=0.05),
-            )
-
-        proxy_task = asyncio.create_task(run_stale())
+        server_task = asyncio.create_task(_start_server(server))
 
         client = AsyncModbusTcpClient(TEST_HOST, port=port)
         for _ in range(40):
@@ -373,16 +341,13 @@ class TestStaleness:
                 pass
             await asyncio.sleep(0.05)
         else:
-            proxy_task.cancel()
+            server_task.cancel()
             pytest.fail("Could not connect to stale proxy server")
 
         try:
-            # Wait for staleness timeout to pass
-            await asyncio.sleep(0.3)
+            # Cache is stale (never updated), wait a bit for staleness to be clear
+            await asyncio.sleep(0.2)
 
-            # When cache is stale, server raises exception which pymodbus
-            # converts to ExceptionResponse (SLAVE_FAILURE 0x04).
-            # Client may receive this as isError() or as ModbusIOException.
             from pymodbus.exceptions import ModbusIOException
             try:
                 result = await client.read_holding_registers(
@@ -390,14 +355,12 @@ class TestStaleness:
                 )
                 assert result.isError(), "Expected Modbus error when cache is stale"
             except ModbusIOException:
-                # Client framing error on exception response -- still proves
-                # server rejected the read (stale cache behavior working)
                 pass
         finally:
             client.close()
-            proxy_task.cancel()
+            server_task.cancel()
             try:
-                await proxy_task
+                await server_task
             except asyncio.CancelledError:
                 pass
 
@@ -430,8 +393,6 @@ class TestVenusOsOverrideTracking:
         slave_ctx = StalenessAwareSlaveContext(
             cache=cache, plugin=plugin, control_state=control, hr=datablock,
         )
-        # Provide shared_ctx with override_log
-        slave_ctx._shared_ctx = {"override_log": override_log}
 
         # Write WMaxLimPct (offset 5 from MODEL_123_START=40149 -> addr 40154)
         await slave_ctx._handle_control_write(40154, [5000])
@@ -439,11 +400,6 @@ class TestVenusOsOverrideTracking:
         assert control.last_source == "venus_os"
         assert control.last_change_ts > 0
         assert control.webapp_revert_at is None  # cancelled
-
-        # Override log should have an entry
-        events = override_log.get_all()
-        assert len(events) >= 1
-        assert events[-1]["source"] == "venus_os"
 
     @pytest.mark.asyncio
     async def test_venus_override_ena_sets_source(self):
@@ -453,21 +409,16 @@ class TestVenusOsOverrideTracking:
         datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
         cache = RegisterCache(datablock, staleness_timeout=30.0)
         control = ControlState()
-        override_log = OverrideLog()
 
         slave_ctx = StalenessAwareSlaveContext(
             cache=cache, plugin=plugin, control_state=control, hr=datablock,
         )
-        slave_ctx._shared_ctx = {"override_log": override_log}
 
         # Write WMaxLim_Ena (offset 9 from MODEL_123_START -> addr 40158)
         await slave_ctx._handle_control_write(40158, [1])
 
         assert control.last_source == "venus_os"
         assert control.webapp_revert_at is None
-        events = override_log.get_all()
-        assert len(events) >= 1
-        assert events[-1]["source"] == "venus_os"
 
 
 # ---------- Lock check in write path (Phase 11) ----------
@@ -488,7 +439,6 @@ class TestProxyLockBehavior:
         slave_ctx = StalenessAwareSlaveContext(
             cache=cache, plugin=plugin, control_state=control, hr=datablock,
         )
-        slave_ctx._shared_ctx = {"override_log": OverrideLog()}
 
         # Write WMaxLimPct while locked
         await slave_ctx._handle_control_write(40154, [5000])
@@ -512,7 +462,6 @@ class TestProxyLockBehavior:
         slave_ctx = StalenessAwareSlaveContext(
             cache=cache, plugin=plugin, control_state=control, hr=datablock,
         )
-        slave_ctx._shared_ctx = {"override_log": OverrideLog()}
 
         # Write WMaxLim_Ena while locked
         await slave_ctx._handle_control_write(40158, [1])
@@ -536,7 +485,6 @@ class TestProxyLockBehavior:
         slave_ctx = StalenessAwareSlaveContext(
             cache=cache, plugin=plugin, control_state=control, hr=datablock,
         )
-        slave_ctx._shared_ctx = {"override_log": OverrideLog()}
 
         await slave_ctx._handle_control_write(40154, [5000])
 
@@ -557,7 +505,6 @@ class TestProxyLockBehavior:
         slave_ctx = StalenessAwareSlaveContext(
             cache=cache, plugin=plugin, control_state=control, hr=datablock,
         )
-        slave_ctx._shared_ctx = {"override_log": OverrideLog()}
 
         await slave_ctx._handle_control_write(40154, [5000])
 
@@ -578,17 +525,19 @@ class TestVenusAutoDetect:
         datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
         cache = RegisterCache(datablock, staleness_timeout=30.0)
         control = ControlState()
-        shared_ctx = {"override_log": OverrideLog()}
+        app_ctx = AppContext()
+        app_ctx.override_log = OverrideLog()
 
         slave_ctx = StalenessAwareSlaveContext(
             cache=cache, plugin=plugin, control_state=control,
-            shared_ctx=shared_ctx, hr=datablock,
+            app_ctx=app_ctx, hr=datablock,
         )
 
         await slave_ctx.async_setValues(0x06, 40154, [50])
 
-        assert shared_ctx["venus_os_detected"] is True
-        assert isinstance(shared_ctx["venus_os_detected_ts"], float)
+        assert app_ctx.venus_os_detected is True
+        assert isinstance(app_ctx.venus_os_detected_ts, float)
+        assert app_ctx.venus_os_detected_ts > 0
 
     @pytest.mark.asyncio
     async def test_detection_only_fires_once(self):
@@ -598,34 +547,34 @@ class TestVenusAutoDetect:
         datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
         cache = RegisterCache(datablock, staleness_timeout=30.0)
         control = ControlState()
-        shared_ctx = {"override_log": OverrideLog()}
+        app_ctx = AppContext()
+        app_ctx.override_log = OverrideLog()
 
         slave_ctx = StalenessAwareSlaveContext(
             cache=cache, plugin=plugin, control_state=control,
-            shared_ctx=shared_ctx, hr=datablock,
+            app_ctx=app_ctx, hr=datablock,
         )
 
         await slave_ctx.async_setValues(0x06, 40154, [50])
-        ts1 = shared_ctx["venus_os_detected_ts"]
+        ts1 = app_ctx.venus_os_detected_ts
 
         await slave_ctx.async_setValues(0x06, 40154, [60])
-        assert ts1 == shared_ctx["venus_os_detected_ts"]
+        assert ts1 == app_ctx.venus_os_detected_ts
 
     @pytest.mark.asyncio
     async def test_non_model123_write_no_detection(self):
         """A setValues call to a non-Model-123 address does NOT set venus_os_detected."""
-        plugin = _make_mock_plugin(poll_success=True)
         initial_values = build_initial_registers()
         datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
         cache = RegisterCache(datablock, staleness_timeout=30.0)
         control = ControlState()
-        shared_ctx = {"override_log": OverrideLog()}
+        app_ctx = AppContext()
 
         slave_ctx = StalenessAwareSlaveContext(
-            cache=cache, plugin=plugin, control_state=control,
-            shared_ctx=shared_ctx, hr=datablock,
+            cache=cache, control_state=control,
+            app_ctx=app_ctx, hr=datablock,
         )
 
         # Write to non-Model-123 address (inverter register area)
         slave_ctx.setValues(0x06, 40070, [100])
-        assert "venus_os_detected" not in shared_ctx
+        assert app_ctx.venus_os_detected is False

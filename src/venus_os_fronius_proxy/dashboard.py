@@ -271,7 +271,7 @@ class DashboardCollector:
         inverter_mfr = ""
         inverter_model = ""
         inverter_serial = ""
-        last_poll = app_ctx.last_poll_data if app_ctx is not None else None
+        last_poll = getattr(app_ctx, "last_poll_data", None) if app_ctx is not None else None
         if last_poll:
             se_common = last_poll.get("common_registers", [])
             if len(se_common) >= 66:

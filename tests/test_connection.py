@@ -14,7 +14,7 @@ from venus_os_fronius_proxy.connection import (
 )
 from venus_os_fronius_proxy.control import ControlState
 from venus_os_fronius_proxy.plugin import InverterPlugin, PollResult, WriteResult
-from venus_os_fronius_proxy.proxy import _poll_loop, INVERTER_CACHE_ADDR
+from venus_os_fronius_proxy.proxy import INVERTER_CACHE_ADDR
 from venus_os_fronius_proxy.register_cache import RegisterCache
 from venus_os_fronius_proxy.sunspec_models import (
     build_initial_registers,

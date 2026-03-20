@@ -1,8 +1,8 @@
 """Typed application context replacing the flat shared_ctx dict.
 
 AppContext holds all runtime state for the proxy. DeviceState holds
-per-device state (one entry per inverter). Compat property accessors
-proxy to the primary (first) device for single-device operation.
+per-device state (one entry per inverter). DeviceRegistry manages
+device lifecycle (Phase 22+).
 """
 from __future__ import annotations
 
@@ -50,39 +50,5 @@ class AppContext:
     override_log: object = None    # OverrideLog
     shutdown_event: asyncio.Event = field(default_factory=asyncio.Event)
 
-    # Backward compat: single-device accessors for Phase 21
-    # These will be removed in Phase 22 when DeviceRegistry takes over
-    @property
-    def primary_device(self) -> DeviceState | None:
-        """Return first device state (single-device compat)."""
-        return next(iter(self.devices.values()), None)
-
-    @property
-    def dashboard_collector(self):
-        """Compat accessor for primary device collector."""
-        dev = self.primary_device
-        return dev.collector if dev else None
-
-    @property
-    def conn_mgr(self):
-        """Compat accessor for primary device connection manager."""
-        dev = self.primary_device
-        return dev.conn_mgr if dev else None
-
-    @property
-    def poll_counter(self):
-        """Compat accessor for primary device poll counter."""
-        dev = self.primary_device
-        return dev.poll_counter if dev else {"success": 0, "total": 0}
-
-    @property
-    def last_poll_data(self):
-        """Compat accessor for primary device last poll data."""
-        dev = self.primary_device
-        return dev.last_poll_data if dev else None
-
-    @last_poll_data.setter
-    def last_poll_data(self, value):
-        dev = self.primary_device
-        if dev:
-            dev.last_poll_data = value
+    # DeviceRegistry reference (set in __main__.py after creation)
+    device_registry: object = None

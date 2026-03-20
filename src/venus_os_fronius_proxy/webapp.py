@@ -194,9 +194,17 @@ async def index_handler(request: web.Request) -> web.Response:
 
 
 async def status_handler(request: web.Request) -> web.Response:
-    """Return SolarEdge connection state and Venus OS status."""
+    """Return connection state and Venus OS status."""
     app_ctx = request.app["app_ctx"]
-    conn_mgr = app_ctx.conn_mgr
+
+    # Aggregate connection state from all devices
+    conn_states = []
+    for ds in app_ctx.devices.values():
+        if ds.conn_mgr is not None:
+            conn_states.append(ds.conn_mgr.state.value)
+    inverter_state = "connected" if "connected" in conn_states else (
+        conn_states[0] if conn_states else "no_devices"
+    )
 
     venus_connected = app_ctx.venus_mqtt_connected
     if venus_connected is True:
@@ -207,11 +215,12 @@ async def status_handler(request: web.Request) -> web.Response:
         venus_status = "not configured"
 
     return web.json_response({
-        "solaredge": conn_mgr.state.value,
+        "solaredge": inverter_state,
         "venus_os": venus_status,
         "venus_os_detected": app_ctx.venus_os_detected,
         "venus_os_client_ip": app_ctx.venus_os_client_ip,
         "reconfiguring": request.app.get("reconfiguring", False),
+        "device_count": len(app_ctx.devices),
     })
 
 
@@ -219,11 +228,12 @@ async def health_handler(request: web.Request) -> web.Response:
     """Return uptime, poll success rate, and cache staleness."""
     app_ctx = request.app["app_ctx"]
     cache = app_ctx.cache
-    poll_counter = app_ctx.poll_counter
+
+    # Aggregate poll stats from all devices
+    total = sum(ds.poll_counter["total"] for ds in app_ctx.devices.values())
+    success = sum(ds.poll_counter["success"] for ds in app_ctx.devices.values())
 
     uptime = time.monotonic() - request.app["start_time"]
-    total = poll_counter["total"]
-    success = poll_counter["success"]
     rate = (success / total * 100) if total > 0 else 0.0
 
     last_poll_age = None
@@ -237,6 +247,7 @@ async def health_handler(request: web.Request) -> web.Response:
         "poll_success": success,
         "cache_stale": cache.is_stale,
         "last_poll_age": last_poll_age,
+        "device_count": len(app_ctx.devices),
     })
 
 
@@ -424,7 +435,10 @@ async def registers_handler(request: web.Request) -> web.Response:
     """Return side-by-side register data: SE source + Fronius target per field."""
     app_ctx = request.app["app_ctx"]
     cache = app_ctx.cache
-    last_se_poll = app_ctx.last_poll_data
+    # Use first device's last_poll_data for register source column
+    # TODO Phase 24: per-device register viewer
+    first_dev = next(iter(app_ctx.devices.values()), None)
+    last_se_poll = first_dev.last_poll_data if first_dev else None
 
     models_out = []
     for model in REGISTER_MODELS:
@@ -479,7 +493,10 @@ CONTENT_TYPES = {
 async def dashboard_handler(request: web.Request) -> web.Response:
     """Return the latest decoded dashboard snapshot as JSON."""
     app_ctx = request.app["app_ctx"]
-    collector = app_ctx.dashboard_collector
+    # Use first device's collector for dashboard data
+    # TODO Phase 24: aggregated virtual dashboard
+    first_dev = next(iter(app_ctx.devices.values()), None)
+    collector = first_dev.collector if first_dev else None
     if collector is None or collector.last_snapshot is None:
         return web.json_response({"error": "no data"}, status=503)
     return web.json_response(collector.last_snapshot)
@@ -512,7 +529,10 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
 
     try:
         ws_app_ctx = request.app["app_ctx"]
-        collector = ws_app_ctx.dashboard_collector
+        # Use first device's collector for WebSocket data
+        # TODO Phase 24: aggregated virtual dashboard
+        first_dev = next(iter(ws_app_ctx.devices.values()), None)
+        collector = first_dev.collector if first_dev else None
 
         # Send latest snapshot if available, or no_inverter if polling paused
         if collector is not None and collector.last_snapshot is not None:
@@ -656,10 +676,10 @@ async def power_limit_handler(request: web.Request) -> web.Response:
 
     app_ctx = request.app["app_ctx"]
     control = app_ctx.control_state
-    plugin = request.app["plugin"]
+    plugin = request.app.get("plugin")
     override_log = app_ctx.override_log
 
-    # No Venus OS priority block — manual limit is additive (min of webapp + venus wins)
+    # No Venus OS priority block -- manual limit is additive (min of webapp + venus wins)
 
     if action == "set":
         try:
@@ -682,33 +702,40 @@ async def power_limit_handler(request: web.Request) -> web.Response:
                 {"success": False, "error": error}, status=400,
             )
 
-        result = await plugin.write_power_limit(True, limit_pct)
-        if result.success:
-            control.set_from_webapp(raw_value, 1)
-            if override_log is not None:
-                override_log.append("webapp", "set", limit_pct)
-        return web.json_response({"success": result.success, "error": result.error})
+        if plugin is not None:
+            result = await plugin.write_power_limit(True, limit_pct)
+            if not result.success:
+                return web.json_response({"success": False, "error": result.error})
+        # Accept locally (power limit distribution deferred to Phase 23)
+        control.set_from_webapp(raw_value, 1)
+        if override_log is not None:
+            override_log.append("webapp", "set", limit_pct)
+        return web.json_response({"success": True, "error": None})
 
     elif action == "enable":
-        result = await plugin.write_power_limit(True, control.wmaxlimpct_float)
-        if result.success:
-            control.update_wmaxlim_ena(1)
-            control.last_source = "webapp"
-            control.last_change_ts = time.time()
-            control.webapp_revert_at = time.monotonic() + 300.0
-            if override_log is not None:
-                override_log.append("webapp", "enable", control.wmaxlimpct_float)
-        return web.json_response({"success": result.success, "error": result.error})
+        if plugin is not None:
+            result = await plugin.write_power_limit(True, control.wmaxlimpct_float)
+            if not result.success:
+                return web.json_response({"success": False, "error": result.error})
+        control.update_wmaxlim_ena(1)
+        control.last_source = "webapp"
+        control.last_change_ts = time.time()
+        control.webapp_revert_at = time.monotonic() + 300.0
+        if override_log is not None:
+            override_log.append("webapp", "enable", control.wmaxlimpct_float)
+        return web.json_response({"success": True, "error": None})
 
     else:  # disable
-        result = await plugin.write_power_limit(False, 0.0)
-        if result.success:
-            control.update_wmaxlim_ena(0)
-            control.last_source = "none"
-            control.webapp_revert_at = None
-            if override_log is not None:
-                override_log.append("webapp", "disable", None)
-        return web.json_response({"success": result.success, "error": result.error})
+        if plugin is not None:
+            result = await plugin.write_power_limit(False, 0.0)
+            if not result.success:
+                return web.json_response({"success": False, "error": result.error})
+        control.update_wmaxlim_ena(0)
+        control.last_source = "none"
+        control.webapp_revert_at = None
+        if override_log is not None:
+            override_log.append("webapp", "disable", None)
+        return web.json_response({"success": True, "error": None})
 
 
 async def power_clamp_handler(request: web.Request) -> web.Response:
@@ -736,8 +763,8 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
 
     control.save_ui_state()
 
-    # Immediately write the max clamp to SE30K
-    plugin = request.app["plugin"]
+    # Immediately write the max clamp (if plugin available)
+    plugin = request.app.get("plugin")
     if control.clamp_max_pct < 100:
         effective_pct = max(control.clamp_max_pct, 1)  # Max clamp, at least 1%
         control.update_wmaxlimpct(effective_pct)
@@ -745,10 +772,12 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
         control.last_source = "webapp"
         control.last_change_ts = __import__("time").time()
         control.webapp_revert_at = None
-        await plugin.write_power_limit(True, effective_pct)
+        if plugin is not None:
+            await plugin.write_power_limit(True, effective_pct)
     elif control.last_source == "webapp" and control.clamp_max_pct >= 100:
-        # Max set back to 100% — disable webapp limit
-        await plugin.write_power_limit(True, 100.0)
+        # Max set back to 100% -- disable webapp limit
+        if plugin is not None:
+            await plugin.write_power_limit(True, 100.0)
         control.update_wmaxlim_ena(0)
         control.last_source = "none"
 
@@ -899,7 +928,7 @@ async def venus_lock_handler(request: web.Request) -> web.Response:
     control = app_ctx.control_state
     override_log = app_ctx.override_log
 
-    plugin = request.app["plugin"]
+    plugin = request.app.get("plugin")
 
     if action == "lock":
         permanent = body.get("permanent", False)
@@ -908,7 +937,8 @@ async def venus_lock_handler(request: web.Request) -> web.Response:
         control.update_wmaxlimpct(100)
         control.update_wmaxlim_ena(0)
         control.last_source = "none"
-        await plugin.write_power_limit(True, 100.0)
+        if plugin is not None:
+            await plugin.write_power_limit(True, 100.0)
         control.save_ui_state()
         if override_log is not None:
             override_log.append("webapp", "lock", None, "Venus OS writes blocked, limit reset to 100%")
@@ -977,34 +1007,54 @@ async def scanner_discover_handler(request: web.Request) -> web.Response:
     return web.json_response({"status": "started"})
 
 
-async def _reconfigure_active(app: web.Application, config: Config) -> None:
-    """Reconfigure plugin to the current active inverter (first enabled)."""
-    active = get_active_inverter(config)
-    plugin = app["plugin"]
+async def _reconfigure_active(app: web.Application, config: Config, device_id: str = "", action: str = "") -> None:
+    """Reconfigure devices via DeviceRegistry.
+
+    Args:
+        app: The aiohttp Application.
+        config: Current Config object.
+        device_id: Specific device to act on (for targeted start/stop).
+        action: "start", "stop", "disable" -- what to do with device_id.
+    """
+    app_ctx = app["app_ctx"]
+    registry = app_ctx.device_registry
     app["reconfiguring"] = True
     try:
-        if active:
-            app["app_ctx"].polling_paused = False
-            await plugin.reconfigure(active.host, active.port, active.unit_id)
-            log.info("active_inverter_changed", host=active.host, port=active.port, unit_id=active.unit_id)
+        if registry is None:
+            # Fallback: no registry available (should not happen in normal operation)
+            log.warning("no_device_registry", msg="DeviceRegistry not available for reconfigure")
+            return
+
+        if action == "start" and device_id:
+            await registry.start_device(device_id)
+            app_ctx.polling_paused = False
+        elif action == "stop" and device_id:
+            await registry.stop_device(device_id)
+        elif action == "disable" and device_id:
+            await registry.disable_device(device_id)
         else:
-            # Pause poll loop FIRST, then close plugin
-            app["app_ctx"].polling_paused = True
-            await plugin.close()
-            # Clear cached dashboard data so UI shows disconnected state
-            collector = app["app_ctx"].dashboard_collector
-            if collector is not None:
-                collector._last_snapshot = None
-            # Broadcast no_inverter event to connected clients
-            clients = app.get("ws_clients")
-            if clients:
-                payload = json.dumps({"type": "no_inverter"})
-                for ws in set(clients):
-                    try:
-                        await ws.send_str(payload)
-                    except (ConnectionError, RuntimeError, ConnectionResetError):
-                        clients.discard(ws)
-            log.warning("no_active_inverter", msg="All inverters disabled or removed")
+            # Generic reconfigure: check if any active inverter exists
+            active = get_active_inverter(config)
+            if not active:
+                # Stop all devices
+                await registry.stop_all()
+                app_ctx.polling_paused = True
+                # Broadcast no_inverter event to connected clients
+                clients = app.get("ws_clients")
+                if clients:
+                    payload = json.dumps({"type": "no_inverter"})
+                    for ws in set(clients):
+                        try:
+                            await ws.send_str(payload)
+                        except (ConnectionError, RuntimeError, ConnectionResetError):
+                            clients.discard(ws)
+                log.warning("no_active_inverter", msg="All inverters disabled or removed")
+
+        # Check if we have active devices
+        if registry.get_active_count() == 0 and not get_active_inverter(config):
+            app_ctx.polling_paused = True
+        else:
+            app_ctx.polling_paused = False
     finally:
         app["reconfiguring"] = False
 
@@ -1047,6 +1097,10 @@ async def inverters_add_handler(request: web.Request) -> web.Response:
     config.inverters.append(entry)
     save_config(request.app["config_path"], config)
 
+    # Start device immediately if enabled (per locked decision)
+    if entry.enabled:
+        await _reconfigure_active(request.app, config, device_id=entry.id, action="start")
+
     d = dataclasses.asdict(entry)
     active = get_active_inverter(config)
     d["active"] = (active is not None and entry.id == active.id)
@@ -1070,8 +1124,8 @@ async def inverters_update_handler(request: web.Request) -> web.Response:
     except (ValueError, TypeError) as e:
         return web.json_response({"error": f"Invalid request: {e}"}, status=400)
 
-    was_active_before = get_active_inverter(config) is not None and get_active_inverter(config).id == entry.id
-    for field_name in ("host", "port", "unit_id", "enabled", "manufacturer", "model", "serial", "firmware_version"):
+    was_enabled = entry.enabled
+    for field_name in ("host", "port", "unit_id", "enabled", "manufacturer", "model", "serial", "firmware_version", "rated_power"):
         if field_name in body:
             setattr(entry, field_name, body[field_name])
 
@@ -1081,9 +1135,15 @@ async def inverters_update_handler(request: web.Request) -> web.Response:
 
     save_config(request.app["config_path"], config)
 
-    new_active = get_active_inverter(config)
-    if was_active_before or (new_active is not None and new_active.id == entry.id):
-        await _reconfigure_active(request.app, config)
+    # Handle enable/disable transitions via DeviceRegistry
+    if was_enabled and not entry.enabled:
+        await _reconfigure_active(request.app, config, device_id=inv_id, action="disable")
+    elif not was_enabled and entry.enabled:
+        await _reconfigure_active(request.app, config, device_id=inv_id, action="start")
+    elif was_enabled and entry.enabled:
+        # Config changed (host/port/unit_id) -- restart device
+        await _reconfigure_active(request.app, config, device_id=inv_id, action="stop")
+        await _reconfigure_active(request.app, config, device_id=inv_id, action="start")
 
     d = dataclasses.asdict(entry)
     active = get_active_inverter(config)
@@ -1095,8 +1155,6 @@ async def inverters_delete_handler(request: web.Request) -> web.Response:
     """Delete an inverter entry by id."""
     inv_id = request.match_info["id"]
     config: Config = request.app["config"]
-    was_active = get_active_inverter(config)
-    was_active_id = was_active.id if was_active else None
 
     original_len = len(config.inverters)
     config.inverters = [inv for inv in config.inverters if inv.id != inv_id]
@@ -1105,8 +1163,8 @@ async def inverters_delete_handler(request: web.Request) -> web.Response:
 
     save_config(request.app["config_path"], config)
 
-    if was_active_id == inv_id:
-        await _reconfigure_active(request.app, config)
+    # Stop the device via DeviceRegistry
+    await _reconfigure_active(request.app, config, device_id=inv_id, action="stop")
 
     return web.json_response({"success": True})
 

@@ -1,7 +1,8 @@
 """Entry point for venus-os-fronius-proxy service.
 
 Loads YAML config, configures structured JSON logging, handles SIGTERM
-for graceful shutdown (reset power limit to 100% before stopping).
+for graceful shutdown. Uses DeviceRegistry for N poll loops and
+AggregationLayer for SunSpec aggregation into a single virtual inverter.
 Runs a health heartbeat every 5 minutes.
 """
 from __future__ import annotations
@@ -15,11 +16,12 @@ import time
 import structlog
 from aiohttp import web
 
-from venus_os_fronius_proxy.config import load_config, get_active_inverter, DEFAULT_CONFIG_PATH
-from venus_os_fronius_proxy.context import AppContext, DeviceState
+from venus_os_fronius_proxy.aggregation import AggregationLayer
+from venus_os_fronius_proxy.config import load_config, DEFAULT_CONFIG_PATH
+from venus_os_fronius_proxy.context import AppContext
+from venus_os_fronius_proxy.device_registry import DeviceRegistry
 from venus_os_fronius_proxy.logging_config import configure_logging
-from venus_os_fronius_proxy.plugins import plugin_factory
-from venus_os_fronius_proxy.proxy import run_proxy
+from venus_os_fronius_proxy.proxy import run_modbus_server
 from venus_os_fronius_proxy.webapp import create_webapp
 
 
@@ -42,22 +44,14 @@ def main():
     configure_logging(config.log_level)
     log = structlog.get_logger(component="main")
 
-    active_inv = get_active_inverter(config)
-    if active_inv is None:
-        log.warning("no_active_inverter", msg="No enabled inverter in config -- proxy will not poll")
-
+    enabled_count = sum(1 for inv in config.inverters if inv.enabled)
     log.info(
         "starting",
-        inverter_host=active_inv.host if active_inv else "(none)",
-        inverter_port=active_inv.port if active_inv else 0,
+        enabled_inverters=enabled_count,
+        total_inverters=len(config.inverters),
         proxy_port=config.proxy.port,
         venus_host=config.venus.host or "(disabled)",
         log_level=config.log_level,
-    )
-
-    # Create plugin from config via factory
-    plugin = plugin_factory(active_inv) if active_inv else plugin_factory(
-        __import__("venus_os_fronius_proxy.config", fromlist=["InverterEntry"]).InverterEntry()
     )
 
     # Build typed application context
@@ -69,6 +63,7 @@ def main():
         """Log health heartbeat every 5 minutes (per locked CONTEXT.md decision).
 
         Emits: poll_success_rate, cache_age, last_control_value, connection_state.
+        Uses aggregated stats from all devices.
         """
         hb_log = structlog.get_logger(component="health")
         while not ctx.shutdown_event.is_set():
@@ -81,22 +76,36 @@ def main():
                 pass  # 5 minutes elapsed, emit heartbeat
 
             cache = ctx.cache
-            conn_mgr = ctx.conn_mgr
             control_state = ctx.control_state
-            poll_counter = ctx.poll_counter
+
+            # Aggregate poll stats from all devices
+            poll_total = sum(ds.poll_counter["total"] for ds in ctx.devices.values())
+            poll_success = sum(ds.poll_counter["success"] for ds in ctx.devices.values())
+
             cache_age = time.monotonic() - cache.last_successful_poll if cache._has_been_updated else -1
             success_rate = (
-                poll_counter["success"] / poll_counter["total"] * 100
-                if poll_counter["total"] > 0
+                poll_success / poll_total * 100
+                if poll_total > 0
                 else 0.0
             )
+
+            # Connection state: "connected" if any device connected
+            conn_states = []
+            for ds in ctx.devices.values():
+                if ds.conn_mgr is not None:
+                    conn_states.append(ds.conn_mgr.state.value)
+            connection_state = "connected" if "connected" in conn_states else (
+                conn_states[0] if conn_states else "no_devices"
+            )
+
             hb_log.info(
                 "health_heartbeat",
                 poll_success_rate=round(success_rate, 1),
-                poll_total=poll_counter["total"],
+                poll_total=poll_total,
                 cache_age=round(cache_age, 1),
                 cache_stale=cache.is_stale,
-                connection_state=conn_mgr.state.value,
+                connection_state=connection_state,
+                device_count=len(ctx.devices),
                 last_control_value=control_state.wmaxlimpct_float if control_state.is_enabled else None,
                 control_enabled=control_state.is_enabled,
             )
@@ -111,43 +120,30 @@ def main():
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, handle_signal, sig)
 
-        # Create device state for the active inverter
-        from venus_os_fronius_proxy.dashboard import DashboardCollector
-        device_state = DeviceState(collector=DashboardCollector())
-        if active_inv:
-            app_ctx.devices[active_inv.id] = device_state
-        else:
-            app_ctx.devices["default"] = device_state
-
-        proxy_task = asyncio.create_task(
-            run_proxy(
-                plugin,
-                host=config.proxy.host,
-                port=config.proxy.port,
-                poll_interval=config.proxy.poll_interval,
-                app_ctx=app_ctx,
-            )
+        # Create Modbus server infrastructure (no plugin needed)
+        cache, control_state, server, server_task = await run_modbus_server(
+            host=config.proxy.host,
+            port=config.proxy.port,
+            app_ctx=app_ctx,
         )
 
-        # Wait briefly for run_proxy to populate app_ctx with cache, conn_mgr, etc.
-        for _ in range(100):  # up to 1s
-            if app_ctx.cache is not None:
-                break
-            await asyncio.sleep(0.01)
+        # Create AggregationLayer
+        aggregation = AggregationLayer(app_ctx, cache, config)
 
-        # Restore last Venus OS limit after restart (if recent)
-        if app_ctx.control_state is not None:
-            cs = app_ctx.control_state
-            if cs.is_enabled and cs.last_source == "venus_os":
-                try:
-                    await plugin.write_power_limit(True, cs.wmaxlimpct_float)
-                    log.info("restored_venus_limit", limit_pct=cs.wmaxlimpct_float)
-                except Exception:
-                    pass
+        # Create DeviceRegistry with aggregation callback
+        registry = DeviceRegistry(app_ctx, config, on_poll_success=aggregation.recalculate)
+        app_ctx.device_registry = registry
 
-        # Start webapp alongside proxy
-        runner = None
-        runner = await create_webapp(app_ctx, config, app_ctx.config_path, plugin)
+        # Start all enabled devices
+        await registry.start_all()
+
+        if registry.get_active_count() == 0:
+            log.warning("no_active_inverter", msg="No enabled inverter -- Modbus server will return stale errors")
+            # Keep server running but it will return stale errors via StalenessAwareSlaveContext
+            # This preserves Venus OS device discovery (per Pitfall 4 from research)
+
+        # Start webapp (pass None for plugin -- multi-device mode)
+        runner = await create_webapp(app_ctx, config, app_ctx.config_path, plugin=None)
         app_ctx.webapp = runner.app
         site = web.TCPSite(runner, "0.0.0.0", config.webapp.port)
         await site.start()
@@ -184,28 +180,16 @@ def main():
             await runner.cleanup()
             log.info("webapp_stopped")
 
-        # Reset power limit to 100% (no limit) before stopping
-        try:
-            await asyncio.wait_for(
-                plugin.write_power_limit(enable=True, limit_pct=100.0),
-                timeout=5.0,
-            )
-            log.info("power_limit_reset", value_pct=100.0)
-        except Exception as e:
-            log.warning("power_limit_reset_failed", error=str(e))
+        # Stop all device poll loops
+        await registry.stop_all()
+        log.info("devices_stopped")
 
-        # Cancel proxy task
-        proxy_task.cancel()
+        # Cancel Modbus server
+        server_task.cancel()
         try:
-            await proxy_task
+            await server_task
         except asyncio.CancelledError:
             pass
-
-        # Close plugin
-        try:
-            await plugin.close()
-        except Exception as e:
-            log.warning("plugin_close_failed", error=str(e))
 
         log.info("shutdown_complete")
 

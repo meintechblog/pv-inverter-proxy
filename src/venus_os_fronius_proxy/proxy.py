@@ -1,9 +1,13 @@
-"""Proxy orchestration: server + poller wiring, staleness-aware slave context.
+"""Proxy orchestration: Modbus TCP server + staleness-aware slave context.
 
-Wires together the Modbus TCP server, background poller, register cache,
-and inverter plugin into a running proxy. Venus OS reads from the register
-cache (never passthrough to SE30K). When cache goes stale (30s without
-successful poll), returns Modbus exception 0x04 to Venus OS.
+Provides the Modbus TCP server infrastructure that Venus OS reads from.
+The register cache is populated by AggregationLayer (Phase 22+), not by
+a built-in poll loop. When cache goes stale (30s without successful poll),
+returns Modbus exception 0x04 to Venus OS.
+
+The old _poll_loop and run_proxy functions have been replaced by DeviceRegistry
+(per-device poll loops) + AggregationLayer (SunSpec aggregation) + run_modbus_server
+(server-only setup without polling).
 """
 from __future__ import annotations
 
@@ -20,11 +24,6 @@ from pymodbus.server import ModbusTcpServer
 
 import structlog
 
-from venus_os_fronius_proxy.connection import (
-    ConnectionManager,
-    ConnectionState,
-    build_night_mode_inverter_registers,
-)
 from venus_os_fronius_proxy.control import (
     ControlState,
     MODEL_123_START,
@@ -32,10 +31,8 @@ from venus_os_fronius_proxy.control import (
     WMAXLIM_ENA_OFFSET,
     validate_wmaxlimpct,
 )
-from venus_os_fronius_proxy.plugin import InverterPlugin
 from venus_os_fronius_proxy.sunspec_models import (
     build_initial_registers,
-    apply_common_translation,
     DATABLOCK_START,
     PROXY_UNIT_ID,
 )
@@ -75,7 +72,7 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
     def __init__(
         self,
         cache: RegisterCache,
-        plugin: InverterPlugin | None = None,
+        plugin: object | None = None,
         control_state: ControlState | None = None,
         app_ctx: object | None = None,
         **kwargs,
@@ -118,7 +115,6 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
         if (
             self._app_ctx is not None
             and self._control is not None
-            and self._plugin is not None
             and self._control.is_model_123_address(abs_addr, len(values))
             and not self._app_ctx.venus_os_detected
         ):
@@ -134,14 +130,74 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
 
         if (
             self._control is not None
-            and self._plugin is not None
             and self._control.is_model_123_address(abs_addr, len(values))
         ):
-            await self._handle_control_write(abs_addr, values)
+            if self._plugin is not None:
+                await self._handle_control_write(abs_addr, values)
+            else:
+                # No plugin available -- accept write locally but log warning
+                # Power limit forwarding deferred to Phase 23 (PowerLimitDistributor)
+                control_log.warning(
+                    "power_limit_forwarding_not_available_until_phase_23",
+                    address=abs_addr,
+                    values=values,
+                )
+                self._handle_local_control_write(abs_addr, values)
             return
 
         # Default: store in datablock via normal setValues
         self.setValues(fc_as_hex, address, values)
+
+    def _handle_local_control_write(self, abs_addr: int, values: list[int]) -> None:
+        """Accept Model 123 write locally without forwarding to a plugin.
+
+        Updates ControlState and readback registers. Used when no single
+        plugin is available for power limit forwarding (multi-device mode,
+        Phase 23 will add PowerLimitDistributor).
+        """
+        offset = abs_addr - MODEL_123_START
+
+        if offset == WMAXLIMPCT_OFFSET and len(values) >= 1:
+            error = validate_wmaxlimpct(values[0])
+            if error:
+                control_log.info(
+                    "power_limit_write",
+                    wmaxlimpct=values[0], result="rejected", reason=error,
+                )
+                raise Exception(f"ILLEGAL_VALUE: {error}")
+
+            floor = max(self._control.clamp_min_pct, 1)
+            ceiling = self._control.clamp_max_pct
+            clamped = max(floor, min(ceiling, values[0]))
+            self._control.update_wmaxlimpct(clamped)
+            self._control.update_wmaxlim_ena(1)
+            self._control.set_from_venus_os()
+            self._control.save_last_limit()
+            if self._app_ctx and self._app_ctx.override_log is not None:
+                self._app_ctx.override_log.append(
+                    "venus_os", "set", self._control.wmaxlimpct_float,
+                )
+            self._update_model_123_readback()
+            return
+
+        if offset == WMAXLIM_ENA_OFFSET and len(values) >= 1:
+            ena_value = values[0]
+            if ena_value not in (0, 1):
+                raise Exception(
+                    f"ILLEGAL_VALUE: WMaxLim_Ena must be 0 or 1, got {ena_value}"
+                )
+            self._control.update_wmaxlim_ena(ena_value)
+            self._control.set_from_venus_os()
+            if self._app_ctx and self._app_ctx.override_log is not None:
+                ena_action = "enable" if self._control.is_enabled else "disable"
+                self._app_ctx.override_log.append(
+                    "venus_os", ena_action, self._control.wmaxlimpct_float,
+                )
+            self._update_model_123_readback()
+            return
+
+        # Other Model 123 registers: store locally
+        self.store["h"].setValues(abs_addr + 1, values)
 
     async def _handle_control_write(self, abs_addr: int, values: list[int]) -> None:
         """Process a write to Model 123 control registers.
@@ -164,7 +220,7 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
 
             old_raw = self._control.wmaxlimpct_raw
             # Apply power clamp (min/max bounds set via webapp)
-            # Also enforce minimum 1% — 0% shuts down SE30K (~10s restart)
+            # Also enforce minimum 1% -- 0% shuts down SE30K (~10s restart)
             floor = max(self._control.clamp_min_pct, 1)
             ceiling = self._control.clamp_max_pct
             clamped = max(floor, min(ceiling, values[0]))
@@ -279,121 +335,6 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
         self.store["h"].setValues(40150, readback)
 
 
-async def _poll_loop(
-    plugin: InverterPlugin,
-    cache: RegisterCache,
-    conn_mgr: ConnectionManager | None = None,
-    control_state: ControlState | None = None,
-    poll_interval: float = POLL_INTERVAL,
-    poll_counter: dict | None = None,
-    app_ctx: object | None = None,
-) -> None:
-    """Background polling loop with reconnection and night mode.
-
-    State machine integration:
-    - CONNECTED: normal polling at poll_interval
-    - RECONNECTING: attempt reconnect with exponential backoff (5s-60s)
-    - NIGHT_MODE: inject synthetic zero-power registers, continue reconnect attempts
-
-    Args:
-        conn_mgr: Optional ConnectionManager. If None, creates one internally.
-        control_state: Optional ControlState for power limit restore after reconnect.
-    """
-    if conn_mgr is None:
-        conn_mgr = ConnectionManager(poll_interval=poll_interval)
-
-    if poll_counter is None:
-        poll_counter = {"success": 0, "total": 0}
-
-    last_energy_wh = 0  # Track last known energy for night mode preservation
-
-    while True:
-        # Skip polling when no active inverter (plugin disconnected)
-        if app_ctx is not None and app_ctx.polling_paused:
-            await asyncio.sleep(poll_interval)
-            continue
-
-        try:
-            result = await plugin.poll()
-            poll_counter["total"] += 1
-            if result.success:
-                poll_counter["success"] += 1
-                conn_mgr.on_poll_success()
-
-                # Store raw poll data for webapp register viewer (source column)
-                if app_ctx is not None:
-                    app_ctx.last_poll_data = {
-                        "common_registers": result.common_registers,
-                        "inverter_registers": result.inverter_registers,
-                    }
-
-                # Preserve energy reading from inverter registers
-                if len(result.inverter_registers) > 27:
-                    last_energy_wh = (
-                        (result.inverter_registers[26] << 16)
-                        | result.inverter_registers[27]
-                    )
-
-                translated_common = apply_common_translation(result.common_registers)
-                cache.update(COMMON_CACHE_ADDR, translated_common)
-                cache.update(INVERTER_CACHE_ADDR, result.inverter_registers)
-
-                if app_ctx is not None and app_ctx.dashboard_collector is not None:
-                    app_ctx.dashboard_collector.collect(
-                        cache, app_ctx.control_state,
-                        conn_mgr=conn_mgr, poll_counter=poll_counter,
-                        override_log=app_ctx.override_log,
-                        app_ctx=app_ctx,
-                    )
-
-                # Broadcast latest snapshot to all WebSocket clients
-                if app_ctx is not None and app_ctx.webapp is not None:
-                    from venus_os_fronius_proxy.webapp import broadcast_to_clients
-                    snapshot = app_ctx.dashboard_collector.last_snapshot
-                    if snapshot is not None:
-                        await broadcast_to_clients(app_ctx.webapp, snapshot)
-
-                # Restore power limit after reconnection from night mode
-                if conn_mgr.reconnected_from_night and control_state is not None and control_state.is_enabled:
-                    try:
-                        await plugin.write_power_limit(True, control_state.wmaxlimpct_float)
-                        logger.info("Restored power limit after reconnect: %.1f%%", control_state.wmaxlimpct_float)
-                    except Exception as e:
-                        logger.error("Failed to restore power limit: %s", e)
-
-                logger.debug("Poll successful, cache updated")
-            else:
-                new_state = conn_mgr.on_poll_failure()
-                logger.warning("Poll failed: %s (state=%s)", result.error, new_state.value)
-
-                if new_state == ConnectionState.NIGHT_MODE:
-                    # Inject synthetic zero-power registers
-                    night_regs = build_night_mode_inverter_registers(last_energy_wh)
-                    cache.update(INVERTER_CACHE_ADDR, night_regs)
-                    # Force cache to appear fresh so staleness doesn't override night mode
-                    cache.last_successful_poll = time.monotonic()
-                    cache._has_been_updated = True
-
-                # Try to reconnect the plugin
-                if new_state in (ConnectionState.RECONNECTING, ConnectionState.NIGHT_MODE):
-                    try:
-                        await plugin.close()
-                    except Exception:
-                        pass
-                    try:
-                        await plugin.connect()
-                        logger.info("Reconnected to inverter")
-                    except Exception as e:
-                        logger.debug("Reconnect attempt failed: %s", e)
-
-        except Exception as e:
-            poll_counter["total"] += 1
-            conn_mgr.on_poll_failure()
-            logger.error("Unexpected poll error: %s", e)
-
-        await asyncio.sleep(conn_mgr.sleep_duration)
-
-
 async def _start_server(server: ModbusTcpServer) -> None:
     """Start the Modbus TCP server with fallback for API differences.
 
@@ -411,26 +352,20 @@ async def _start_server(server: ModbusTcpServer) -> None:
         )
 
 
-async def run_proxy(
-    plugin: InverterPlugin,
+async def run_modbus_server(
     host: str = "0.0.0.0",
     port: int = 502,
-    poll_interval: float = POLL_INTERVAL,
     app_ctx: object | None = None,
-) -> None:
-    """Start the Fronius proxy server and polling loop.
+) -> tuple:
+    """Set up the Modbus TCP server infrastructure (no polling).
 
-    1. Initializes the datablock with static SunSpec model chain
-    2. Connects the inverter plugin
-    3. Starts ModbusTcpServer on host:port with unit ID 126
-    4. Starts background poller that updates the cache every poll_interval seconds
-    5. Runs both concurrently until interrupted
+    Creates datablock, RegisterCache, StalenessAwareSlaveContext, and
+    ModbusTcpServer. Does NOT start poll loops -- that is handled by
+    DeviceRegistry. Does NOT connect any plugin -- plugins are per-device.
 
-    Args:
-        plugin: InverterPlugin implementation (e.g., SolarEdgePlugin)
-        host: Server bind address (default "0.0.0.0")
-        port: Server bind port (default 502, standard Modbus TCP)
-        poll_interval: Seconds between polls (default 1.0, use smaller values in tests)
+    Returns:
+        Tuple of (cache, control_state, server, server_task) so the caller
+        can manage the server lifecycle and pass cache to AggregationLayer.
     """
     # Build initial register datablock with static SunSpec values
     initial_values = build_initial_registers()
@@ -439,17 +374,13 @@ async def run_proxy(
     # Create register cache with staleness tracking
     cache = RegisterCache(datablock, staleness_timeout=STALENESS_TIMEOUT)
 
-    # Apply plugin-specific Model 120 to the datablock
-    model_120_regs = plugin.get_model_120_registers()
-    # Model 120 starts at datablock address 40122 (40121 + 1 offset)
-    datablock.setValues(40122, model_120_regs)
-
     # Create control state for Model 123 write path
     control_state = ControlState()
 
     # Create staleness-aware Modbus server context with unit ID 126
+    # plugin=None -- power limit forwarding deferred to Phase 23
     slave_ctx = StalenessAwareSlaveContext(
-        cache=cache, plugin=plugin, control_state=control_state,
+        cache=cache, plugin=None, control_state=control_state,
         app_ctx=app_ctx, hr=datablock,
     )
     server_ctx = ModbusServerContext(
@@ -457,11 +388,7 @@ async def run_proxy(
         single=False,
     )
 
-    # Connect to the inverter
-    await plugin.connect()
-    logger.info("Inverter plugin connected")
-
-    # Create and start the Modbus TCP server
+    # Create the Modbus TCP server
     server = ModbusTcpServer(
         context=server_ctx,
         address=(host, port),
@@ -479,7 +406,7 @@ async def run_proxy(
                 try:
                     peername = transport.get_extra_info("peername")
                     if peername:
-                        # Store as candidate — only promoted to venus_os_client_ip
+                        # Store as candidate -- only promoted to venus_os_client_ip
                         # when Model 123 write is detected in async_setValues
                         app_ctx._last_modbus_client_ip = peername[0]
                 except Exception:
@@ -495,27 +422,12 @@ async def run_proxy(
         host, port, PROXY_UNIT_ID,
     )
 
-    # Create connection manager for reconnection and night mode
-    conn_mgr = ConnectionManager(poll_interval=poll_interval)
-
-    # Poll counter for health heartbeat
-    poll_counter = {"success": 0, "total": 0}
-
-    # Populate app context for external consumers (e.g. health heartbeat)
+    # Populate app context
     if app_ctx is not None:
         app_ctx.cache = cache
         app_ctx.control_state = control_state
-        # Store conn_mgr and poll_counter on primary device
-        dev = app_ctx.primary_device
-        if dev is not None:
-            dev.conn_mgr = conn_mgr
-            dev.poll_counter = poll_counter
 
-    try:
-        await asyncio.gather(
-            _start_server(server),
-            _poll_loop(plugin, cache, conn_mgr, control_state, poll_interval=poll_interval, poll_counter=poll_counter, app_ctx=app_ctx),
-        )
-    finally:
-        await plugin.close()
-        logger.info("Proxy shutdown complete")
+    # Start server as background task
+    server_task = asyncio.create_task(_start_server(server), name="modbus-server")
+
+    return cache, control_state, server, server_task

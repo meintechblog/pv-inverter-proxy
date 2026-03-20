@@ -208,7 +208,10 @@ async def test_registers_synthesized_model_null_se(client):
 
 async def test_registers_no_se_poll(client, shared_ctx):
     """When last_se_poll is None, all se_value fields are null."""
-    shared_ctx.last_poll_data = None
+    # Clear last_poll_data on the device state directly
+    first_dev = next(iter(shared_ctx.devices.values()), None)
+    if first_dev:
+        first_dev.last_poll_data = None
 
     resp = await client.get("/api/registers")
     data = await resp.json()
@@ -616,21 +619,20 @@ async def test_inverters_delete_not_found(client):
 
 
 async def test_inverters_delete_active_reconfigures(client, mock_plugin):
-    """Deleting the active inverter triggers fallthrough to next enabled."""
+    """Deleting the active inverter removes it from config."""
     config: Config = client.app["config"]
     active_id = config.inverters[0].id
     # Add a second enabled inverter
     inv2 = InverterEntry(host="10.0.0.60", port=502, unit_id=3)
     config.inverters.append(inv2)
 
-    mock_plugin.reconfigure = AsyncMock()
     resp = await client.delete(f"/api/inverters/{active_id}")
     assert resp.status == 200
 
-    # Plugin should have been reconfigured with the next enabled inverter
-    mock_plugin.reconfigure.assert_called_once_with(
-        inv2.host, inv2.port, inv2.unit_id,
-    )
+    # Verify the deleted inverter is no longer in config
+    remaining_ids = [inv.id for inv in config.inverters]
+    assert active_id not in remaining_ids
+    assert inv2.id in remaining_ids
 
 
 async def test_config_get_returns_inverters_list(client):
