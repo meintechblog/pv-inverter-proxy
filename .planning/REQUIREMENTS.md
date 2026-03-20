@@ -9,9 +9,9 @@ Requirements for Multi-Source Virtual Inverter. Each maps to roadmap phases.
 
 ### Data Model & Infrastructure
 
-- [ ] **DATA-01**: Config unterstuetzt typisierte Device-Eintraege (type: solaredge | opendtu) mit typspezifischen Feldern
-- [ ] **DATA-02**: Typisierter AppContext ersetzt flachen shared_ctx dict — jedes Device hat eigenen State
-- [ ] **DATA-03**: Bestehende v3.1 Configs werden automatisch migriert (type: solaredge als Default)
+- [x] **DATA-01**: Config unterstuetzt typisierte Device-Eintraege (type: solaredge | opendtu) mit typspezifischen Feldern
+- [x] **DATA-02**: Typisierter AppContext ersetzt flachen shared_ctx dict — jedes Device hat eigenen State
+- [x] **DATA-03**: Bestehende v3.1 Configs werden automatisch migriert (type: solaredge als Default)
 
 ### OpenDTU Integration
 
@@ -84,9 +84,9 @@ Requirements for Multi-Source Virtual Inverter. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DATA-01 | Phase 21 | Pending |
-| DATA-02 | Phase 21 | Pending |
-| DATA-03 | Phase 21 | Pending |
+| DATA-01 | Phase 21 | Complete |
+| DATA-02 | Phase 21 | Complete |
+| DATA-03 | Phase 21 | Complete |
 | DTU-01 | Phase 21 | Pending |
 | DTU-02 | Phase 21 | Pending |
 | DTU-03 | Phase 21 | Pending |

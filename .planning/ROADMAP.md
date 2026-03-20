@@ -94,7 +94,7 @@ Full details: `.planning/milestones/v3.1-ROADMAP.md`
 **Plans**: 2 plans
 
 Plans:
-- [ ] 21-01-PLAN.md — Config data model refactor (typed InverterEntry, GatewayConfig, AppContext, no migration)
+- [x] 21-01-PLAN.md — Config data model refactor (typed InverterEntry, GatewayConfig, AppContext, no migration)
 - [ ] 21-02-PLAN.md — OpenDTU plugin (poll, SunSpec register synthesis, power limit, dead-time guard)
 
 ### Phase 22: Device Registry & Aggregation
@@ -150,7 +150,7 @@ Phases execute in numeric order: 21 -> 22 -> 23 -> 24
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 21. Data Model & OpenDTU Plugin | v4.0 | 0/2 | Not started | - |
+| 21. Data Model & OpenDTU Plugin | v4.0 | 1/2 | In progress | - |
 | 22. Device Registry & Aggregation | v4.0 | 0/2 | Not started | - |
 | 23. Power Limit Distribution | v4.0 | 0/1 | Not started | - |
 | 24. Device-Centric API & Frontend | v4.0 | 0/2 | Not started | - |

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Multi-Source Virtual Inverter
-status: planning
-stopped_at: Phase 21 context gathered
-last_updated: "2026-03-20T18:13:49.652Z"
-last_activity: 2026-03-20 -- Roadmap created for v4.0 milestone
+status: executing
+stopped_at: Completed 21-01-PLAN.md
+last_updated: "2026-03-20T19:10:00.000Z"
+last_activity: 2026-03-20 -- Completed 21-01 data model + AppContext refactor
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 1
+  percent: 12
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-20)
 ## Current Position
 
 Phase: 21 of 24 (Data Model & OpenDTU Plugin)
-Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-03-20 -- Roadmap created for v4.0 milestone
+Plan: 1 of 2 in current phase
+Status: executing
+Last activity: 2026-03-20 -- Completed 21-01 (data model + AppContext refactor)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 12%
 
 ## Performance Metrics
 
@@ -45,7 +45,7 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 21 | 1/2 | 14min | 14min |
 
 ## Accumulated Context
 
@@ -56,6 +56,9 @@ Progress: [░░░░░░░░░░] 0%
 - [v4.0 Roadmap]: Discovery uses manual scan only -- no auto-scan-on-empty-list
 - [v3.1]: SolarEdge single-connection constraint remains (scanner uses sequential access)
 - [v3.1]: Inverters use instant CRUD (PUT/DELETE) not dirty-tracking
+- [21-01]: Removed old inverter: migration code entirely (fresh config only)
+- [21-01]: AppContext uses object type hints to avoid circular imports
+- [21-01]: Compat property accessors on AppContext for minimal diff during migration
 
 ### Pending Todos
 
@@ -69,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-20T18:13:49.644Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-data-model-opendtu-plugin/21-CONTEXT.md
+Last session: 2026-03-20T19:10:00.000Z
+Stopped at: Completed 21-01-PLAN.md
+Resume file: .planning/phases/21-data-model-opendtu-plugin/21-02-PLAN.md
