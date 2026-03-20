@@ -170,3 +170,59 @@ async def test_solaredge_reconfigure():
     assert plugin.host == "10.0.0.1"
     assert plugin.port == 1503
     assert plugin.unit_id == 2
+
+
+def test_roundtrip_inverters(tmp_path: Path):
+    """save_config then load_config preserves all InverterEntry fields including id."""
+    from venus_os_fronius_proxy.config import (
+        Config, InverterEntry, load_config, save_config,
+    )
+
+    entries = [
+        InverterEntry(
+            id="aabbccddee11",
+            host="10.0.0.1",
+            port=1503,
+            unit_id=5,
+            enabled=True,
+            manufacturer="SolarEdge",
+            model="SE30K",
+            serial="SN123",
+            firmware_version="4.0.1",
+        ),
+        InverterEntry(
+            id="aabbccddee22",
+            host="10.0.0.2",
+            port=502,
+            unit_id=2,
+            enabled=False,
+            manufacturer="Fronius",
+            model="Primo",
+            serial="SN456",
+            firmware_version="3.2.0",
+        ),
+    ]
+    original = Config(inverters=entries)
+
+    config_path = str(tmp_path / "config.yaml")
+    save_config(config_path, original)
+
+    reloaded = load_config(config_path)
+    assert len(reloaded.inverters) == 2
+
+    r0 = reloaded.inverters[0]
+    assert r0.id == "aabbccddee11"
+    assert r0.host == "10.0.0.1"
+    assert r0.port == 1503
+    assert r0.unit_id == 5
+    assert r0.enabled is True
+    assert r0.manufacturer == "SolarEdge"
+    assert r0.model == "SE30K"
+    assert r0.serial == "SN123"
+    assert r0.firmware_version == "4.0.1"
+
+    r1 = reloaded.inverters[1]
+    assert r1.id == "aabbccddee22"
+    assert r1.host == "10.0.0.2"
+    assert r1.enabled is False
+    assert r1.manufacturer == "Fronius"
