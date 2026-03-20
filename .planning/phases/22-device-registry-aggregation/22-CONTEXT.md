@@ -18,6 +18,7 @@ DeviceRegistry manages N devices with independent poll loops (asyncio tasks). Ag
 - Disabled = komplett raus: kein Polling, kein Beitrag zur Aggregation, keine Daten. Config-Eintrag bleibt aber erhalten
 - Bei Remove/Disable: Poll-Task canceln, DeviceState cleanup, DashboardCollector fuer dieses Device entfernen. Kein asyncio Task Leak
 - Exponential Backoff bei Offline-Devices: 5s → 10s → 30s → 60s (aus Phase 21 CONTEXT deferred hierhin)
+- Wenn KEIN aktiver Inverter konfiguriert: Modbus-Server (Port 502) komplett stoppen, damit Venus OS den virtuellen Inverter nicht mehr im Netzwerk findet. Server wird erst wieder gestartet wenn mindestens 1 Inverter aktiv ist
 
 ### Aggregation fuer Venus OS
 - Power und Current werden summiert (Watt, Ampere — physikalische Einheiten)
