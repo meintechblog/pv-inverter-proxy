@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Auto-Discovery & Inverter Management
 status: completed
-stopped_at: Phase 19 context gathered
-last_updated: "2026-03-20T13:34:06.507Z"
-last_activity: 2026-03-20 — Completed 18-02 multi-inverter CRUD API endpoints + updated config handlers
+stopped_at: Completed 19-01-PLAN.md
+last_updated: "2026-03-20T14:20:00.000Z"
+last_activity: 2026-03-20 — Completed 19-01 inverter management UI with toggle, delete, edit, add
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 3
+  total_plans: 5
+  completed_plans: 5
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-20)
 
 **Core value:** Venus OS muss den SolarEdge-Inverter genauso erkennen und steuern koennen wie einen echten Fronius-Inverter
-**Current focus:** v3.1 Phase 18 — Multi-Inverter Config
+**Current focus:** v3.1 Phase 19 — Inverter Management UI
 
 ## Current Position
 
-Phase: 18 of 20 (Multi-Inverter Config)
-Plan: 2 of 2 complete
-Status: Phase 18 complete
-Last activity: 2026-03-20 — Completed 18-02 multi-inverter CRUD API endpoints + updated config handlers
+Phase: 19 of 20 (Inverter Management UI)
+Plan: 1 of 1 complete
+Status: Phase 19 complete
+Last activity: 2026-03-20 — Completed 19-01 inverter management UI with toggle, delete, edit, add
 
 Progress: [██████████] 100%
 
@@ -58,6 +58,10 @@ Progress: [██████████] 100%
 - [Phase 18-02]: config_get returns inverters list (breaking change for frontend, updated in Phase 19)
 - [Phase 18-02]: config_save accepts both old single-inverter and new multi-inverter format
 - [Phase 18-02]: _reconfigure_active helper extracts hot-reload into reusable function
+- [Phase 19-01]: Inverters use instant CRUD (PUT/DELETE) not dirty-tracking like Venus config
+- [Phase 19-01]: Delete uses inline No/Yes confirmation instead of modal dialog
+- [Phase 19-01]: Edit form slides open with CSS max-height transition
+- [Phase 19-01]: loadInverters() re-fetches after every mutation to sync active flags
 
 ### Pending Todos
 
@@ -69,5 +73,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-20T13:34:06.495Z
-Stopped at: Phase 19 context gathered
+Last session: 2026-03-20T14:20:00Z
+Stopped at: Completed 19-01-PLAN.md

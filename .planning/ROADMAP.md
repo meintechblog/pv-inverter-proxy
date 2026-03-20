@@ -62,7 +62,7 @@ Full details: `.planning/milestones/v3.0-ROADMAP.md`
 
 - [x] **Phase 17: Discovery Engine** - Backend network scanner with SunSpec verification finds inverters on the LAN (completed 2026-03-20)
 - [x] **Phase 18: Multi-Inverter Config** - Config structure supports multiple inverters with migration from single-inverter format (completed 2026-03-20)
-- [ ] **Phase 19: Inverter Management UI** - Config page lists inverters with enable/disable and delete controls
+- [x] **Phase 19: Inverter Management UI** - Config page lists inverters with enable/disable and delete controls (completed 2026-03-20)
 - [ ] **Phase 20: Discovery UI & Onboarding** - Scan button, progress feedback, result preview, and auto-scan on first setup
 
 ## Phase Details
@@ -110,7 +110,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 19-01-PLAN.md -- Inverter list UI with toggle, delete, edit, and add (HTML + CSS + JS)
+- [x] 19-01-PLAN.md -- Inverter list UI with toggle, delete, edit, and add (HTML + CSS + JS)
 
 ### Phase 20: Discovery UI & Onboarding
 **Goal**: User can trigger scans, see live progress, preview results, and new setups auto-discover inverters
@@ -152,5 +152,5 @@ Plans:
 | 16. Install Script & README | v3.0 | 1/1 | Complete | 2026-03-19 |
 | 17. Discovery Engine | 2/2 | Complete    | 2026-03-20 | - |
 | 18. Multi-Inverter Config | 2/2 | Complete    | 2026-03-20 | - |
-| 19. Inverter Management UI | v3.1 | 0/1 | Not started | - |
+| 19. Inverter Management UI | v3.1 | 1/1 | Complete | 2026-03-20 |
 | 20. Discovery UI & Onboarding | v3.1 | 0/2 | Not started | - |

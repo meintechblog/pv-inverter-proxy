@@ -18,8 +18,8 @@ Requirements for Auto-Discovery & Inverter Management. Each maps to roadmap phas
 ### Config Management
 
 - [x] **CONF-01**: Config unterstuetzt mehrere Inverter-Eintraege (Liste statt einzelner Eintrag)
-- [ ] **CONF-02**: User kann jeden Inverter-Eintrag per Toggle-Slider aktivieren/deaktivieren
-- [ ] **CONF-03**: User kann Inverter-Eintraege loeschen
+- [x] **CONF-02**: User kann jeden Inverter-Eintrag per Toggle-Slider aktivieren/deaktivieren
+- [x] **CONF-03**: User kann Inverter-Eintraege loeschen
 - [ ] **CONF-04**: Gefundene Inverter aus Scan werden automatisch als Config-Eintraege angelegt
 - [x] **CONF-05**: Bestehende Single-Inverter Config wird automatisch ins Multi-Inverter Format migriert
 
@@ -57,8 +57,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DISC-04 | Phase 17 | Complete |
 | DISC-05 | Phase 20 | Pending |
 | CONF-01 | Phase 18 | Complete |
-| CONF-02 | Phase 19 | Pending |
-| CONF-03 | Phase 19 | Pending |
+| CONF-02 | Phase 19 | Complete |
+| CONF-03 | Phase 19 | Complete |
 | CONF-04 | Phase 20 | Pending |
 | CONF-05 | Phase 18 | Complete |
 | UX-01 | Phase 20 | Pending |
