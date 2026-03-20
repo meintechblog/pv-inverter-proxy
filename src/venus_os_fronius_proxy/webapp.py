@@ -566,6 +566,70 @@ async def broadcast_to_clients(app: web.Application, snapshot: dict) -> None:
             clients.discard(ws)
 
 
+async def _broadcast_scan_progress(app: web.Application, phase: str, current: int, total: int) -> None:
+    """Broadcast scan progress to all WS clients."""
+    clients = app.get("ws_clients")
+    if not clients:
+        return
+    payload = json.dumps({
+        "type": "scan_progress",
+        "data": {"phase": phase, "current": current, "total": total}
+    })
+    for ws in set(clients):
+        try:
+            await ws.send_str(payload)
+        except (ConnectionError, RuntimeError):
+            clients.discard(ws)
+
+
+async def _broadcast_scan_complete(app: web.Application, devices: list) -> None:
+    """Broadcast scan results to all WS clients."""
+    clients = app.get("ws_clients")
+    if not clients:
+        return
+    payload = json.dumps({
+        "type": "scan_complete",
+        "data": {
+            "devices": [{**dataclasses.asdict(d), "supported": d.supported} for d in devices],
+            "count": len(devices)
+        }
+    })
+    for ws in set(clients):
+        try:
+            await ws.send_str(payload)
+        except (ConnectionError, RuntimeError):
+            clients.discard(ws)
+
+
+async def _broadcast_scan_error(app: web.Application, error: str) -> None:
+    """Broadcast scan error to all WS clients."""
+    clients = app.get("ws_clients")
+    if not clients:
+        return
+    payload = json.dumps({"type": "scan_error", "data": {"error": error}})
+    for ws in set(clients):
+        try:
+            await ws.send_str(payload)
+        except (ConnectionError, RuntimeError):
+            clients.discard(ws)
+
+
+async def _run_scan(app: web.Application, scan_config: ScanConfig) -> None:
+    """Run scan as background task, broadcasting progress via WS."""
+    app["_scan_running"] = True
+    try:
+        def progress_cb(phase: str, current: int, total: int) -> None:
+            asyncio.ensure_future(_broadcast_scan_progress(app, phase, current, total))
+
+        devices = await scan_subnet(scan_config, progress_callback=progress_cb)
+        await _broadcast_scan_complete(app, devices)
+    except Exception as e:
+        log.error("scanner.background_scan_failed", error=str(e))
+        await _broadcast_scan_error(app, str(e))
+    finally:
+        app["_scan_running"] = False
+
+
 async def power_limit_handler(request: web.Request) -> web.Response:
     """Handle power limit commands from webapp.
 
@@ -889,32 +953,25 @@ async def scanner_config_save_handler(request: web.Request) -> web.Response:
 
 
 async def scanner_discover_handler(request: web.Request) -> web.Response:
-    """POST /api/scanner/discover -- trigger subnet scan for SunSpec devices."""
-    config: Config = request.app["config"]
+    """POST /api/scanner/discover -- trigger background subnet scan."""
+    app = request.app
+    if app.get("_scan_running"):
+        return web.json_response({"error": "Scan already running"}, status=409)
+
+    config: Config = app["config"]
     skip_ips = {inv.host for inv in config.inverters if inv.enabled}
 
-    # Optional: accept scan params from request body
     try:
         body = await request.json()
     except Exception:
         body = {}
 
+    ports = body.get("ports", config.scanner.ports)
     scan_unit_ids = body.get("scan_unit_ids", [1])
-    scan_config = ScanConfig(skip_ips=skip_ips, scan_unit_ids=scan_unit_ids)
+    scan_config = ScanConfig(ports=ports, skip_ips=skip_ips, scan_unit_ids=scan_unit_ids)
 
-    try:
-        devices = await scan_subnet(scan_config)
-        return web.json_response({
-            "success": True,
-            "devices": [{**dataclasses.asdict(d), "supported": d.supported} for d in devices],
-            "count": len(devices),
-        })
-    except Exception as e:
-        log.error("scanner.discover_failed", error=str(e))
-        return web.json_response(
-            {"success": False, "error": str(e)},
-            status=500,
-        )
+    asyncio.create_task(_run_scan(app, scan_config))
+    return web.json_response({"status": "started"})
 
 
 async def _reconfigure_active(app: web.Application, config: Config) -> None:
@@ -1051,6 +1108,7 @@ async def create_webapp(
     app["plugin"] = plugin
     app["start_time"] = time.monotonic()
     app["reconfiguring"] = False
+    app["_scan_running"] = False
     app["ws_clients"] = weakref.WeakSet()
 
     app.router.add_get("/ws", ws_handler)

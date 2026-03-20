@@ -666,6 +666,29 @@ async def test_config_save_old_format(client, mock_plugin):
     assert active.host == "10.0.0.77"
 
 
+# ---------- Scanner background task (Phase 20) ----------
+
+
+async def test_scanner_discover_returns_started(client):
+    """POST /api/scanner/discover returns {status: started} with status 200."""
+    with patch("venus_os_fronius_proxy.webapp.scan_subnet",
+                new_callable=AsyncMock, return_value=[]):
+        resp = await client.post("/api/scanner/discover", json={})
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["status"] == "started"
+
+
+async def test_scanner_discover_concurrent_guard(client):
+    """With _scan_running=True, POST returns 409 with error message."""
+    client.app["_scan_running"] = True
+    resp = await client.post("/api/scanner/discover", json={})
+    assert resp.status == 409
+    data = await resp.json()
+    assert "already running" in data["error"].lower()
+    client.app["_scan_running"] = False
+
+
 async def test_config_save_new_format(client, mock_plugin):
     """POST /api/config with {"inverters": [...]} replaces entire inverter list."""
     mock_plugin.reconfigure = AsyncMock()
