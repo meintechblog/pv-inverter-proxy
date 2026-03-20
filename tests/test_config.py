@@ -282,6 +282,26 @@ def test_active_inverter_none_enabled():
     assert result is None
 
 
+def test_scanner_config_default_ports(tmp_path: Path):
+    """Load config with no scanner section, verify default ports."""
+    from venus_os_fronius_proxy.config import load_config
+
+    cfg = load_config(str(tmp_path / "nonexistent.yaml"))
+    assert cfg.scanner.ports == [502, 1502]
+
+
+def test_scanner_config_yaml_roundtrip(tmp_path: Path):
+    """Save config with custom scanner ports, reload, verify ports match."""
+    from venus_os_fronius_proxy.config import load_config, save_config, Config, ScannerConfig
+
+    cfg = Config(scanner=ScannerConfig(ports=[502, 1502, 8502]))
+    cfg_file = str(tmp_path / "config.yaml")
+    save_config(cfg_file, cfg)
+
+    reloaded = load_config(cfg_file)
+    assert reloaded.scanner.ports == [502, 1502, 8502]
+
+
 def test_load_multi_inverter_format(tmp_path: Path):
     """YAML with inverters list loads correctly as list of InverterEntry."""
     from venus_os_fronius_proxy.config import load_config

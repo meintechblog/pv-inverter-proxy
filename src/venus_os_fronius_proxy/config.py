@@ -72,12 +72,18 @@ class VenusConfig:
 
 
 @dataclass
+class ScannerConfig:
+    ports: list[int] = field(default_factory=lambda: [502, 1502])
+
+
+@dataclass
 class Config:
     inverters: list[InverterEntry] = field(default_factory=lambda: [InverterEntry()])
     proxy: ProxyConfig = field(default_factory=ProxyConfig)
     night_mode: NightModeConfig = field(default_factory=NightModeConfig)
     webapp: WebappConfig = field(default_factory=WebappConfig)
     venus: VenusConfig = field(default_factory=VenusConfig)
+    scanner: ScannerConfig = field(default_factory=ScannerConfig)
     log_level: str = "INFO"
 
     @property
@@ -147,6 +153,10 @@ def load_config(path: str | None = None) -> Config:
         venus=VenusConfig(**{
             k: v for k, v in data.get("venus", {}).items()
             if k in VenusConfig.__dataclass_fields__
+        }),
+        scanner=ScannerConfig(**{
+            k: v for k, v in data.get("scanner", {}).items()
+            if k in ScannerConfig.__dataclass_fields__
         }),
         log_level=data.get("log_level", "INFO"),
     )

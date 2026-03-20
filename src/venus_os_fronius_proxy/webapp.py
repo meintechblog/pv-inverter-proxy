@@ -19,6 +19,7 @@ import dataclasses
 from venus_os_fronius_proxy.config import (
     Config,
     InverterEntry,
+    ScannerConfig,
     get_active_inverter,
     save_config,
     validate_inverter_config,
@@ -853,6 +854,40 @@ async def venus_lock_handler(request: web.Request) -> web.Response:
     return web.json_response({"success": True})
 
 
+async def scanner_config_get_handler(request: web.Request) -> web.Response:
+    """GET /api/scanner/config -- return scanner port configuration."""
+    config: Config = request.app["config"]
+    return web.json_response({"ports": config.scanner.ports})
+
+
+async def scanner_config_save_handler(request: web.Request) -> web.Response:
+    """PUT /api/scanner/config -- update scanner port configuration."""
+    try:
+        body = await request.json()
+    except (ValueError, TypeError) as e:
+        return web.json_response(
+            {"success": False, "error": f"Invalid request: {e}"}, status=400,
+        )
+
+    ports = body.get("ports")
+    if not isinstance(ports, list) or not ports:
+        return web.json_response(
+            {"success": False, "error": "ports must be a non-empty list of integers"},
+            status=400,
+        )
+    for p in ports:
+        if not isinstance(p, int) or not (1 <= p <= 65535):
+            return web.json_response(
+                {"success": False, "error": f"Invalid port: {p} (must be int 1-65535)"},
+                status=400,
+            )
+
+    config: Config = request.app["config"]
+    config.scanner.ports = ports
+    save_config(request.app["config_path"], config)
+    return web.json_response({"success": True})
+
+
 async def scanner_discover_handler(request: web.Request) -> web.Response:
     """POST /api/scanner/discover -- trigger subnet scan for SunSpec devices."""
     config: Config = request.app["config"]
@@ -1032,6 +1067,8 @@ async def create_webapp(
     app.router.add_post("/api/venus-write", venus_write_handler)
     app.router.add_post("/api/venus-dbus", venus_dbus_handler)
     app.router.add_post("/api/venus-lock", venus_lock_handler)
+    app.router.add_get("/api/scanner/config", scanner_config_get_handler)
+    app.router.add_put("/api/scanner/config", scanner_config_save_handler)
     app.router.add_post("/api/scanner/discover", scanner_discover_handler)
     app.router.add_get("/api/inverters", inverters_list_handler)
     app.router.add_post("/api/inverters", inverters_add_handler)
