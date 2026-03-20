@@ -195,10 +195,10 @@ async def index_handler(request: web.Request) -> web.Response:
 
 async def status_handler(request: web.Request) -> web.Response:
     """Return SolarEdge connection state and Venus OS status."""
-    shared_ctx = request.app["shared_ctx"]
-    conn_mgr = shared_ctx["conn_mgr"]
+    app_ctx = request.app["app_ctx"]
+    conn_mgr = app_ctx.conn_mgr
 
-    venus_connected = shared_ctx.get("venus_mqtt_connected")
+    venus_connected = app_ctx.venus_mqtt_connected
     if venus_connected is True:
         venus_status = "connected"
     elif venus_connected is False:
@@ -209,17 +209,17 @@ async def status_handler(request: web.Request) -> web.Response:
     return web.json_response({
         "solaredge": conn_mgr.state.value,
         "venus_os": venus_status,
-        "venus_os_detected": shared_ctx.get("venus_os_detected", False),
-        "venus_os_client_ip": shared_ctx.get("venus_os_client_ip", ""),
+        "venus_os_detected": app_ctx.venus_os_detected,
+        "venus_os_client_ip": app_ctx.venus_os_client_ip,
         "reconfiguring": request.app.get("reconfiguring", False),
     })
 
 
 async def health_handler(request: web.Request) -> web.Response:
     """Return uptime, poll success rate, and cache staleness."""
-    shared_ctx = request.app["shared_ctx"]
-    cache = shared_ctx["cache"]
-    poll_counter = shared_ctx["poll_counter"]
+    app_ctx = request.app["app_ctx"]
+    cache = app_ctx.cache
+    poll_counter = app_ctx.poll_counter
 
     uptime = time.monotonic() - request.app["start_time"]
     total = poll_counter["total"]
@@ -342,7 +342,7 @@ async def config_save_handler(request: web.Request) -> web.Response:
         )
 
     try:
-        shared_ctx = request.app["shared_ctx"]
+        app_ctx = request.app["app_ctx"]
 
         # Detect venus config change
         old_venus = (config.venus.host, config.venus.port, config.venus.portal_id)
@@ -362,19 +362,19 @@ async def config_save_handler(request: web.Request) -> web.Response:
         # Hot-reload Venus MQTT if config changed
         if venus_changed:
             # Cancel old venus task if running
-            old_task = shared_ctx.get("venus_task")
+            old_task = app_ctx.venus_task
             if old_task is not None and not old_task.done():
                 old_task.cancel()
 
             if venus_host:
                 # Start new venus MQTT loop
-                shared_ctx["venus_task"] = asyncio.ensure_future(
-                    venus_mqtt_loop(shared_ctx, venus_host, venus_port, venus_portal_id)
+                app_ctx.venus_task = asyncio.ensure_future(
+                    venus_mqtt_loop(app_ctx, venus_host, venus_port, venus_portal_id)
                 )
             else:
                 # Venus disabled -- clear state
-                shared_ctx["venus_mqtt_connected"] = False
-                shared_ctx.pop("venus_task", None)
+                app_ctx.venus_mqtt_connected = False
+                app_ctx.venus_task = None
 
         return web.json_response({"success": True})
     except Exception as e:
@@ -422,9 +422,9 @@ async def config_test_handler(request: web.Request) -> web.Response:
 
 async def registers_handler(request: web.Request) -> web.Response:
     """Return side-by-side register data: SE source + Fronius target per field."""
-    shared_ctx = request.app["shared_ctx"]
-    cache = shared_ctx["cache"]
-    last_se_poll = shared_ctx.get("last_se_poll")
+    app_ctx = request.app["app_ctx"]
+    cache = app_ctx.cache
+    last_se_poll = app_ctx.last_poll_data
 
     models_out = []
     for model in REGISTER_MODELS:
@@ -478,8 +478,8 @@ CONTENT_TYPES = {
 
 async def dashboard_handler(request: web.Request) -> web.Response:
     """Return the latest decoded dashboard snapshot as JSON."""
-    shared_ctx = request.app["shared_ctx"]
-    collector = shared_ctx.get("dashboard_collector")
+    app_ctx = request.app["app_ctx"]
+    collector = app_ctx.dashboard_collector
     if collector is None or collector.last_snapshot is None:
         return web.json_response({"error": "no data"}, status=503)
     return web.json_response(collector.last_snapshot)
@@ -511,12 +511,13 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
     request.app["ws_clients"].add(ws)
 
     try:
-        collector = request.app["shared_ctx"].get("dashboard_collector")
+        ws_app_ctx = request.app["app_ctx"]
+        collector = ws_app_ctx.dashboard_collector
 
         # Send latest snapshot if available, or no_inverter if polling paused
         if collector is not None and collector.last_snapshot is not None:
             await ws.send_json({"type": "snapshot", "data": collector.last_snapshot})
-        elif request.app["shared_ctx"].get("polling_paused"):
+        elif ws_app_ctx.polling_paused:
             await ws.send_json({"type": "no_inverter"})
 
         # Send downsampled history for sparklines
@@ -555,8 +556,8 @@ async def broadcast_to_clients(app: web.Application, snapshot: dict) -> None:
         return
 
     # Attach Venus OS ESS settings if available
-    shared_ctx = app.get("shared_ctx") or {}
-    venus_settings = shared_ctx.get("venus_settings")
+    bc_app_ctx = app.get("app_ctx")
+    venus_settings = bc_app_ctx.venus_settings if bc_app_ctx is not None else None
     if venus_settings:
         snapshot["venus_settings"] = venus_settings
 
@@ -653,10 +654,10 @@ async def power_limit_handler(request: web.Request) -> web.Response:
             {"success": False, "error": f"Unknown action: {action}"}, status=400,
         )
 
-    shared_ctx = request.app["shared_ctx"]
-    control = shared_ctx["control_state"]
+    app_ctx = request.app["app_ctx"]
+    control = app_ctx.control_state
     plugin = request.app["plugin"]
-    override_log = shared_ctx.get("override_log")
+    override_log = app_ctx.override_log
 
     # No Venus OS priority block — manual limit is additive (min of webapp + venus wins)
 
@@ -723,8 +724,8 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
             {"success": False, "error": "Invalid JSON body"}, status=400,
         )
 
-    shared_ctx = request.app["shared_ctx"]
-    control = shared_ctx["control_state"]
+    app_ctx = request.app["app_ctx"]
+    control = app_ctx.control_state
 
     control.clamp_min_pct = max(0, min(100, int(body.get("min_pct", 0))))
     control.clamp_max_pct = max(0, min(100, int(body.get("max_pct", 100))))
@@ -894,9 +895,9 @@ async def venus_lock_handler(request: web.Request) -> web.Response:
             {"success": False, "error": f"Unknown action: {action}"}, status=400,
         )
 
-    shared_ctx = request.app["shared_ctx"]
-    control = shared_ctx["control_state"]
-    override_log = shared_ctx.get("override_log")
+    app_ctx = request.app["app_ctx"]
+    control = app_ctx.control_state
+    override_log = app_ctx.override_log
 
     plugin = request.app["plugin"]
 
@@ -983,15 +984,15 @@ async def _reconfigure_active(app: web.Application, config: Config) -> None:
     app["reconfiguring"] = True
     try:
         if active:
-            app["shared_ctx"]["polling_paused"] = False
+            app["app_ctx"].polling_paused = False
             await plugin.reconfigure(active.host, active.port, active.unit_id)
             log.info("active_inverter_changed", host=active.host, port=active.port, unit_id=active.unit_id)
         else:
             # Pause poll loop FIRST, then close plugin
-            app["shared_ctx"]["polling_paused"] = True
+            app["app_ctx"].polling_paused = True
             await plugin.close()
             # Clear cached dashboard data so UI shows disconnected state
-            collector = app["shared_ctx"].get("dashboard_collector")
+            collector = app["app_ctx"].dashboard_collector
             if collector is not None:
                 collector._last_snapshot = None
             # Broadcast no_inverter event to connected clients
@@ -1111,7 +1112,7 @@ async def inverters_delete_handler(request: web.Request) -> web.Response:
 
 
 async def create_webapp(
-    shared_ctx: dict,
+    app_ctx: object,
     config: Config,
     config_path: str,
     plugin: object,
@@ -1121,7 +1122,7 @@ async def create_webapp(
     Returns an AppRunner (caller manages site creation and lifecycle).
     """
     app = web.Application()
-    app["shared_ctx"] = shared_ctx
+    app["app_ctx"] = app_ctx
     app["config"] = config
     app["config_path"] = config_path
     app["plugin"] = plugin

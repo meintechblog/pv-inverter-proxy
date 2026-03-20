@@ -155,7 +155,7 @@ class DashboardCollector:
         conn_mgr: object | None = None,
         poll_counter: dict | None = None,
         override_log: object | None = None,
-        shared_ctx: dict | None = None,
+        app_ctx: object | None = None,
     ) -> dict:
         """Decode registers, update buffers, return snapshot."""
         db = cache.datablock
@@ -271,8 +271,9 @@ class DashboardCollector:
         inverter_mfr = ""
         inverter_model = ""
         inverter_serial = ""
-        if shared_ctx and shared_ctx.get("last_se_poll"):
-            se_common = shared_ctx["last_se_poll"].get("common_registers", [])
+        last_poll = app_ctx.last_poll_data if app_ctx is not None else None
+        if last_poll:
+            se_common = last_poll.get("common_registers", [])
             if len(se_common) >= 66:
                 # Common Model: DID(0) + Len(1) + Manufacturer(2-17) + Model(18-33) + ... + Serial(50-65)
                 inverter_mfr = _decode_regs(se_common[2:18])
@@ -295,9 +296,9 @@ class DashboardCollector:
             "venus_os": venus_os,
             "connection": connection,
             "override_log": override_log.get_all() if override_log else [],
-            "venus_mqtt_connected": shared_ctx.get("venus_mqtt_connected", False) if shared_ctx else False,
-            "venus_os_detected": shared_ctx.get("venus_os_detected", False) if shared_ctx else False,
-            "venus_os_client_ip": shared_ctx.get("venus_os_client_ip", "") if shared_ctx else "",
+            "venus_mqtt_connected": app_ctx.venus_mqtt_connected if app_ctx is not None else False,
+            "venus_os_detected": app_ctx.venus_os_detected if app_ctx is not None else False,
+            "venus_os_client_ip": app_ctx.venus_os_client_ip if app_ctx is not None else "",
         }
 
         # Feed time series buffers

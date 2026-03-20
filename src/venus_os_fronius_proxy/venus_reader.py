@@ -1,6 +1,6 @@
 """Read Venus OS settings via MQTT (real-time, no polling).
 
-Subscribes to Venus OS MQTT topics and updates shared_ctx on every change.
+Subscribes to Venus OS MQTT topics and updates app_ctx on every change.
 Replaces the old Modbus TCP polling approach.
 """
 from __future__ import annotations
@@ -136,11 +136,11 @@ async def discover_portal_id(host: str, port: int = 1883, timeout: float = 10.0)
         return None
 
 
-async def venus_mqtt_loop(shared_ctx: dict, host: str, port: int, portal_id: str) -> None:
+async def venus_mqtt_loop(app_ctx: object, host: str, port: int, portal_id: str) -> None:
     """Background task: subscribe to Venus OS MQTT and update settings in real-time."""
     if not host:
         logger.info("venus_mqtt_disabled", reason="no host configured")
-        shared_ctx["venus_mqtt_connected"] = False
+        app_ctx.venus_mqtt_connected = False
         return
 
     portal = portal_id
@@ -153,7 +153,7 @@ async def venus_mqtt_loop(shared_ctx: dict, host: str, port: int, portal_id: str
                 portal = discovered
             else:
                 logger.warning("portal_id_discovery_failed", host=host)
-                shared_ctx["venus_mqtt_connected"] = False
+                app_ctx.venus_mqtt_connected = False
                 await asyncio.sleep(30)
                 continue
 
@@ -240,7 +240,7 @@ async def venus_mqtt_loop(shared_ctx: dict, host: str, port: int, portal_id: str
         try:
             s = _mqtt_connect(host, port)
             logger.info("venus_mqtt_connected", host=host)
-            shared_ctx["venus_mqtt_connected"] = True
+            app_ctx.venus_mqtt_connected = True
 
             _mqtt_subscribe(s, sub_topics)
 
@@ -257,7 +257,7 @@ async def venus_mqtt_loop(shared_ctx: dict, host: str, port: int, portal_id: str
                         break
                     for topic, payload in _parse_mqtt_messages(data):
                         update_from_topic(topic, payload)
-                    shared_ctx["venus_settings"] = dict(state)
+                    app_ctx.venus_settings = dict(state)
                 except socket.timeout:
                     # Check ESS staleness (no VE.Bus messages for 30s)
                     if state["vebus_last_ts"] > 0 and time.time() - state["vebus_last_ts"] > 30:
@@ -270,7 +270,7 @@ async def venus_mqtt_loop(shared_ctx: dict, host: str, port: int, portal_id: str
                 await asyncio.sleep(0.1)
 
         except Exception as e:
-            shared_ctx["venus_mqtt_connected"] = False
+            app_ctx.venus_mqtt_connected = False
             logger.debug("venus_mqtt_error", error=str(e))
 
         # Reconnect after 5s

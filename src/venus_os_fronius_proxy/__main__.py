@@ -16,8 +16,9 @@ import structlog
 from aiohttp import web
 
 from venus_os_fronius_proxy.config import load_config, get_active_inverter, DEFAULT_CONFIG_PATH
+from venus_os_fronius_proxy.context import AppContext, DeviceState
 from venus_os_fronius_proxy.logging_config import configure_logging
-from venus_os_fronius_proxy.plugins.solaredge import SolarEdgePlugin
+from venus_os_fronius_proxy.plugins import plugin_factory
 from venus_os_fronius_proxy.proxy import run_proxy
 from venus_os_fronius_proxy.webapp import create_webapp
 
@@ -54,36 +55,35 @@ def main():
         log_level=config.log_level,
     )
 
-    # Create plugin from config
-    plugin = SolarEdgePlugin(
-        host=active_inv.host if active_inv else "0.0.0.0",
-        port=active_inv.port if active_inv else 502,
-        unit_id=active_inv.unit_id if active_inv else 1,
+    # Create plugin from config via factory
+    plugin = plugin_factory(active_inv) if active_inv else plugin_factory(
+        __import__("venus_os_fronius_proxy.config", fromlist=["InverterEntry"]).InverterEntry()
     )
 
-    # Graceful shutdown handling
-    shutdown_event = asyncio.Event()
+    # Build typed application context
+    app_ctx = AppContext()
+    app_ctx.config = config
+    app_ctx.config_path = args.config or DEFAULT_CONFIG_PATH
 
-    async def _health_heartbeat(
-        cache,
-        conn_mgr,
-        control_state,
-        poll_counter,
-    ):
+    async def _health_heartbeat(ctx: AppContext):
         """Log health heartbeat every 5 minutes (per locked CONTEXT.md decision).
 
         Emits: poll_success_rate, cache_age, last_control_value, connection_state.
         """
         hb_log = structlog.get_logger(component="health")
-        while not shutdown_event.is_set():
+        while not ctx.shutdown_event.is_set():
             try:
                 await asyncio.wait_for(
-                    shutdown_event.wait(), timeout=HEARTBEAT_INTERVAL
+                    ctx.shutdown_event.wait(), timeout=HEARTBEAT_INTERVAL
                 )
                 break  # shutdown requested
             except asyncio.TimeoutError:
                 pass  # 5 minutes elapsed, emit heartbeat
 
+            cache = ctx.cache
+            conn_mgr = ctx.conn_mgr
+            control_state = ctx.control_state
+            poll_counter = ctx.poll_counter
             cache_age = time.monotonic() - cache.last_successful_poll if cache._has_been_updated else -1
             success_rate = (
                 poll_counter["success"] / poll_counter["total"] * 100
@@ -106,16 +106,18 @@ def main():
 
         def handle_signal(sig):
             log.info("shutdown_signal_received", signal=sig.name)
-            shutdown_event.set()
+            app_ctx.shutdown_event.set()
 
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, handle_signal, sig)
 
-        # Start proxy in background task with shared context for heartbeat
-        shared_ctx: dict = {}
-
+        # Create device state for the active inverter
         from venus_os_fronius_proxy.dashboard import DashboardCollector
-        shared_ctx["dashboard_collector"] = DashboardCollector()
+        device_state = DeviceState(collector=DashboardCollector())
+        if active_inv:
+            app_ctx.devices[active_inv.id] = device_state
+        else:
+            app_ctx.devices["default"] = device_state
 
         proxy_task = asyncio.create_task(
             run_proxy(
@@ -123,19 +125,19 @@ def main():
                 host=config.proxy.host,
                 port=config.proxy.port,
                 poll_interval=config.proxy.poll_interval,
-                shared_ctx=shared_ctx,
+                app_ctx=app_ctx,
             )
         )
 
-        # Wait briefly for run_proxy to populate shared_ctx with cache, conn_mgr, etc.
+        # Wait briefly for run_proxy to populate app_ctx with cache, conn_mgr, etc.
         for _ in range(100):  # up to 1s
-            if "cache" in shared_ctx:
+            if app_ctx.cache is not None:
                 break
             await asyncio.sleep(0.01)
 
         # Restore last Venus OS limit after restart (if recent)
-        if "control_state" in shared_ctx:
-            cs = shared_ctx["control_state"]
+        if app_ctx.control_state is not None:
+            cs = app_ctx.control_state
             if cs.is_enabled and cs.last_source == "venus_os":
                 try:
                     await plugin.write_power_limit(True, cs.wmaxlimpct_float)
@@ -145,50 +147,37 @@ def main():
 
         # Start webapp alongside proxy
         runner = None
-        if shared_ctx:
-            config_path = args.config or DEFAULT_CONFIG_PATH
-            runner = await create_webapp(shared_ctx, config, config_path, plugin)
-            shared_ctx["webapp"] = runner.app
-            site = web.TCPSite(runner, "0.0.0.0", config.webapp.port)
-            await site.start()
-            log.info("webapp_started", port=config.webapp.port)
+        runner = await create_webapp(app_ctx, config, app_ctx.config_path, plugin)
+        app_ctx.webapp = runner.app
+        site = web.TCPSite(runner, "0.0.0.0", config.webapp.port)
+        await site.start()
+        log.info("webapp_started", port=config.webapp.port)
 
         # Start Venus OS MQTT reader only if host is configured
-        venus_task = None
         if config.venus.host:
             from venus_os_fronius_proxy.venus_reader import venus_mqtt_loop
             venus_task = asyncio.create_task(
-                venus_mqtt_loop(shared_ctx, config.venus.host, config.venus.port, config.venus.portal_id)
+                venus_mqtt_loop(app_ctx, config.venus.host, config.venus.port, config.venus.portal_id)
             )
-            shared_ctx["venus_task"] = venus_task
+            app_ctx.venus_task = venus_task
         else:
             log.info("venus_mqtt_skipped", reason="no venus.host in config")
-            shared_ctx["venus_mqtt_connected"] = False
+            app_ctx.venus_mqtt_connected = False
 
         # Start health heartbeat task
-        heartbeat_task = None
-        if shared_ctx:
-            heartbeat_task = asyncio.create_task(
-                _health_heartbeat(
-                    cache=shared_ctx["cache"],
-                    conn_mgr=shared_ctx["conn_mgr"],
-                    control_state=shared_ctx["control_state"],
-                    poll_counter=shared_ctx["poll_counter"],
-                )
-            )
+        heartbeat_task = asyncio.create_task(_health_heartbeat(app_ctx))
 
         # Wait for shutdown signal
-        await shutdown_event.wait()
+        await app_ctx.shutdown_event.wait()
 
         log.info("graceful_shutdown_starting")
 
         # Cancel heartbeat
-        if heartbeat_task is not None:
-            heartbeat_task.cancel()
-            try:
-                await heartbeat_task
-            except asyncio.CancelledError:
-                pass
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
 
         # Stop webapp
         if runner is not None:

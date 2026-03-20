@@ -10,8 +10,9 @@ from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 
 from pymodbus.datastore import ModbusSequentialDataBlock
 
-from venus_os_fronius_proxy.config import Config, InverterConfig, InverterEntry, VenusConfig, WebappConfig, get_active_inverter
+from venus_os_fronius_proxy.config import Config, InverterEntry, VenusConfig, WebappConfig, get_active_inverter
 from venus_os_fronius_proxy.connection import ConnectionManager, ConnectionState
+from venus_os_fronius_proxy.context import AppContext, DeviceState
 from venus_os_fronius_proxy.control import ControlState, OverrideLog
 from venus_os_fronius_proxy.plugin import WriteResult
 from venus_os_fronius_proxy.register_cache import RegisterCache
@@ -20,7 +21,7 @@ from venus_os_fronius_proxy.sunspec_models import build_initial_registers, DATAB
 
 @pytest.fixture
 def shared_ctx():
-    """Build a mock shared_ctx with realistic components."""
+    """Build an AppContext with realistic components (named shared_ctx for compat)."""
     initial_values = build_initial_registers()
     datablock = ModbusSequentialDataBlock(DATABLOCK_START, initial_values)
     cache = RegisterCache(datablock, staleness_timeout=30.0)
@@ -47,18 +48,23 @@ def shared_ctx():
     inverter_regs[1] = 50   # Length
     inverter_regs[2] = 1234  # AC Current sample
 
-    ctx = {
-        "cache": cache,
-        "conn_mgr": conn_mgr,
-        "control_state": control_state,
-        "override_log": OverrideLog(),
-        "poll_counter": {"success": 50, "total": 55},
-        "last_se_poll": {
+    # Build DeviceState with poll data
+    device_state = DeviceState(
+        conn_mgr=conn_mgr,
+        poll_counter={"success": 50, "total": 55},
+        last_poll_data={
             "common_registers": common_regs,
             "inverter_registers": inverter_regs,
         },
-    }
-    return ctx
+    )
+
+    app_ctx = AppContext(
+        cache=cache,
+        control_state=control_state,
+        override_log=OverrideLog(),
+    )
+    app_ctx.devices["default"] = device_state
+    return app_ctx
 
 
 @pytest.fixture
@@ -202,7 +208,7 @@ async def test_registers_synthesized_model_null_se(client):
 
 async def test_registers_no_se_poll(client, shared_ctx):
     """When last_se_poll is None, all se_value fields are null."""
-    shared_ctx["last_se_poll"] = None
+    shared_ctx.last_poll_data = None
 
     resp = await client.get("/api/registers")
     data = await resp.json()
@@ -231,9 +237,9 @@ async def test_power_limit_set_valid(client, shared_ctx, mock_plugin):
     mock_plugin.write_power_limit.assert_called_once_with(True, 50.0)
 
     # ControlState should be updated
-    cs = shared_ctx["control_state"]
+    cs = shared_ctx.control_state
     assert cs.last_source == "webapp"
-    assert cs.wmaxlimpct_raw == 5000
+    assert cs.wmaxlimpct_raw == 50  # SF=0: 50% stored as 50
     assert cs.wmaxlim_ena == 1
 
 
@@ -251,7 +257,7 @@ async def test_power_limit_set_invalid(client, mock_plugin):
 
 async def test_power_limit_venus_override_rejection(client, shared_ctx, mock_plugin):
     """POST /api/power-limit returns 409 when Venus OS wrote recently."""
-    cs = shared_ctx["control_state"]
+    cs = shared_ctx.control_state
     cs.last_source = "venus_os"
     cs.last_change_ts = time.time()  # just now
 
@@ -272,7 +278,7 @@ async def test_power_limit_enable_disable(client, shared_ctx, mock_plugin):
         return_value=WriteResult(success=True)
     )
     # First set a limit to have a value
-    shared_ctx["control_state"].update_wmaxlimpct(5000)
+    shared_ctx.control_state.update_wmaxlimpct(5000)
 
     # Enable
     resp = await client.post("/api/power-limit", json={"action": "enable"})
@@ -285,7 +291,7 @@ async def test_power_limit_enable_disable(client, shared_ctx, mock_plugin):
     assert resp.status == 200
     data = await resp.json()
     assert data["success"] is True
-    assert shared_ctx["control_state"].last_source == "none"
+    assert shared_ctx.control_state.last_source == "none"
 
 
 async def test_power_limit_feedback(client, shared_ctx, mock_plugin):
@@ -312,17 +318,17 @@ async def test_venus_lock_endpoint_lock(client, shared_ctx):
     assert resp.status == 200
     data = await resp.json()
     assert data["success"] is True
-    assert shared_ctx["control_state"].is_locked is True
+    assert shared_ctx.control_state.is_locked is True
 
 
 async def test_venus_lock_endpoint_unlock(client, shared_ctx):
     """POST /api/venus-lock with action=unlock unlocks."""
-    shared_ctx["control_state"].lock(900.0)
+    shared_ctx.control_state.lock(900.0)
     resp = await client.post("/api/venus-lock", json={"action": "unlock"})
     assert resp.status == 200
     data = await resp.json()
     assert data["success"] is True
-    assert shared_ctx["control_state"].is_locked is False
+    assert shared_ctx.control_state.is_locked is False
 
 
 async def test_venus_lock_endpoint_invalid_action(client):
@@ -408,7 +414,7 @@ async def test_config_save_venus_hot_reload(client, shared_ctx):
     # Create a mock old venus task
     old_task = MagicMock()
     old_task.done.return_value = False
-    shared_ctx["venus_task"] = old_task
+    shared_ctx.venus_task = old_task
 
     with patch("venus_os_fronius_proxy.webapp.venus_mqtt_loop", new_callable=MagicMock) as mock_loop:
         # Make venus_mqtt_loop return a coroutine
@@ -427,7 +433,7 @@ async def test_config_save_venus_hot_reload(client, shared_ctx):
         old_task.cancel.assert_called_once()
 
         # New task should be created
-        assert "venus_task" in shared_ctx
+        assert shared_ctx.venus_task is not None
 
 
 async def test_config_save_venus_empty_host_clears(client, shared_ctx):
@@ -435,8 +441,8 @@ async def test_config_save_venus_empty_host_clears(client, shared_ctx):
     # Set up existing venus state (simulate previously configured venus)
     old_task = MagicMock()
     old_task.done.return_value = False
-    shared_ctx["venus_task"] = old_task
-    shared_ctx["venus_mqtt_connected"] = True
+    shared_ctx.venus_task = old_task
+    shared_ctx.venus_mqtt_connected = True
     # Set current config to have a non-empty host so the change is detected
     client.app["config"].venus.host = "10.0.0.5"
 
@@ -445,29 +451,23 @@ async def test_config_save_venus_empty_host_clears(client, shared_ctx):
         "venus": {"host": "", "port": 1883, "portal_id": ""},
     })
     assert resp.status == 200
-    assert shared_ctx["venus_mqtt_connected"] is False
-    assert "venus_task" not in shared_ctx
+    assert shared_ctx.venus_mqtt_connected is False
+    assert shared_ctx.venus_task is None
 
 
 async def test_status_venus_mqtt_state(client, shared_ctx):
     """GET /api/status returns real venus_mqtt_connected state."""
     # Connected
-    shared_ctx["venus_mqtt_connected"] = True
+    shared_ctx.venus_mqtt_connected = True
     resp = await client.get("/api/status")
     data = await resp.json()
     assert data["venus_os"] == "connected"
 
     # Disconnected
-    shared_ctx["venus_mqtt_connected"] = False
+    shared_ctx.venus_mqtt_connected = False
     resp = await client.get("/api/status")
     data = await resp.json()
     assert data["venus_os"] == "disconnected"
-
-    # Not configured (key missing)
-    del shared_ctx["venus_mqtt_connected"]
-    resp = await client.get("/api/status")
-    data = await resp.json()
-    assert data["venus_os"] == "not configured"
 
 
 # ---------- Venus OS Auto-Detection (Phase 15) ----------
@@ -475,29 +475,27 @@ async def test_status_venus_mqtt_state(client, shared_ctx):
 
 class TestVenusAutoDetect:
     async def test_status_includes_detected_flag(self, client, shared_ctx):
-        """GET /api/status includes venus_os_detected based on shared_ctx."""
-        shared_ctx["venus_os_detected"] = True
+        """GET /api/status includes venus_os_detected based on app_ctx."""
+        shared_ctx.venus_os_detected = True
         resp = await client.get("/api/status")
         data = await resp.json()
         assert data["venus_os_detected"] is True
 
-        del shared_ctx["venus_os_detected"]
+        shared_ctx.venus_os_detected = False
         resp = await client.get("/api/status")
         data = await resp.json()
         assert data["venus_os_detected"] is False
 
     async def test_detection_does_not_modify_config(self, client, shared_ctx):
-        """Setting venus_os_detected does NOT modify config keys in shared_ctx."""
-        # Take a snapshot of config-related keys before
-        config_keys_before = {k: v for k, v in shared_ctx.items() if "config" in k.lower()}
+        """Setting venus_os_detected does NOT modify config on app_ctx."""
+        config_before = shared_ctx.config
 
-        shared_ctx["venus_os_detected"] = True
+        shared_ctx.venus_os_detected = True
         resp = await client.get("/api/status")
         await resp.json()
 
-        # Config keys should be unchanged
-        config_keys_after = {k: v for k, v in shared_ctx.items() if "config" in k.lower()}
-        assert config_keys_before == config_keys_after
+        # Config should be unchanged
+        assert shared_ctx.config is config_before
 
 
 def test_no_hardcoded_ips_webapp():

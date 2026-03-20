@@ -77,14 +77,14 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
         cache: RegisterCache,
         plugin: InverterPlugin | None = None,
         control_state: ControlState | None = None,
-        shared_ctx: dict | None = None,
+        app_ctx: object | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._cache = cache
         self._plugin = plugin
         self._control = control_state
-        self._shared_ctx = shared_ctx
+        self._app_ctx = app_ctx
 
     def getValues(self, fc_as_hex, address, count=1):
         """Override to intercept reads when cache is stale.
@@ -116,18 +116,18 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
 
         # Flag Venus OS detection on any Model 123 write (one-shot)
         if (
-            self._shared_ctx is not None
+            self._app_ctx is not None
             and self._control is not None
             and self._plugin is not None
             and self._control.is_model_123_address(abs_addr, len(values))
-            and not self._shared_ctx.get("venus_os_detected")
+            and not self._app_ctx.venus_os_detected
         ):
-            self._shared_ctx["venus_os_detected"] = True
-            self._shared_ctx["venus_os_detected_ts"] = time.time()
+            self._app_ctx.venus_os_detected = True
+            self._app_ctx.venus_os_detected_ts = time.time()
             # Promote tracked client IP as Venus OS IP
-            candidate_ip = self._shared_ctx.get("_last_modbus_client_ip", "")
+            candidate_ip = self._app_ctx._last_modbus_client_ip
             if candidate_ip:
-                self._shared_ctx["venus_os_client_ip"] = candidate_ip
+                self._app_ctx.venus_os_client_ip = candidate_ip
                 logger.info("Venus OS detected: first Modbus write to Model 123 from %s", candidate_ip)
             else:
                 logger.info("Venus OS detected: first Modbus write to Model 123")
@@ -207,8 +207,8 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
             # Venus OS source tracking + persist for restart recovery
             self._control.set_from_venus_os()
             self._control.save_last_limit()
-            if self._shared_ctx and "override_log" in self._shared_ctx:
-                self._shared_ctx["override_log"].append(
+            if self._app_ctx and self._app_ctx.override_log is not None:
+                self._app_ctx.override_log.append(
                     "venus_os", "set", self._control.wmaxlimpct_float,
                 )
 
@@ -260,8 +260,8 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
             # Venus OS source tracking (Phase 7)
             self._control.set_from_venus_os()
             ena_action = "enable" if self._control.is_enabled else "disable"
-            if self._shared_ctx and "override_log" in self._shared_ctx:
-                self._shared_ctx["override_log"].append(
+            if self._app_ctx and self._app_ctx.override_log is not None:
+                self._app_ctx.override_log.append(
                     "venus_os", ena_action, self._control.wmaxlimpct_float,
                 )
 
@@ -286,7 +286,7 @@ async def _poll_loop(
     control_state: ControlState | None = None,
     poll_interval: float = POLL_INTERVAL,
     poll_counter: dict | None = None,
-    shared_ctx: dict | None = None,
+    app_ctx: object | None = None,
 ) -> None:
     """Background polling loop with reconnection and night mode.
 
@@ -309,7 +309,7 @@ async def _poll_loop(
 
     while True:
         # Skip polling when no active inverter (plugin disconnected)
-        if shared_ctx is not None and shared_ctx.get("polling_paused"):
+        if app_ctx is not None and app_ctx.polling_paused:
             await asyncio.sleep(poll_interval)
             continue
 
@@ -320,9 +320,9 @@ async def _poll_loop(
                 poll_counter["success"] += 1
                 conn_mgr.on_poll_success()
 
-                # Store raw SE30K poll data for webapp register viewer (source column)
-                if shared_ctx is not None:
-                    shared_ctx["last_se_poll"] = {
+                # Store raw poll data for webapp register viewer (source column)
+                if app_ctx is not None:
+                    app_ctx.last_poll_data = {
                         "common_registers": result.common_registers,
                         "inverter_registers": result.inverter_registers,
                     }
@@ -338,20 +338,20 @@ async def _poll_loop(
                 cache.update(COMMON_CACHE_ADDR, translated_common)
                 cache.update(INVERTER_CACHE_ADDR, result.inverter_registers)
 
-                if shared_ctx is not None and "dashboard_collector" in shared_ctx:
-                    shared_ctx["dashboard_collector"].collect(
-                        cache, shared_ctx.get("control_state"),
+                if app_ctx is not None and app_ctx.dashboard_collector is not None:
+                    app_ctx.dashboard_collector.collect(
+                        cache, app_ctx.control_state,
                         conn_mgr=conn_mgr, poll_counter=poll_counter,
-                        override_log=shared_ctx.get("override_log"),
-                        shared_ctx=shared_ctx,
+                        override_log=app_ctx.override_log,
+                        app_ctx=app_ctx,
                     )
 
                 # Broadcast latest snapshot to all WebSocket clients
-                if shared_ctx is not None and "webapp" in shared_ctx:
+                if app_ctx is not None and app_ctx.webapp is not None:
                     from venus_os_fronius_proxy.webapp import broadcast_to_clients
-                    snapshot = shared_ctx["dashboard_collector"].last_snapshot
+                    snapshot = app_ctx.dashboard_collector.last_snapshot
                     if snapshot is not None:
-                        await broadcast_to_clients(shared_ctx["webapp"], snapshot)
+                        await broadcast_to_clients(app_ctx.webapp, snapshot)
 
                 # Restore power limit after reconnection from night mode
                 if conn_mgr.reconnected_from_night and control_state is not None and control_state.is_enabled:
@@ -416,7 +416,7 @@ async def run_proxy(
     host: str = "0.0.0.0",
     port: int = 502,
     poll_interval: float = POLL_INTERVAL,
-    shared_ctx: dict | None = None,
+    app_ctx: object | None = None,
 ) -> None:
     """Start the Fronius proxy server and polling loop.
 
@@ -450,7 +450,7 @@ async def run_proxy(
     # Create staleness-aware Modbus server context with unit ID 126
     slave_ctx = StalenessAwareSlaveContext(
         cache=cache, plugin=plugin, control_state=control_state,
-        shared_ctx=shared_ctx, hr=datablock,
+        app_ctx=app_ctx, hr=datablock,
     )
     server_ctx = ModbusServerContext(
         devices={PROXY_UNIT_ID: slave_ctx},
@@ -475,13 +475,13 @@ async def run_proxy(
         _orig_connection_made = handler.connection_made
 
         def _capture_ip_connection_made(transport):
-            if shared_ctx is not None:
+            if app_ctx is not None:
                 try:
                     peername = transport.get_extra_info("peername")
                     if peername:
                         # Store as candidate — only promoted to venus_os_client_ip
                         # when Model 123 write is detected in async_setValues
-                        shared_ctx["_last_modbus_client_ip"] = peername[0]
+                        app_ctx._last_modbus_client_ip = peername[0]
                 except Exception:
                     pass
             return _orig_connection_made(transport)
@@ -501,18 +501,20 @@ async def run_proxy(
     # Poll counter for health heartbeat
     poll_counter = {"success": 0, "total": 0}
 
-    # Populate shared context for external consumers (e.g. health heartbeat)
-    if shared_ctx is not None:
-        shared_ctx["cache"] = cache
-        shared_ctx["conn_mgr"] = conn_mgr
-        shared_ctx["control_state"] = control_state
-        shared_ctx["poll_counter"] = poll_counter
-        shared_ctx["last_se_poll"] = None
+    # Populate app context for external consumers (e.g. health heartbeat)
+    if app_ctx is not None:
+        app_ctx.cache = cache
+        app_ctx.control_state = control_state
+        # Store conn_mgr and poll_counter on primary device
+        dev = app_ctx.primary_device
+        if dev is not None:
+            dev.conn_mgr = conn_mgr
+            dev.poll_counter = poll_counter
 
     try:
         await asyncio.gather(
             _start_server(server),
-            _poll_loop(plugin, cache, conn_mgr, control_state, poll_interval=poll_interval, poll_counter=poll_counter, shared_ctx=shared_ctx),
+            _poll_loop(plugin, cache, conn_mgr, control_state, poll_interval=poll_interval, poll_counter=poll_counter, app_ctx=app_ctx),
         )
     finally:
         await plugin.close()
