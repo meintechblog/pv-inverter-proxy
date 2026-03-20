@@ -61,7 +61,7 @@ Full details: `.planning/milestones/v3.0-ROADMAP.md`
 ### v3.1 Auto-Discovery & Inverter Management (In Progress)
 
 - [x] **Phase 17: Discovery Engine** - Backend network scanner with SunSpec verification finds inverters on the LAN (completed 2026-03-20)
-- [ ] **Phase 18: Multi-Inverter Config** - Config structure supports multiple inverters with migration from single-inverter format
+- [x] **Phase 18: Multi-Inverter Config** - Config structure supports multiple inverters with migration from single-inverter format (completed 2026-03-20)
 - [ ] **Phase 19: Inverter Management UI** - Config page lists inverters with enable/disable and delete controls
 - [ ] **Phase 20: Discovery UI & Onboarding** - Scan button, progress feedback, result preview, and auto-scan on first setup
 
@@ -151,6 +151,6 @@ Plans:
 | 15. Venus OS Auto-Detect | v3.0 | 1/1 | Complete | 2026-03-19 |
 | 16. Install Script & README | v3.0 | 1/1 | Complete | 2026-03-19 |
 | 17. Discovery Engine | 2/2 | Complete    | 2026-03-20 | - |
-| 18. Multi-Inverter Config | 1/2 | In Progress|  | - |
+| 18. Multi-Inverter Config | 2/2 | Complete   | 2026-03-20 | - |
 | 19. Inverter Management UI | v3.1 | 0/1 | Not started | - |
 | 20. Discovery UI & Onboarding | v3.1 | 0/2 | Not started | - |
