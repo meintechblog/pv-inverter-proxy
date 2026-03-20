@@ -41,6 +41,13 @@ class InverterEntry:
     type: str = "solaredge"       # Discriminator: "solaredge" or "opendtu"
     name: str = ""                # User-friendly display name
     gateway_host: str = ""        # OpenDTU gateway IP (opendtu type only)
+    rated_power: int = 0           # Rated power in watts (0 = unknown)
+
+
+@dataclass
+class VirtualInverterConfig:
+    """Configuration for the aggregated virtual inverter identity."""
+    name: str = "Fronius PV Inverter Proxy"
 
 
 @dataclass
@@ -91,6 +98,7 @@ class Config:
     webapp: WebappConfig = field(default_factory=WebappConfig)
     venus: VenusConfig = field(default_factory=VenusConfig)
     scanner: ScannerConfig = field(default_factory=ScannerConfig)
+    virtual_inverter: VirtualInverterConfig = field(default_factory=VirtualInverterConfig)
     log_level: str = "INFO"
 
     @property
@@ -161,6 +169,10 @@ def load_config(path: str | None = None) -> Config:
         scanner=ScannerConfig(**{
             k: v for k, v in data.get("scanner", {}).items()
             if k in ScannerConfig.__dataclass_fields__
+        }),
+        virtual_inverter=VirtualInverterConfig(**{
+            k: v for k, v in data.get("virtual_inverter", {}).items()
+            if k in VirtualInverterConfig.__dataclass_fields__
         }),
         log_level=data.get("log_level", "INFO"),
     )
