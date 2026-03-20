@@ -308,6 +308,11 @@ async def _poll_loop(
     last_energy_wh = 0  # Track last known energy for night mode preservation
 
     while True:
+        # Skip polling when no active inverter (plugin disconnected)
+        if shared_ctx is not None and shared_ctx.get("polling_paused"):
+            await asyncio.sleep(poll_interval)
+            continue
+
         try:
             result = await plugin.poll()
             poll_counter["total"] += 1

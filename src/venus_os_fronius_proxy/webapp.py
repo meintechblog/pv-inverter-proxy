@@ -981,9 +981,12 @@ async def _reconfigure_active(app: web.Application, config: Config) -> None:
     app["reconfiguring"] = True
     try:
         if active:
+            app["shared_ctx"]["polling_paused"] = False
             await plugin.reconfigure(active.host, active.port, active.unit_id)
             log.info("active_inverter_changed", host=active.host, port=active.port, unit_id=active.unit_id)
         else:
+            # Pause poll loop FIRST, then close plugin
+            app["shared_ctx"]["polling_paused"] = True
             await plugin.close()
             # Clear cached dashboard data so UI shows disconnected state
             collector = app["shared_ctx"].get("dashboard_collector")
