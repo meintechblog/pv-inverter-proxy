@@ -15,7 +15,7 @@ import time
 import structlog
 from aiohttp import web
 
-from venus_os_fronius_proxy.config import load_config, DEFAULT_CONFIG_PATH
+from venus_os_fronius_proxy.config import load_config, get_active_inverter, DEFAULT_CONFIG_PATH
 from venus_os_fronius_proxy.logging_config import configure_logging
 from venus_os_fronius_proxy.plugins.solaredge import SolarEdgePlugin
 from venus_os_fronius_proxy.proxy import run_proxy
@@ -41,10 +41,14 @@ def main():
     configure_logging(config.log_level)
     log = structlog.get_logger(component="main")
 
+    active_inv = get_active_inverter(config)
+    if active_inv is None:
+        log.warning("no_active_inverter", msg="No enabled inverter in config -- proxy will not poll")
+
     log.info(
         "starting",
-        inverter_host=config.inverter.host,
-        inverter_port=config.inverter.port,
+        inverter_host=active_inv.host if active_inv else "(none)",
+        inverter_port=active_inv.port if active_inv else 0,
         proxy_port=config.proxy.port,
         venus_host=config.venus.host or "(disabled)",
         log_level=config.log_level,
@@ -52,9 +56,9 @@ def main():
 
     # Create plugin from config
     plugin = SolarEdgePlugin(
-        host=config.inverter.host,
-        port=config.inverter.port,
-        unit_id=config.inverter.unit_id,
+        host=active_inv.host if active_inv else "0.0.0.0",
+        port=active_inv.port if active_inv else 502,
+        unit_id=active_inv.unit_id if active_inv else 1,
     )
 
     # Graceful shutdown handling
