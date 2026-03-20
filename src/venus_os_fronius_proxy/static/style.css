@@ -1789,6 +1789,137 @@ body {
     margin-right: 8px;
 }
 
+/* ===== Discovery / Scan ===== */
+.ve-btn-icon {
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+}
+
+.ve-scan-ports {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-top: 1px solid var(--ve-border);
+}
+.ve-scan-ports-label {
+    font-size: 0.85rem;
+    color: var(--ve-text-dim);
+    white-space: nowrap;
+}
+.ve-scan-ports-input {
+    max-width: 160px;
+    font-size: 0.85rem;
+}
+
+.ve-scan-progress {
+    padding: 12px 16px;
+}
+.ve-scan-bar {
+    height: 6px;
+    background: var(--ve-border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.ve-scan-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--ve-blue);
+    border-radius: 3px;
+    transition: width var(--ve-duration-fast) var(--ve-easing-default);
+}
+.ve-scan-status {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.85rem;
+    color: var(--ve-text-dim);
+}
+
+.ve-scan-results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px 4px;
+}
+.ve-scan-results-header span {
+    font-size: 0.85rem;
+    color: var(--ve-text-dim);
+}
+
+.ve-scan-result {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    border-top: 1px solid var(--ve-border);
+    font-size: 0.85rem;
+}
+.ve-scan-result--configured {
+    opacity: 0.5;
+}
+.ve-scan-result-check {
+    flex-shrink: 0;
+}
+.ve-scan-result-check input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--ve-blue);
+    cursor: pointer;
+}
+.ve-scan-result-configured {
+    font-size: 0.8rem;
+    color: var(--ve-text-dim);
+    font-style: italic;
+    min-width: 120px;
+}
+.ve-scan-result-identity {
+    flex: 1;
+    color: var(--ve-text);
+}
+.ve-scan-result-host {
+    font-family: var(--ve-mono);
+    color: var(--ve-text-secondary);
+    min-width: 130px;
+}
+.ve-scan-result-unit {
+    color: var(--ve-text-dim);
+    font-size: 0.8rem;
+    min-width: 50px;
+}
+
+.ve-scan-hint {
+    margin: 8px 16px 12px;
+}
+
+/* Discover button spinner state */
+#btn-discover-inverter.ve-scanning {
+    pointer-events: none;
+    opacity: 0.7;
+}
+#btn-discover-inverter.ve-scanning .ve-btn-icon {
+    animation: ve-spin 1s linear infinite;
+}
+@keyframes ve-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Responsive: scan results */
+@media (max-width: 480px) {
+    .ve-scan-result {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    .ve-scan-result-host {
+        min-width: auto;
+        width: 100%;
+    }
+    .ve-scan-ports {
+        flex-wrap: wrap;
+    }
+}
+
 /* ===== Accessibility: Reduced Motion ===== */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

@@ -262,6 +262,12 @@
           <div class="ve-panel" id="inverter-panel">
             <div class="ve-panel-header">
               <h2>Inverters</h2>
+              <button type="button" class="ve-btn ve-btn--sm ve-btn--primary" id="btn-discover-inverter" title="Auto-Discover">
+                <svg class="ve-btn-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+                  <line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
               <button type="button" class="ve-btn ve-btn--sm ve-btn--primary" id="btn-add-inverter" title="Add Inverter">+</button>
             </div>
             <div id="inverter-list"></div>
@@ -282,6 +288,19 @@
                 <button type="button" class="ve-btn ve-btn--sm ve-btn--cancel" id="btn-add-inv-cancel">Cancel</button>
                 <button type="button" class="ve-btn ve-btn--sm ve-btn--save" id="btn-add-inv-save">Add</button>
               </span>
+            </div>
+            <div id="scan-ports-field" class="ve-scan-ports">
+              <label class="ve-scan-ports-label">Scan-Ports:</label>
+              <input type="text" class="ve-input ve-scan-ports-input" id="scan-ports-input" value="502, 1502" placeholder="502, 1502">
+            </div>
+            <div id="scan-area" style="display:none">
+              <div id="scan-progress" class="ve-scan-progress">
+                <div class="ve-scan-bar">
+                  <div class="ve-scan-bar-fill" id="scan-bar-fill"></div>
+                </div>
+                <span class="ve-scan-status" id="scan-status-text"></span>
+              </div>
+              <div id="scan-results"></div>
             </div>
           </div>
           <div class="ve-panel">
