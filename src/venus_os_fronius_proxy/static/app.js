@@ -12,6 +12,11 @@ var venusLockRemaining = null;
 var venusLockSnapshotTs = null;
 var venusCountdownInterval = null;
 
+// ===== Discovery / Scan State =====
+var _scanRunning = false;
+var _autoScanDone = false;
+var _configuredInverters = [];
+
 // ===== Navigation =====
 
 function navigateTo(page) {
@@ -25,6 +30,8 @@ function navigateTo(page) {
     if (navItem) navItem.classList.add('active');
     // Persist in URL hash
     window.location.hash = page;
+    // When navigating to config page, reset auto-scan flag
+    if (page === 'config') _autoScanDone = false;
     // Close mobile sidebar
     document.getElementById('sidebar').classList.remove('open');
     const overlay = document.getElementById('sidebar-overlay');
@@ -99,6 +106,9 @@ function connectWebSocket() {
             if (msg.type === 'snapshot') handleSnapshot(msg.data);
             if (msg.type === 'history') handleHistory(msg.data);
             if (msg.type === 'override_event') handleOverrideEvent(msg.data);
+            if (msg.type === 'scan_progress') handleScanProgress(msg.data);
+            if (msg.type === 'scan_complete') handleScanComplete(msg.data);
+            if (msg.type === 'scan_error') handleScanError(msg.data);
         } catch (e) {
             console.error('WebSocket message parse error:', e);
         }
@@ -806,6 +816,11 @@ async function loadConfig() {
         _cfgUpdateSaveBtn('venus');
         // Load inverter list from same response (avoids second HTTP call)
         loadInverters(data.inverters);
+        // Load scanner ports
+        fetch('/api/scanner/config').then(function(r) { return r.json(); }).then(function(scanData) {
+            var input = document.getElementById('scan-ports-input');
+            if (input && scanData.ports) input.value = scanData.ports.join(', ');
+        }).catch(function() {});
     } catch (e) {
         console.error('Config load failed:', e);
     }
@@ -832,6 +847,7 @@ async function loadInverters(invertersData) {
     container.innerHTML = '';
 
     if (!inverters || inverters.length === 0) {
+        _configuredInverters = [];
         container.innerHTML = '<div class="ve-inv-empty"><div class="ve-hint-card">' +
             '<div class="ve-hint-header">' +
             '<svg width="20" height="20" viewBox="0 0 20 20" fill="none">' +
@@ -841,12 +857,20 @@ async function loadInverters(invertersData) {
             '<h3>No Inverter Configured</h3></div>' +
             '<p>Add an inverter manually or use Auto-Discover.</p>' +
             '</div></div>';
+        // Auto-scan: only on page navigation, not after mutations
+        if (!_scanRunning && !_autoScanDone) {
+            _autoScanDone = true;
+            triggerScan();
+        }
         return;
     }
 
     inverters.forEach(function(inv) {
         container.appendChild(createInverterRow(inv));
     });
+
+    // Cache for duplicate detection
+    _configuredInverters = inverters;
 }
 
 function createInverterRow(inv) {
@@ -1116,6 +1140,219 @@ document.getElementById('btn-cancel-venus').addEventListener('click', function()
 
 // Prevent form submit (no global save button anymore)
 document.getElementById('config-form').addEventListener('submit', function(e) { e.preventDefault(); });
+
+// ===== Discovery / Scan =====
+
+function handleScanProgress(data) {
+    var area = document.getElementById('scan-area');
+    area.style.display = '';
+    var fill = document.getElementById('scan-bar-fill');
+    var statusText = document.getElementById('scan-status-text');
+    var progress = document.getElementById('scan-progress');
+    progress.style.display = '';
+
+    var pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+    fill.style.width = pct + '%';
+
+    if (data.phase === 'probe') {
+        statusText.textContent = 'Scanning network (' + data.current + '/' + data.total + ')...';
+    } else if (data.phase === 'verify') {
+        statusText.textContent = 'Verifying SunSpec (' + data.current + '/' + data.total + ')...';
+    }
+}
+
+function handleScanComplete(data) {
+    _scanRunning = false;
+    setScanButtonState(false);
+
+    var progress = document.getElementById('scan-progress');
+    progress.style.display = 'none';
+    var resultsDiv = document.getElementById('scan-results');
+    resultsDiv.innerHTML = '';
+
+    var devices = data.devices || [];
+
+    if (devices.length === 0) {
+        resultsDiv.innerHTML =
+            '<div class="ve-hint-card ve-scan-hint">' +
+            '<div class="ve-hint-header">Keine Inverter gefunden</div>' +
+            '<div class="ve-hint-subtext">Pruefe: Sind die Geraete eingeschaltet? Ist Modbus TCP aktiviert? Stimmen die Ports?</div>' +
+            '</div>';
+        return;
+    }
+
+    // Auto-scan single result: auto-add
+    if (_autoScanDone && devices.length === 1 && !isAlreadyConfigured(devices[0])) {
+        addDiscoveredInverters([devices[0]]);
+        return;
+    }
+
+    // Build result list
+    var header = document.createElement('div');
+    header.className = 've-scan-results-header';
+    header.innerHTML = '<span>' + devices.length + ' Inverter gefunden</span>' +
+        '<button type="button" class="ve-btn ve-btn--sm ve-btn--save" id="btn-scan-add-all">Alle uebernehmen</button>';
+    resultsDiv.appendChild(header);
+
+    var hasNewDevices = false;
+    devices.forEach(function(device) {
+        var configured = isAlreadyConfigured(device);
+        if (!configured) hasNewDevices = true;
+        resultsDiv.appendChild(createScanResultRow(device, configured));
+    });
+
+    // Wire Add All button
+    document.getElementById('btn-scan-add-all').addEventListener('click', function() {
+        var checked = [];
+        resultsDiv.querySelectorAll('.ve-scan-result').forEach(function(row) {
+            if (row._device && !row.classList.contains('ve-scan-result--configured')) {
+                var cb = row.querySelector('input[type="checkbox"]');
+                if (cb && cb.checked) checked.push(row._device);
+            }
+        });
+        if (checked.length > 0) addDiscoveredInverters(checked);
+    });
+
+    if (!hasNewDevices) {
+        header.querySelector('#btn-scan-add-all').style.display = 'none';
+    }
+}
+
+function handleScanError(data) {
+    _scanRunning = false;
+    setScanButtonState(false);
+    var progress = document.getElementById('scan-progress');
+    progress.style.display = 'none';
+    showToast('Scan fehlgeschlagen: ' + (data.error || 'Unbekannter Fehler'), 'error');
+}
+
+function createScanResultRow(device, isConfigured) {
+    var row = document.createElement('div');
+    row.className = 've-scan-result';
+    if (isConfigured) row.classList.add('ve-scan-result--configured');
+
+    var identity = ((device.manufacturer || '') + ' ' + (device.model || '')).trim() || 'Unknown';
+    var hostPort = device.ip + ':' + device.port;
+
+    if (isConfigured) {
+        row.innerHTML =
+            '<span class="ve-scan-result-configured">Bereits konfiguriert</span>' +
+            '<span class="ve-scan-result-host">' + hostPort + '</span>' +
+            '<span class="ve-scan-result-identity">' + identity + '</span>' +
+            '<span class="ve-scan-result-unit">Unit ' + device.unit_id + '</span>';
+    } else {
+        row.innerHTML =
+            '<label class="ve-scan-result-check"><input type="checkbox" checked></label>' +
+            '<span class="ve-scan-result-host">' + hostPort + '</span>' +
+            '<span class="ve-scan-result-identity">' + identity + '</span>' +
+            '<span class="ve-scan-result-unit">Unit ' + device.unit_id + '</span>';
+    }
+    row._device = device;
+    return row;
+}
+
+function isAlreadyConfigured(device) {
+    return _configuredInverters.some(function(inv) {
+        return inv.host === device.ip &&
+               inv.port === device.port &&
+               inv.unit_id === device.unit_id;
+    });
+}
+
+async function addDiscoveredInverters(devices) {
+    var added = 0;
+    for (var i = 0; i < devices.length; i++) {
+        var d = devices[i];
+        try {
+            var res = await fetch('/api/inverters', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    host: d.ip, port: d.port, unit_id: d.unit_id,
+                    manufacturer: d.manufacturer || '', model: d.model || '',
+                    serial: d.serial_number || '', firmware_version: d.firmware_version || '',
+                    enabled: true
+                })
+            });
+            if (res.status === 201) added++;
+        } catch (e) {
+            console.error('Failed to add inverter:', d.ip, e);
+        }
+    }
+    if (added > 0) {
+        showToast(added === 1 ? 'Inverter hinzugefuegt' : added + ' Inverter hinzugefuegt', 'success');
+        document.getElementById('scan-results').innerHTML = '';
+        document.getElementById('scan-area').style.display = 'none';
+        loadInverters();
+    }
+}
+
+async function triggerScan() {
+    if (_scanRunning) return;
+    _scanRunning = true;
+    setScanButtonState(true);
+
+    // Clear previous results
+    document.getElementById('scan-results').innerHTML = '';
+    document.getElementById('scan-bar-fill').style.width = '0%';
+    document.getElementById('scan-area').style.display = '';
+    document.getElementById('scan-progress').style.display = '';
+    document.getElementById('scan-status-text').textContent = 'Starting scan...';
+
+    // Read ports from input
+    var portsInput = document.getElementById('scan-ports-input');
+    var portsStr = portsInput ? portsInput.value : '502, 1502';
+    var ports = portsStr.split(',').map(function(p) { return parseInt(p.trim(), 10); }).filter(function(p) { return !isNaN(p) && p > 0 && p <= 65535; });
+    if (ports.length === 0) ports = [502, 1502];
+
+    try {
+        var res = await fetch('/api/scanner/discover', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ports: ports })
+        });
+        if (res.status === 409) {
+            showToast('Scan laeuft bereits', 'warning');
+            _scanRunning = false;
+            setScanButtonState(false);
+        }
+    } catch (e) {
+        showToast('Scan konnte nicht gestartet werden: ' + e.message, 'error');
+        _scanRunning = false;
+        setScanButtonState(false);
+    }
+}
+
+function setScanButtonState(scanning) {
+    var btn = document.getElementById('btn-discover-inverter');
+    if (!btn) return;
+    if (scanning) {
+        btn.classList.add('ve-scanning');
+        btn.disabled = true;
+        btn.title = 'Scan laeuft...';
+    } else {
+        btn.classList.remove('ve-scanning');
+        btn.disabled = false;
+        btn.title = 'Auto-Discover';
+    }
+}
+
+// Wire discover button
+document.getElementById('btn-discover-inverter').addEventListener('click', function() {
+    _autoScanDone = false;
+    triggerScan();
+});
+
+// Save scan ports on blur
+document.getElementById('scan-ports-input').addEventListener('blur', function() {
+    var ports = this.value.split(',').map(function(p) { return parseInt(p.trim(), 10); }).filter(function(p) { return !isNaN(p) && p > 0 && p <= 65535; });
+    if (ports.length === 0) return;
+    fetch('/api/scanner/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ports: ports })
+    });
+});
 
 // ===== Register Viewer =====
 
