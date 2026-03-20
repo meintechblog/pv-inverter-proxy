@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Auto-Discovery & Inverter Management
 status: completed
-stopped_at: Completed 20-02-PLAN.md
-last_updated: "2026-03-20T16:46:00Z"
+stopped_at: Completed 20-02-PLAN.md — v3.1 milestone complete
+last_updated: "2026-03-20T16:51:35.005Z"
 last_activity: 2026-03-20 — Completed 20-02 discovery UI with scan button, progress bar, result list, auto-scan onboarding
 progress:
   total_phases: 4
