@@ -77,11 +77,11 @@ Full details: `.planning/milestones/v3.0-ROADMAP.md`
   3. For verified devices, manufacturer, model, serial number, and firmware version are extracted from SunSpec Common Block
   4. Unit ID 1 is always scanned per IP; unit IDs 2-10 are optionally scanned for RS485 chain discovery
   5. The scanner handles SolarEdge single-connection constraint gracefully (sequential access, short timeouts, no stale connections)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 17-01: Network scanner + SunSpec verification
-- [ ] 17-02: Common Block reader + Unit ID scanning
+- [ ] 17-01-PLAN.md -- Scanner module TDD: TCP probe, SunSpec verification, subnet detection, scan orchestration
+- [ ] 17-02-PLAN.md -- Common Block parsing, unit ID scanning, REST API endpoint
 
 ### Phase 18: Multi-Inverter Config
 **Goal**: Config system stores and serves multiple inverter entries, with seamless migration from the existing single-inverter format
