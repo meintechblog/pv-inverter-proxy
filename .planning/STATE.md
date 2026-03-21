@@ -9,9 +9,9 @@ last_activity: 2026-03-21 -- Completed 23-02 (Distributor Integration)
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
+  total_plans: 8
+  completed_plans: 7
+  percent: 87
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-20)
 
 **Core value:** Venus OS muss alle PV-Inverter als einen virtuellen Fronius-Inverter erkennen und steuern koennen
-**Current focus:** Phase 23 - Power Limit Distribution
+**Current focus:** Phase 24 - Device-Centric API & Frontend
 
 ## Current Position
 
-Phase: 23 of 24 (Power Limit Distribution)
-Plan: 2 of 2 in current phase
+Phase: 24 of 24 (Device-Centric API & Frontend)
+Plan: 1 of 2 in current phase
 Status: in-progress
-Last activity: 2026-03-21 -- Completed 23-02 (Distributor Integration)
+Last activity: 2026-03-21 -- Completed 24-01 (Device-Centric REST API & WebSocket)
 
 Progress: [██████████] 100%
 
@@ -48,6 +48,7 @@ Progress: [██████████] 100%
 | 21 | 2/2 | 18min | 9min |
 | 22 | 2/2 | 25min | 12min |
 | 23 | 2/2 | 8min | 4min |
+| 24 | 1/2 | 5min | 5min |
 
 ## Accumulated Context
 
@@ -76,6 +77,10 @@ Progress: [██████████] 100%
 - [23-01]: Monitoring-only device power counts toward total_rated for pct-to-watt conversion
 - [23-02]: Post-hoc injection: distributor set on slave_ctx after creation (avoids reordering run_modbus_server)
 - [23-02]: Legacy _handle_control_write kept but marked superseded by PowerLimitDistributor
+- [24-01]: Display name fallback: name -> manufacturer+model -> "Inverter"
+- [24-01]: Venus/virtual as pseudo-devices in device list for unified frontend
+- [24-01]: AggregationLayer._broadcast_fn wired post-init to avoid circular imports
+- [24-01]: broadcast_device_list fires after _reconfigure_active for real-time CRUD propagation
 
 ### Pending Todos
 
@@ -89,6 +94,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-21T08:46:10.486Z
-Stopped at: Phase 24 context gathered
-Resume file: .planning/phases/24-device-centric-api-frontend/24-CONTEXT.md
+Last session: 2026-03-21T10:20:16Z
+Stopped at: Completed 24-01-PLAN.md
+Resume file: .planning/phases/24-device-centric-api-frontend/24-02-PLAN.md

@@ -43,9 +43,9 @@ Requirements for Multi-Source Virtual Inverter. Each maps to roadmap phases.
 
 ### Device-Centric REST API
 
-- [ ] **API-01**: REST Endpoints liefern per-Device Snapshots und Status (/api/devices/{id}/snapshot)
-- [ ] **API-02**: WebSocket broadcastet per-Device Updates mit Device-ID Tag
-- [ ] **API-03**: CRUD Endpoints fuer Device-Management (GET/POST/PUT/DELETE /api/devices)
+- [x] **API-01**: REST Endpoints liefern per-Device Snapshots und Status (/api/devices/{id}/snapshot)
+- [x] **API-02**: WebSocket broadcastet per-Device Updates mit Device-ID Tag
+- [x] **API-03**: CRUD Endpoints fuer Device-Management (GET/POST/PUT/DELETE /api/devices)
 
 ### Device-Centric Frontend
 
@@ -103,9 +103,9 @@ Requirements for Multi-Source Virtual Inverter. Each maps to roadmap phases.
 | PWR-02 | Phase 23 | Complete |
 | PWR-03 | Phase 23 | Complete |
 | PWR-04 | Phase 23 | Complete |
-| API-01 | Phase 24 | Pending |
-| API-02 | Phase 24 | Pending |
-| API-03 | Phase 24 | Pending |
+| API-01 | Phase 24 | Complete |
+| API-02 | Phase 24 | Complete |
+| API-03 | Phase 24 | Complete |
 | UI-01 | Phase 24 | Pending |
 | UI-02 | Phase 24 | Pending |
 | UI-03 | Phase 24 | Pending |
