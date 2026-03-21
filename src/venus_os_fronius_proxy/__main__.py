@@ -155,6 +155,18 @@ def main():
         await site.start()
         log.info("webapp_started", port=config.webapp.port)
 
+        # Wire broadcast callback into aggregation layer (Phase 24)
+        from venus_os_fronius_proxy.webapp import broadcast_device_snapshot, broadcast_virtual_snapshot
+
+        async def _on_aggregation_broadcast(device_id: str) -> None:
+            app = app_ctx.webapp
+            ds = app_ctx.devices.get(device_id)
+            if ds and ds.collector and ds.collector.last_snapshot:
+                await broadcast_device_snapshot(app, device_id, ds.collector.last_snapshot)
+            await broadcast_virtual_snapshot(app)
+
+        aggregation._broadcast_fn = _on_aggregation_broadcast
+
         # Start Venus OS MQTT reader only if host is configured
         if config.venus.host:
             from venus_os_fronius_proxy.venus_reader import venus_mqtt_loop

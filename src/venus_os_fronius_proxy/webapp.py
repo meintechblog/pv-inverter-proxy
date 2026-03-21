@@ -529,18 +529,58 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
 
     try:
         ws_app_ctx = request.app["app_ctx"]
-        # Use first device's collector for WebSocket data
-        # TODO Phase 24: aggregated virtual dashboard
-        first_dev = next(iter(ws_app_ctx.devices.values()), None)
-        collector = first_dev.collector if first_dev else None
+        config: Config = request.app["config"]
 
-        # Send latest snapshot if available, or no_inverter if polling paused
-        if collector is not None and collector.last_snapshot is not None:
-            await ws.send_json({"type": "snapshot", "data": collector.last_snapshot})
+        # Send per-device snapshots for all active devices
+        sent_any = False
+        first_collector = None
+        for dev_id, ds in ws_app_ctx.devices.items():
+            if ds.collector and ds.collector.last_snapshot:
+                if first_collector is None:
+                    first_collector = ds.collector
+                await ws.send_json({
+                    "type": "device_snapshot",
+                    "device_id": dev_id,
+                    "data": ds.collector.last_snapshot,
+                })
+                sent_any = True
+
+        # Also send legacy snapshot for backward compat (first device)
+        if first_collector is not None and first_collector.last_snapshot is not None:
+            await ws.send_json({"type": "snapshot", "data": first_collector.last_snapshot})
         elif ws_app_ctx.polling_paused:
             await ws.send_json({"type": "no_inverter"})
 
-        # Send downsampled history for sparklines
+        # Send virtual snapshot
+        if sent_any:
+            total_power_w = 0
+            contributions = []
+            distributor = getattr(getattr(ws_app_ctx, "device_registry", None), "_distributor", None)
+            device_limits = distributor.get_device_limits() if distributor is not None else {}
+            for inv in config.inverters:
+                ds = ws_app_ctx.devices.get(inv.id)
+                power_w = 0
+                if ds and ds.collector and ds.collector.last_snapshot:
+                    snap_inv = ds.collector.last_snapshot.get("inverter", {})
+                    power_w = snap_inv.get("ac_power_w", 0)
+                total_power_w += power_w
+                display_name = inv.name or f"{inv.manufacturer} {inv.model}".strip() or "Inverter"
+                contributions.append({
+                    "device_id": inv.id,
+                    "name": display_name,
+                    "power_w": power_w,
+                    "throttle_order": inv.throttle_order,
+                    "throttle_enabled": inv.throttle_enabled,
+                    "current_limit_pct": device_limits.get(inv.id, 100.0),
+                })
+            await ws.send_json({"type": "virtual_snapshot", "data": {
+                "total_power_w": total_power_w,
+                "virtual_name": config.virtual_inverter.name,
+                "contributions": contributions,
+            }})
+
+        # Send downsampled history for sparklines (first device only)
+        collector = first_collector
         if collector is not None:
             mono_offset = time.time() - time.monotonic()
             history: dict[str, list[list[float]]] = {}
@@ -582,6 +622,120 @@ async def broadcast_to_clients(app: web.Application, snapshot: dict) -> None:
         snapshot["venus_settings"] = venus_settings
 
     payload = json.dumps({"type": "snapshot", "data": snapshot})
+    for ws in set(clients):
+        try:
+            await ws.send_str(payload)
+        except (ConnectionError, RuntimeError, ConnectionResetError):
+            clients.discard(ws)
+
+
+async def broadcast_device_snapshot(app: web.Application, device_id: str, snapshot: dict) -> None:
+    """Push a per-device snapshot to all connected WebSocket clients."""
+    clients = app.get("ws_clients")
+    if not clients:
+        return
+    bc_ctx = app.get("app_ctx")
+    venus_settings = bc_ctx.venus_settings if bc_ctx else None
+    if venus_settings:
+        snapshot["venus_settings"] = venus_settings
+    payload = json.dumps({"type": "device_snapshot", "device_id": device_id, "data": snapshot})
+    for ws in set(clients):
+        try:
+            await ws.send_str(payload)
+        except (ConnectionError, RuntimeError, ConnectionResetError):
+            clients.discard(ws)
+
+
+async def broadcast_virtual_snapshot(app: web.Application) -> None:
+    """Broadcast aggregated virtual inverter snapshot to all WebSocket clients."""
+    clients = app.get("ws_clients")
+    if not clients:
+        return
+    app_ctx = app.get("app_ctx")
+    config: Config = app.get("config")
+    if app_ctx is None or config is None:
+        return
+
+    total_power_w = 0
+    contributions = []
+    distributor = getattr(getattr(app_ctx, "device_registry", None), "_distributor", None)
+    device_limits = distributor.get_device_limits() if distributor is not None else {}
+
+    for inv in config.inverters:
+        ds = app_ctx.devices.get(inv.id)
+        power_w = 0
+        if ds and ds.collector and ds.collector.last_snapshot:
+            snap_inv = ds.collector.last_snapshot.get("inverter", {})
+            power_w = snap_inv.get("ac_power_w", 0)
+        total_power_w += power_w
+        display_name = inv.name or f"{inv.manufacturer} {inv.model}".strip() or "Inverter"
+        contributions.append({
+            "device_id": inv.id,
+            "name": display_name,
+            "power_w": power_w,
+            "throttle_order": inv.throttle_order,
+            "throttle_enabled": inv.throttle_enabled,
+            "current_limit_pct": device_limits.get(inv.id, 100.0),
+        })
+
+    payload = json.dumps({"type": "virtual_snapshot", "data": {
+        "total_power_w": total_power_w,
+        "virtual_name": config.virtual_inverter.name,
+        "contributions": contributions,
+    }})
+    for ws in set(clients):
+        try:
+            await ws.send_str(payload)
+        except (ConnectionError, RuntimeError, ConnectionResetError):
+            clients.discard(ws)
+
+
+async def broadcast_device_list(app: web.Application) -> None:
+    """Broadcast updated device list to all WebSocket clients."""
+    clients = app.get("ws_clients")
+    if not clients:
+        return
+    app_ctx = app.get("app_ctx")
+    config: Config = app.get("config")
+    if app_ctx is None or config is None:
+        return
+
+    devices = []
+    for inv in config.inverters:
+        ds = app_ctx.devices.get(inv.id)
+        conn_state = "unknown"
+        if ds and ds.conn_mgr:
+            conn_state = ds.conn_mgr.state.value
+        power_w = 0
+        if ds and ds.collector and ds.collector.last_snapshot:
+            snap_inv = ds.collector.last_snapshot.get("inverter", {})
+            power_w = snap_inv.get("ac_power_w", 0)
+        display_name = inv.name or f"{inv.manufacturer} {inv.model}".strip() or "Inverter"
+        devices.append({
+            "id": inv.id,
+            "name": display_name,
+            "type": inv.type,
+            "enabled": inv.enabled,
+            "host": inv.host,
+            "connection_state": conn_state,
+            "power_w": power_w,
+        })
+
+    venus_conn = "connected" if app_ctx.venus_mqtt_connected else "disconnected"
+    devices.append({
+        "id": "venus",
+        "name": "Venus OS",
+        "type": "venus",
+        "enabled": bool(config.venus.host),
+        "connection_state": venus_conn,
+    })
+    devices.append({
+        "id": "virtual",
+        "name": config.virtual_inverter.name,
+        "type": "virtual",
+    })
+
+    payload = json.dumps({"type": "device_list", "data": {"devices": devices}})
     for ws in set(clients):
         try:
             await ws.send_str(payload)
@@ -1055,6 +1209,9 @@ async def _reconfigure_active(app: web.Application, config: Config, device_id: s
             app_ctx.polling_paused = True
         else:
             app_ctx.polling_paused = False
+
+        # Broadcast updated device list after any CRUD change
+        await broadcast_device_list(app)
     finally:
         app["reconfiguring"] = False
 

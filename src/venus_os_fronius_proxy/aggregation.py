@@ -132,10 +132,11 @@ class AggregationLayer:
     RegisterCache that Venus OS reads.
     """
 
-    def __init__(self, app_ctx: AppContext, cache: RegisterCache, config: Config) -> None:
+    def __init__(self, app_ctx: AppContext, cache: RegisterCache, config: Config, broadcast_fn=None) -> None:
         self._app_ctx = app_ctx
         self._cache = cache
         self._config = config
+        self._broadcast_fn = broadcast_fn
 
     async def recalculate(self, device_id: str) -> None:
         """Aggregate all active device data into the shared cache.
@@ -212,6 +213,9 @@ class AggregationLayer:
             total_power_w=totals["ac_power_w"],
             trigger_device=device_id,
         )
+
+        if self._broadcast_fn is not None:
+            await self._broadcast_fn(device_id)
 
     def update_wrtg(self) -> None:
         """Recalculate and write WRtg to datablock. Called after device add/remove."""
