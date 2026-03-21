@@ -36,10 +36,10 @@ Requirements for Multi-Source Virtual Inverter. Each maps to roadmap phases.
 
 ### Power Limit Distribution
 
-- [ ] **PWR-01**: User definiert Prioritaets-Reihenfolge: welcher Inverter bei Limitierung zuerst gedrosselt wird
-- [ ] **PWR-02**: Individuelle Inverter koennen vom Regelverhalten ausgeschlossen werden (nur Monitoring)
-- [ ] **PWR-03**: Distribution beruecksichtigt unterschiedliche Latenzzeiten (SolarEdge instant vs Hoymiles 25s)
-- [ ] **PWR-04**: Power Limit wird anteilig nach Prioritaet auf die Inverter verteilt (hoechste Prio wird zuerst gedrosselt)
+- [x] **PWR-01**: User definiert Prioritaets-Reihenfolge: welcher Inverter bei Limitierung zuerst gedrosselt wird
+- [x] **PWR-02**: Individuelle Inverter koennen vom Regelverhalten ausgeschlossen werden (nur Monitoring)
+- [x] **PWR-03**: Distribution beruecksichtigt unterschiedliche Latenzzeiten (SolarEdge instant vs Hoymiles 25s)
+- [x] **PWR-04**: Power Limit wird anteilig nach Prioritaet auf die Inverter verteilt (hoechste Prio wird zuerst gedrosselt)
 
 ### Device-Centric REST API
 
@@ -99,10 +99,10 @@ Requirements for Multi-Source Virtual Inverter. Each maps to roadmap phases.
 | AGG-02 | Phase 22 | Complete |
 | AGG-03 | Phase 22 | Complete |
 | AGG-04 | Phase 22 | Complete |
-| PWR-01 | Phase 23 | Pending |
-| PWR-02 | Phase 23 | Pending |
-| PWR-03 | Phase 23 | Pending |
-| PWR-04 | Phase 23 | Pending |
+| PWR-01 | Phase 23 | Complete |
+| PWR-02 | Phase 23 | Complete |
+| PWR-03 | Phase 23 | Complete |
+| PWR-04 | Phase 23 | Complete |
 | API-01 | Phase 24 | Pending |
 | API-02 | Phase 24 | Pending |
 | API-03 | Phase 24 | Pending |

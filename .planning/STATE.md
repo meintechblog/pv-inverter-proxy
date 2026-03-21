@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Multi-Source Virtual Inverter
 status: in-progress
-stopped_at: Phase 23 context gathered
-last_updated: "2026-03-20T22:15:31.850Z"
-last_activity: 2026-03-20 -- Completed 22-02 (AggregationLayer + Rewire)
+stopped_at: Completed 23-01-PLAN.md
+last_updated: "2026-03-21T07:33:09.794Z"
+last_activity: 2026-03-21 -- Completed 23-01 (PowerLimitDistributor TDD)
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 50
+  total_plans: 6
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-20)
 
 **Core value:** Venus OS muss alle PV-Inverter als einen virtuellen Fronius-Inverter erkennen und steuern koennen
-**Current focus:** Phase 22 - Device Registry & Aggregation
+**Current focus:** Phase 23 - Power Limit Distribution
 
 ## Current Position
 
-Phase: 22 of 24 (Device Registry & Aggregation)
-Plan: 2 of 2 in current phase
+Phase: 23 of 24 (Power Limit Distribution)
+Plan: 1 of 2 in current phase
 Status: in-progress
-Last activity: 2026-03-20 -- Completed 22-02 (AggregationLayer + Rewire)
+Last activity: 2026-03-21 -- Completed 23-01 (PowerLimitDistributor TDD)
 
-Progress: [█████░░░░░] 50%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -47,6 +47,7 @@ Progress: [█████░░░░░] 50%
 |-------|-------|-------|----------|
 | 21 | 2/2 | 18min | 9min |
 | 22 | 2/2 | 25min | 12min |
+| 23 | 1/2 | 4min | 4min |
 
 ## Accumulated Context
 
@@ -70,6 +71,9 @@ Progress: [█████░░░░░] 50%
 - [22-02]: Modbus server kept running when 0 active devices (stale errors) to preserve Venus OS discovery
 - [22-02]: Fixed SFs for aggregated output: SF=0 power, SF=-1 voltage, SF=-2 current/freq
 - [22-02]: Webapp plugin references made optional with None guards for multi-device mode
+- [23-01]: DeviceLimitState.last_write_ts defaults to None to avoid false dead-time on first write
+- [23-01]: Waterfall walks TO ascending: TO 1 gets budget first, throttled first when budget < rated
+- [23-01]: Monitoring-only device power counts toward total_rated for pct-to-watt conversion
 
 ### Pending Todos
 
@@ -83,6 +87,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-20T22:15:31.846Z
-Stopped at: Phase 23 context gathered
-Resume file: .planning/phases/23-power-limit-distribution/23-CONTEXT.md
+Last session: 2026-03-21T07:32:25Z
+Stopped at: Completed 23-01-PLAN.md
+Resume file: .planning/phases/23-power-limit-distribution/23-01-SUMMARY.md
