@@ -1920,6 +1920,375 @@ body {
     }
 }
 
+/* ===== Sidebar Device Groups ===== */
+.ve-sidebar-group {
+    border-bottom: 1px solid var(--ve-border);
+}
+.ve-sidebar-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ve-text-dim);
+    cursor: pointer;
+    user-select: none;
+    transition: color var(--ve-duration-fast) var(--ve-easing-default);
+}
+.ve-sidebar-group-header:hover {
+    color: var(--ve-text);
+}
+.ve-sidebar-group-header .ve-chevron {
+    font-size: 0.6rem;
+    transition: transform var(--ve-duration-fast) var(--ve-easing-default);
+}
+.ve-sidebar-group-header .ve-chevron--collapsed {
+    transform: rotate(-90deg);
+}
+.ve-sidebar-group-items {
+    overflow: hidden;
+    max-height: 500px;
+    transition: max-height var(--ve-duration-normal) var(--ve-easing-default);
+}
+.ve-sidebar-group-items--collapsed {
+    max-height: 0;
+}
+
+.ve-sidebar-device {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px 8px 24px;
+    color: var(--ve-text-dim);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background var(--ve-duration-fast) var(--ve-easing-default),
+                color var(--ve-duration-fast) var(--ve-easing-default);
+    border-left: 3px solid transparent;
+    font-size: 0.85rem;
+}
+.ve-sidebar-device:hover {
+    color: var(--ve-text);
+    background: rgba(56, 125, 197, 0.08);
+}
+.ve-sidebar-device--active {
+    color: var(--ve-text);
+    background: var(--ve-blue-dim);
+    border-left-color: var(--ve-blue);
+}
+.ve-sidebar-device--disabled {
+    opacity: 0.5;
+}
+.ve-sidebar-device--disabled .ve-sidebar-disabled-label {
+    font-size: 0.7rem;
+    color: var(--ve-text-dim);
+    margin-left: auto;
+}
+.ve-sidebar-device .ve-dot {
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+}
+.ve-sidebar-device-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ve-sidebar-device-power {
+    font-family: var(--ve-mono);
+    font-size: 0.75rem;
+    color: var(--ve-text-dim);
+    white-space: nowrap;
+    margin-left: auto;
+}
+
+.ve-sidebar-add-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 12px 16px;
+    padding: 8px;
+    background: none;
+    border: 1px dashed var(--ve-border);
+    border-radius: var(--ve-radius-sm);
+    color: var(--ve-text-dim);
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: color var(--ve-duration-fast) var(--ve-easing-default),
+                border-color var(--ve-duration-fast) var(--ve-easing-default);
+}
+.ve-sidebar-add-btn:hover {
+    color: var(--ve-blue);
+    border-color: var(--ve-blue);
+}
+
+/* ===== Device Tabs ===== */
+.ve-device-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--ve-border);
+    margin-bottom: 16px;
+}
+.ve-device-tab {
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    color: var(--ve-text-dim);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color var(--ve-duration-fast) var(--ve-easing-default),
+                border-color var(--ve-duration-fast) var(--ve-easing-default);
+}
+.ve-device-tab:hover {
+    color: var(--ve-text);
+}
+.ve-device-tab--active {
+    color: var(--ve-text);
+    border-bottom-color: var(--ve-blue);
+}
+.ve-device-tab-content {
+    min-height: 200px;
+}
+
+/* ===== Contribution Bar (Virtual PV) ===== */
+.ve-contribution-bar {
+    height: 24px;
+    border-radius: var(--ve-radius-sm);
+    overflow: hidden;
+    display: flex;
+    background: var(--ve-bg);
+}
+.ve-contribution-segment {
+    height: 100%;
+    transition: width var(--ve-duration-normal) var(--ve-easing-default);
+    min-width: 2px;
+}
+.ve-contribution-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 0.8rem;
+}
+.ve-contribution-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.ve-contribution-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.ve-contribution-legend-name {
+    color: var(--ve-text);
+}
+.ve-contribution-legend-power {
+    color: var(--ve-text-dim);
+    font-family: var(--ve-mono);
+}
+
+/* ===== Device Disabled Overlay ===== */
+.ve-device-disabled-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(20, 20, 20, 0.82);
+    color: var(--ve-text-dim);
+    font-size: 1rem;
+    letter-spacing: 0.03em;
+    border-radius: var(--ve-radius);
+    z-index: 10;
+}
+
+/* ===== Add Device Modal ===== */
+.ve-add-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.ve-add-modal-content {
+    background: var(--ve-bg-surface);
+    border: 1px solid var(--ve-border);
+    border-radius: var(--ve-radius);
+    max-width: 480px;
+    width: 90%;
+    padding: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+.ve-add-modal-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--ve-text);
+}
+.ve-add-type-picker {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.ve-add-type-card {
+    padding: 16px;
+    background: var(--ve-bg);
+    border: 1px solid var(--ve-border);
+    border-radius: var(--ve-radius-sm);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color var(--ve-duration-fast) var(--ve-easing-default),
+                background var(--ve-duration-fast) var(--ve-easing-default);
+    color: var(--ve-text);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+.ve-add-type-card:hover {
+    border-color: var(--ve-blue);
+}
+.ve-add-type-card--selected {
+    border-color: var(--ve-blue);
+    background: rgba(56, 125, 197, 0.1);
+}
+.ve-add-modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+
+/* ===== DC Channel Table (OpenDTU) ===== */
+.ve-dc-channel-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--ve-mono);
+}
+.ve-dc-channel-table th {
+    text-align: right;
+    color: var(--ve-text-dim);
+    font-weight: 400;
+    font-size: 0.8em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+}
+.ve-dc-channel-table th:first-child { text-align: left; }
+.ve-dc-channel-table td {
+    padding: 4px 8px;
+    text-align: right;
+    font-size: 0.95em;
+}
+.ve-dc-channel-table td:first-child {
+    text-align: left;
+    font-weight: 600;
+    color: var(--ve-orange);
+}
+
+/* ===== Virtual PV Total Power ===== */
+.ve-virtual-total {
+    text-align: center;
+    margin-bottom: 24px;
+}
+.ve-virtual-total-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--ve-text);
+    font-family: var(--ve-mono);
+}
+.ve-virtual-total-unit {
+    font-size: 1rem;
+    color: var(--ve-text-dim);
+    margin-left: 4px;
+}
+
+/* ===== Throttle Table ===== */
+.ve-throttle-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.ve-throttle-table th {
+    text-align: left;
+    color: var(--ve-text-dim);
+    font-weight: 400;
+    font-size: 0.8em;
+    text-transform: uppercase;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--ve-border);
+}
+.ve-throttle-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(100, 99, 95, 0.3);
+    color: var(--ve-text);
+}
+
+/* ===== Responsive: Sidebar Device Groups ===== */
+@media (max-width: 1024px) {
+    .ve-sidebar-device {
+        padding: 8px 8px 8px 12px;
+        justify-content: center;
+    }
+    .ve-sidebar-device-name,
+    .ve-sidebar-device-power,
+    .ve-sidebar-disabled-label {
+        display: none;
+    }
+    .ve-sidebar-group-header {
+        padding: 8px;
+        justify-content: center;
+        font-size: 0.6rem;
+    }
+    .ve-sidebar-group-header .ve-chevron {
+        display: none;
+    }
+    .ve-sidebar-add-btn {
+        margin: 8px;
+        padding: 6px;
+    }
+}
+@media (max-width: 768px) {
+    .ve-sidebar-device {
+        padding: 8px 16px 8px 24px;
+        justify-content: flex-start;
+    }
+    .ve-sidebar-device-name,
+    .ve-sidebar-device-power {
+        display: inline;
+    }
+    .ve-sidebar-group-header {
+        padding: 10px 16px;
+        justify-content: space-between;
+    }
+    .ve-sidebar-group-header .ve-chevron {
+        display: inline;
+    }
+    .ve-sidebar-add-btn {
+        margin: 12px 16px;
+        padding: 8px;
+    }
+    .ve-device-tabs {
+        overflow-x: auto;
+    }
+    .ve-device-tab {
+        padding: 8px 14px;
+        white-space: nowrap;
+    }
+}
+
 /* ===== Accessibility: Reduced Motion ===== */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
