@@ -47,6 +47,12 @@ class DeviceRegistry:
         self._config = config
         self._on_poll_success = on_poll_success
         self._managed: dict[str, ManagedDevice] = {}
+        self._distributor: object | None = None
+
+    @property
+    def distributor(self) -> object | None:
+        """Public accessor for the PowerLimitDistributor instance."""
+        return self._distributor
 
     async def start_device(self, device_id: str) -> None:
         """Start polling for a single device by its id.

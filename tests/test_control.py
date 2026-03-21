@@ -108,8 +108,8 @@ class TestControlState:
     def test_control_state_update_wmaxlimpct(self):
         """update_wmaxlimpct stores value, wmaxlimpct_float returns correct float."""
         cs = ControlState()
-        cs.update_wmaxlimpct(5000)
-        assert cs.wmaxlimpct_raw == 5000
+        cs.update_wmaxlimpct(50)
+        assert cs.wmaxlimpct_raw == 50
         assert cs.wmaxlimpct_float == 50.0
 
     def test_control_state_update_wmaxlim_ena(self):
@@ -123,14 +123,14 @@ class TestControlState:
     def test_control_state_readback(self):
         """get_model_123_readback returns 26 registers with correct layout."""
         cs = ControlState()
-        cs.update_wmaxlimpct(5000)
+        cs.update_wmaxlimpct(50)
         cs.update_wmaxlim_ena(1)
         readback = cs.get_model_123_readback()
 
         assert len(readback) == 26
         assert readback[0] == 123   # DID
         assert readback[1] == 24    # Length
-        assert readback[5] == 5000  # WMaxLimPct at offset 5
+        assert readback[5] == 50    # WMaxLimPct at offset 5 (SF=0)
         assert readback[9] == 1     # WMaxLim_Ena at offset 9
 
     def test_control_state_readback_defaults(self):
@@ -180,10 +180,10 @@ class TestControlStateSourceTracking:
         """set_from_webapp updates wmaxlimpct, ena, source, ts, revert deadline."""
         cs = ControlState()
         before = time.time()
-        cs.set_from_webapp(5000, 1, revert_timeout=300.0)
+        cs.set_from_webapp(50, 1, revert_timeout=300.0)
         after = time.time()
 
-        assert cs.wmaxlimpct_raw == 5000
+        assert cs.wmaxlimpct_raw == 50
         assert cs.wmaxlim_ena == 1
         assert cs.last_source == "webapp"
         assert before <= cs.last_change_ts <= after
@@ -194,7 +194,7 @@ class TestControlStateSourceTracking:
     def test_set_from_venus_os_cancels_revert(self):
         """set_from_venus_os sets source, cancels webapp revert."""
         cs = ControlState()
-        cs.set_from_webapp(5000, 1)
+        cs.set_from_webapp(50, 1)
         assert cs.webapp_revert_at is not None
 
         before = time.time()
@@ -247,7 +247,7 @@ class TestEdpcRefreshLoop:
     async def test_refresh_writes_when_active(self):
         """Loop calls plugin.write_power_limit when enabled and source != none."""
         cs = ControlState()
-        cs.update_wmaxlimpct(5000)
+        cs.update_wmaxlimpct(50)
         cs.update_wmaxlim_ena(1)
         cs.last_source = "webapp"
         cs.webapp_revert_at = time.monotonic() + 9999  # far future
@@ -272,7 +272,7 @@ class TestEdpcRefreshLoop:
     async def test_auto_revert_on_deadline(self):
         """Loop auto-reverts when webapp_revert_at deadline has passed."""
         cs = ControlState()
-        cs.update_wmaxlimpct(5000)
+        cs.update_wmaxlimpct(50)
         cs.update_wmaxlim_ena(1)
         cs.last_source = "webapp"
         cs.webapp_revert_at = time.monotonic() - 1  # already passed

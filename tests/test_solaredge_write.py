@@ -173,7 +173,7 @@ class TestWriteWMaxLimPct:
 
     @pytest.mark.asyncio
     async def test_write_wmaxlimpct_50pct_forwards_to_plugin(self):
-        """Write WMaxLimPct=5000 to 40154, enable first, verify plugin receives Float32 50.0."""
+        """Write WMaxLimPct=50 to 40154, enable first, verify plugin receives Float32 50.0."""
         port = _next_port()
         plugin = _make_write_tracking_plugin()
         cache, control, server_task, client = await _start_write_server_and_connect(plugin, port)
@@ -184,9 +184,9 @@ class TestWriteWMaxLimPct:
             )
             assert not result_ena.isError(), f"Enable write failed: {result_ena}"
 
-            # Write WMaxLimPct = 5000 (50.00%) to register 40154
+            # Write WMaxLimPct = 50 (50%) to register 40154 (SF=0)
             result = await client.write_register(
-                40154, 5000, device_id=PROXY_UNIT_ID,
+                40154, 50, device_id=PROXY_UNIT_ID,
             )
             assert not result.isError(), f"WMaxLimPct write failed: {result}"
 
@@ -202,7 +202,7 @@ class TestWriteWMaxLimPct:
 
     @pytest.mark.asyncio
     async def test_write_wmaxlimpct_stored_without_enable(self):
-        """Write WMaxLimPct=5000 without enabling -- stored locally, implicitly enables."""
+        """Write WMaxLimPct=50 without enabling -- stored locally, implicitly enables."""
         port = _next_port()
         plugin = _make_write_tracking_plugin()
         cache, control, server_task, client = await _start_write_server_and_connect(plugin, port)
@@ -210,7 +210,7 @@ class TestWriteWMaxLimPct:
             # Write WMaxLimPct without enabling first
             # Note: in the new code, writing WMaxLimPct implicitly enables
             result = await client.write_register(
-                40154, 5000, device_id=PROXY_UNIT_ID,
+                40154, 50, device_id=PROXY_UNIT_ID,
             )
             assert not result.isError(), f"WMaxLimPct write failed: {result}"
 
@@ -222,16 +222,16 @@ class TestWriteWMaxLimPct:
 
     @pytest.mark.asyncio
     async def test_write_invalid_wmaxlimpct_rejected(self):
-        """Write WMaxLimPct=10001 (>100%) to 40154, verify Modbus exception."""
+        """Write WMaxLimPct=101 (>100%) to 40154, verify Modbus exception."""
         port = _next_port()
         plugin = _make_write_tracking_plugin()
         cache, control, server_task, client = await _start_write_server_and_connect(plugin, port)
         try:
-            # Write invalid value (10001 = 100.01%)
+            # Write invalid value (101 = 101% at SF=0)
             from pymodbus.exceptions import ModbusIOException
             try:
                 result = await client.write_register(
-                    40154, 10001, device_id=PROXY_UNIT_ID,
+                    40154, 101, device_id=PROXY_UNIT_ID,
                 )
                 # Should get an error response
                 assert result.isError(), "Expected error for invalid WMaxLimPct"
@@ -244,14 +244,14 @@ class TestWriteWMaxLimPct:
 
     @pytest.mark.asyncio
     async def test_readback_returns_last_written_value(self):
-        """After writing WMaxLimPct=5000, readback at 40154 returns 5000."""
+        """After writing WMaxLimPct=50, readback at 40154 returns 50."""
         port = _next_port()
         plugin = _make_write_tracking_plugin()
         cache, control, server_task, client = await _start_write_server_and_connect(plugin, port)
         try:
-            # Write WMaxLimPct
+            # Write WMaxLimPct (SF=0: raw 50 = 50%)
             result = await client.write_register(
-                40154, 5000, device_id=PROXY_UNIT_ID,
+                40154, 50, device_id=PROXY_UNIT_ID,
             )
             assert not result.isError()
 
@@ -260,7 +260,7 @@ class TestWriteWMaxLimPct:
                 40154, count=1, device_id=PROXY_UNIT_ID,
             )
             assert not readback.isError()
-            assert readback.registers[0] == 5000
+            assert readback.registers[0] == 50
 
         finally:
             await _cleanup(server_task, client)

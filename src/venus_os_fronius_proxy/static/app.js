@@ -626,8 +626,9 @@ function renderInverterRegisters(container, deviceId) {
         }
     });
 
-    // Fetch registers
-    fetch('/api/registers')
+    // Fetch registers for this specific device
+    var regUrl = '/api/devices/' + encodeURIComponent(deviceId) + '/registers';
+    fetch(regUrl)
         .then(function(res) { return res.json(); })
         .then(function(models) {
             var spinner = container.querySelector('.ve-reg-spinner');
@@ -646,7 +647,7 @@ function renderInverterRegisters(container, deviceId) {
             clearInterval(regPollInterval);
             return;
         }
-        fetch('/api/registers')
+        fetch(regUrl)
             .then(function(res) { return res.json(); })
             .then(function(models) {
                 updateRegisterValues(models);

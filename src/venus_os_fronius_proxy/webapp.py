@@ -431,14 +431,30 @@ async def config_test_handler(request: web.Request) -> web.Response:
         client.close()
 
 
+async def device_registers_handler(request: web.Request) -> web.Response:
+    """Return side-by-side register data for a specific device."""
+    device_id = request.match_info["id"]
+    app_ctx = request.app["app_ctx"]
+    cache = app_ctx.cache
+    ds = app_ctx.devices.get(device_id)
+    if ds is None:
+        return web.json_response({"error": "Device not found"}, status=404)
+    last_se_poll = ds.last_poll_data
+    return _build_register_response(cache, last_se_poll)
+
+
 async def registers_handler(request: web.Request) -> web.Response:
     """Return side-by-side register data: SE source + Fronius target per field."""
     app_ctx = request.app["app_ctx"]
     cache = app_ctx.cache
-    # Use first device's last_poll_data for register source column
-    # TODO Phase 24: per-device register viewer
+    # Legacy endpoint: use first device's data for backward compatibility
     first_dev = next(iter(app_ctx.devices.values()), None)
     last_se_poll = first_dev.last_poll_data if first_dev else None
+    return _build_register_response(cache, last_se_poll)
+
+
+def _build_register_response(cache, last_se_poll) -> web.Response:
+    """Build register JSON response from cache and poll data."""
 
     models_out = []
     for model in REGISTER_MODELS:
@@ -555,7 +571,7 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
         if sent_any:
             total_power_w = 0
             contributions = []
-            distributor = getattr(getattr(ws_app_ctx, "device_registry", None), "_distributor", None)
+            distributor = getattr(ws_app_ctx, "device_registry", None) and ws_app_ctx.device_registry.distributor
             device_limits = distributor.get_device_limits() if distributor is not None else {}
             for inv in config.inverters:
                 ds = ws_app_ctx.devices.get(inv.id)
@@ -658,7 +674,7 @@ async def broadcast_virtual_snapshot(app: web.Application) -> None:
 
     total_power_w = 0
     contributions = []
-    distributor = getattr(getattr(app_ctx, "device_registry", None), "_distributor", None)
+    distributor = getattr(app_ctx, "device_registry", None) and app_ctx.device_registry.distributor
     device_limits = distributor.get_device_limits() if distributor is not None else {}
 
     for inv in config.inverters:
@@ -1302,7 +1318,7 @@ async def virtual_snapshot_handler(request: web.Request) -> web.Response:
     contributions = []
 
     # Get throttle limits from distributor if available
-    distributor = getattr(getattr(app_ctx, "device_registry", None), "_distributor", None)
+    distributor = getattr(app_ctx, "device_registry", None) and app_ctx.device_registry.distributor
     device_limits = distributor.get_device_limits() if distributor is not None else {}
 
     for inv in config.inverters:
@@ -1485,6 +1501,7 @@ async def create_webapp(
     app.router.add_get("/api/devices", devices_list_handler)
     app.router.add_get("/api/devices/virtual/snapshot", virtual_snapshot_handler)
     app.router.add_get("/api/devices/{id}/snapshot", device_snapshot_handler)
+    app.router.add_get("/api/devices/{id}/registers", device_registers_handler)
     # CRUD aliases at /api/devices (frontend uses these, /api/inverters kept for backward compat)
     app.router.add_post("/api/devices", inverters_add_handler)
     app.router.add_put("/api/devices/{id}", inverters_update_handler)

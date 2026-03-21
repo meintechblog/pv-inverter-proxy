@@ -314,7 +314,7 @@ class TestPollLoopReconnection:
 
         # Set up control state with an active power limit
         control_state = ControlState()
-        control_state.update_wmaxlimpct(7500)  # 75.00%
+        control_state.update_wmaxlimpct(75)  # 75% (SF=0)
         control_state.update_wmaxlim_ena(1)     # enabled
         assert control_state.is_enabled
         assert control_state.wmaxlimpct_float == 75.0

@@ -186,13 +186,13 @@ def test_collect_with_control_state():
     })
 
     cs = ControlState()
-    cs.update_wmaxlimpct(7500)
+    cs.update_wmaxlimpct(75)
     cs.update_wmaxlim_ena(1)
 
     snapshot = collector.collect(cache, control_state=cs)
     assert snapshot["control"]["enabled"] is True
     assert snapshot["control"]["limit_pct"] == 75.0
-    assert snapshot["control"]["wmaxlimpct_raw"] == 7500
+    assert snapshot["control"]["wmaxlimpct_raw"] == 75
 
 
 def test_collect_with_connection_info():

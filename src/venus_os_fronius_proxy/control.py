@@ -49,7 +49,7 @@ def validate_wmaxlimpct(raw_value: int, scale_factor: int = WMAXLIMPCT_SF) -> st
 
     Args:
         raw_value: SunSpec integer register value
-        scale_factor: SunSpec scale factor (default -2)
+        scale_factor: SunSpec scale factor (default 0)
 
     Returns:
         None if valid, error string if invalid.
@@ -77,7 +77,7 @@ def wmaxlimpct_to_se_registers(raw_value: int, scale_factor: int = WMAXLIMPCT_SF
 
     Args:
         raw_value: SunSpec integer register value
-        scale_factor: SunSpec scale factor (default -2)
+        scale_factor: SunSpec scale factor (default 0)
 
     Returns:
         Tuple of (hi_register, lo_register) encoding Float32.
