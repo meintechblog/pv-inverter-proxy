@@ -49,15 +49,25 @@ def decode_model_103_to_physical(inverter_regs: list[int]) -> dict:
         "ac_current_l1_a": _val(3, 6),
         "ac_current_l2_a": _val(4, 6),
         "ac_current_l3_a": _val(5, 6),
+        "ac_voltage_ab_v": _val(7, 13),
+        "ac_voltage_bc_v": _val(8, 13),
+        "ac_voltage_ca_v": _val(9, 13),
         "ac_voltage_an_v": _val(10, 13),
+        "ac_voltage_bn_v": _val(11, 13),
+        "ac_voltage_cn_v": _val(12, 13),
         "ac_power_w": _val(14, 15),
         "ac_frequency_hz": _val(16, 17),
+        "ac_va": _val(18, 19),
+        "ac_var": _val(20, 21),
+        "ac_pf": _val(22, 23),
         "energy_total_wh": ((inverter_regs[24] << 16) | inverter_regs[25]) * (10 ** _sf(26)),
         "dc_current_a": _val(27, 28),
         "dc_voltage_v": _val(29, 30),
         "dc_power_w": _val(31, 32),
         "temperature_c": _val(33, 37),
+        "temperature_sink_c": _val(34, 37),
         "status_code": inverter_regs[38],
+        "status_vendor": inverter_regs[39] if len(inverter_regs) > 39 else 0,
     }
 
 
@@ -180,7 +190,11 @@ class AggregationLayer:
             "dc_current_a", "dc_power_w",
         ]
         # Fields to average
-        avg_keys = ["ac_voltage_an_v", "ac_frequency_hz", "dc_voltage_v"]
+        avg_keys = [
+            "ac_voltage_ab_v", "ac_voltage_bc_v", "ac_voltage_ca_v",
+            "ac_voltage_an_v", "ac_voltage_bn_v", "ac_voltage_cn_v",
+            "ac_frequency_hz", "dc_voltage_v",
+        ]
 
         totals: dict = {}
 
