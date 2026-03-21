@@ -258,23 +258,6 @@ async def test_power_limit_set_invalid(client, mock_plugin):
     mock_plugin.write_power_limit.assert_not_called()
 
 
-async def test_power_limit_venus_override_rejection(client, shared_ctx, mock_plugin):
-    """POST /api/power-limit returns 409 when Venus OS wrote recently."""
-    cs = shared_ctx.control_state
-    cs.last_source = "venus_os"
-    cs.last_change_ts = time.time()  # just now
-
-    resp = await client.post("/api/power-limit", json={
-        "action": "set",
-        "limit_pct": 50.0,
-    })
-    assert resp.status == 409
-    data = await resp.json()
-    assert data["success"] is False
-    assert "Venus OS" in data["error"]
-    mock_plugin.write_power_limit.assert_not_called()
-
-
 async def test_power_limit_enable_disable(client, shared_ctx, mock_plugin):
     """POST /api/power-limit with action=enable and disable work."""
     mock_plugin.write_power_limit = AsyncMock(

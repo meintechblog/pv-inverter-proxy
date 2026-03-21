@@ -78,23 +78,23 @@ class TestNoInlineCode:
 
 
 class TestSidebarNavigation:
-    """Verify sidebar navigation items exist."""
+    """Verify sidebar navigation structure for device-centric architecture."""
 
-    def test_dashboard_nav(self):
+    def test_device_sidebar_container(self):
         html = _read_static("index.html")
-        assert 'data-page="dashboard"' in html
+        assert 'id="device-sidebar"' in html
 
-    def test_config_nav(self):
+    def test_add_device_button(self):
         html = _read_static("index.html")
-        assert 'data-page="config"' in html
+        assert 'id="btn-add-device"' in html
 
-    def test_registers_nav(self):
+    def test_device_content_area(self):
         html = _read_static("index.html")
-        assert 'data-page="registers"' in html
+        assert 'id="device-content"' in html
 
-    def test_four_nav_items(self):
+    def test_sidebar_header(self):
         html = _read_static("index.html")
-        assert html.count("data-page=") == 4
+        assert "sidebar-header" in html
 
 
 class TestResponsiveBreakpoints:

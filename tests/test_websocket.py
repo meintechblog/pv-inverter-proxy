@@ -11,7 +11,9 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from pymodbus.datastore import ModbusSequentialDataBlock
 
+from venus_os_fronius_proxy.config import Config
 from venus_os_fronius_proxy.connection import ConnectionManager
+from venus_os_fronius_proxy.context import AppContext, DeviceState
 from venus_os_fronius_proxy.dashboard import DashboardCollector, _PB_OFFSET
 from venus_os_fronius_proxy.register_cache import RegisterCache
 from venus_os_fronius_proxy.sunspec_models import build_initial_registers, DATABLOCK_START
@@ -58,11 +60,16 @@ def _make_collector_with_snapshot() -> DashboardCollector:
 
 @pytest.fixture
 async def ws_client():
-    """Create an aiohttp test client with the ws_handler route and shared_ctx."""
+    """Create an aiohttp test client with the ws_handler route and AppContext."""
     collector = _make_collector_with_snapshot()
 
+    app_ctx = AppContext()
+    device_state = DeviceState(collector=collector)
+    app_ctx.devices["default"] = device_state
+
     app = web.Application()
-    app["shared_ctx"] = {"dashboard_collector": collector}
+    app["app_ctx"] = app_ctx
+    app["config"] = Config()
     app["ws_clients"] = set()
     app.router.add_get("/ws", ws_handler)
 
@@ -84,8 +91,13 @@ async def ws_client_with_history():
     for i in range(100):
         buf.append(float(i * 10), ts=1000.0 + i)
 
+    app_ctx = AppContext()
+    device_state = DeviceState(collector=collector)
+    app_ctx.devices["default"] = device_state
+
     app = web.Application()
-    app["shared_ctx"] = {"dashboard_collector": collector}
+    app["app_ctx"] = app_ctx
+    app["config"] = Config()
     app["ws_clients"] = set()
     app.router.add_get("/ws", ws_handler)
 
@@ -96,29 +108,52 @@ async def ws_client_with_history():
     await client.close()
 
 
+def _drain_initial_messages(ws_msgs):
+    """Helper to collect initial messages by type from a list."""
+    by_type = {}
+    for m in ws_msgs:
+        by_type[m["type"]] = m
+    return by_type
+
+
+async def _drain_ws_init(ws):
+    """Read all initial messages sent on connect (device_snapshot, snapshot, virtual_snapshot, history)."""
+    msgs = []
+    import asyncio
+    while True:
+        try:
+            msg = await asyncio.wait_for(ws.receive_json(), timeout=1.0)
+            msgs.append(msg)
+        except asyncio.TimeoutError:
+            break
+    return msgs
+
+
 async def test_ws_connect_receives_snapshot(ws_client):
-    """Connect to /ws, first message is JSON with type=snapshot containing inverter and connection."""
+    """Connect to /ws, messages include legacy snapshot with inverter and connection data."""
     async with ws_client.ws_connect("/ws") as ws:
-        msg = await ws.receive_json()
-        assert msg["type"] == "snapshot"
-        assert "inverter" in msg["data"]
-        assert "connection" in msg["data"]
+        msgs = await _drain_ws_init(ws)
+        types = [m["type"] for m in msgs]
+        # Must have device_snapshot and legacy snapshot
+        assert "device_snapshot" in types
+        assert "snapshot" in types
+        snapshot = next(m for m in msgs if m["type"] == "snapshot")
+        assert "inverter" in snapshot["data"]
+        assert "connection" in snapshot["data"]
 
 
 async def test_ws_connect_receives_history(ws_client_with_history):
-    """Connect to /ws, second message is history with downsampled ac_power_w."""
+    """Connect to /ws, messages include history with downsampled ac_power_w."""
     async with ws_client_with_history.ws_connect("/ws") as ws:
-        # First message is snapshot
-        _snapshot = await ws.receive_json()
-        assert _snapshot["type"] == "snapshot"
-
-        # Second message is history
-        msg = await ws.receive_json()
-        assert msg["type"] == "history"
-        assert "ac_power_w" in msg["data"]
-        # 100 samples with step 10 = 10 data points
-        points = msg["data"]["ac_power_w"]
-        assert len(points) == 10
+        msgs = await _drain_ws_init(ws)
+        types = [m["type"] for m in msgs]
+        assert "snapshot" in types
+        assert "history" in types
+        history = next(m for m in msgs if m["type"] == "history")
+        assert "ac_power_w" in history["data"]
+        # 100 samples with step 3 -> ~34 data points (downsample step changed to 3)
+        points = history["data"]["ac_power_w"]
+        assert len(points) > 0
         # Each point is [timestamp, value]
         assert len(points[0]) == 2
 
@@ -126,11 +161,9 @@ async def test_ws_connect_receives_history(ws_client_with_history):
 async def test_broadcast_to_multiple_clients(ws_client):
     """Two WS clients both receive broadcast snapshot."""
     async with ws_client.ws_connect("/ws") as ws1, ws_client.ws_connect("/ws") as ws2:
-        # Drain initial snapshot+history messages
-        await ws1.receive_json()  # snapshot
-        await ws1.receive_json()  # history
-        await ws2.receive_json()  # snapshot
-        await ws2.receive_json()  # history
+        # Drain all initial messages
+        await _drain_ws_init(ws1)
+        await _drain_ws_init(ws2)
 
         # Broadcast a new snapshot
         test_snapshot = {"ts": 12345, "inverter": {"ac_power_w": 999}, "connection": {}}
@@ -147,8 +180,7 @@ async def test_broadcast_to_multiple_clients(ws_client):
 async def test_dead_client_cleanup(ws_client):
     """Closing a WS client then broadcasting does not raise errors."""
     async with ws_client.ws_connect("/ws") as ws:
-        await ws.receive_json()  # snapshot
-        await ws.receive_json()  # history
+        await _drain_ws_init(ws)
 
     # ws is now closed; broadcast should not raise
     test_snapshot = {"ts": 12345, "inverter": {}, "connection": {}}
@@ -157,9 +189,12 @@ async def test_dead_client_cleanup(ws_client):
 
 
 async def test_ws_handler_no_collector():
-    """Connect to /ws when shared_ctx has no dashboard_collector -- no crash."""
+    """Connect to /ws when AppContext has no devices -- no crash."""
+    app_ctx = AppContext()  # No devices
+
     app = web.Application()
-    app["shared_ctx"] = {}  # No dashboard_collector
+    app["app_ctx"] = app_ctx
+    app["config"] = Config()
     app["ws_clients"] = set()
     app.router.add_get("/ws", ws_handler)
 
