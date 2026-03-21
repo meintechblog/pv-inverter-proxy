@@ -1364,15 +1364,32 @@ async def device_snapshot_handler(request: web.Request) -> web.Response:
         return web.json_response({"error": "Device not found"}, status=404)
 
     ds = app_ctx.devices.get(device_id)
+    display_name = entry.name or f"{entry.manufacturer} {entry.model}".strip() or "Inverter"
+
+    # Always include connection info, even without snapshot data
+    conn_info = {
+        "state": ds.conn_mgr.state.value if ds and ds.conn_mgr else "unknown",
+        "poll_success": ds.poll_counter["success"] if ds else 0,
+        "poll_total": ds.poll_counter["total"] if ds else 0,
+    }
+
     if ds is None or ds.collector is None or ds.collector.last_snapshot is None:
-        return web.json_response({"error": "No data yet"}, status=503)
+        return web.json_response({
+            "error": "No data yet",
+            "device_id": device_id,
+            "device_type": entry.type,
+            "display_name": display_name,
+            "enabled": entry.enabled,
+            "connection": conn_info,
+            "inverter": {},
+        })
 
     snapshot = dict(ds.collector.last_snapshot)
-    display_name = entry.name or f"{entry.manufacturer} {entry.model}".strip() or "Inverter"
     snapshot["device_id"] = device_id
     snapshot["device_type"] = entry.type
     snapshot["display_name"] = display_name
     snapshot["enabled"] = entry.enabled
+    snapshot["connection"] = conn_info
     return web.json_response(snapshot)
 
 

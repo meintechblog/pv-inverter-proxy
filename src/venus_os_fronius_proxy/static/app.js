@@ -144,6 +144,8 @@ function createSidebarDevice(device) {
         dotColor = '--ve-blue';
     } else if (device.connection_state === 'connected') {
         dotColor = '--ve-green';
+    } else if (device.connection_state === 'night_mode') {
+        dotColor = '--ve-text-dim';
     } else if (device.connection_state === 'reconnecting') {
         dotColor = '--ve-orange';
     } else if (device.connection_state === 'disconnected') {
@@ -451,10 +453,10 @@ function buildInverterDashboard(container, data, deviceType) {
     var connCard = document.createElement('div');
     connCard.className = 've-card';
     var connState = data.connection ? data.connection.state : 'unknown';
-    var connDotClass = connState === 'connected' ? 've-dot--ok' : connState === 'reconnecting' ? 've-dot--warn' : 've-dot--err';
+    var connDotClass = connState === 'connected' ? 've-dot--ok' : connState === 'reconnecting' ? 've-dot--warn' : connState === 'night_mode' ? 've-dot--dim' : 've-dot--err';
     connCard.innerHTML =
         '<h2 class="ve-card-title">Connection</h2>' +
-        '<div class="ve-status-row"><span class="ve-dot ' + connDotClass + '"></span><span>Inverter: ' + connState + '</span></div>';
+        '<div class="ve-status-row"><span class="ve-dot ' + connDotClass + '"></span><span>Inverter: ' + (connState === 'night_mode' ? 'sleeping' : connState) + '</span></div>';
     row2.appendChild(connCard);
 
     // Performance card
