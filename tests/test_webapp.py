@@ -707,3 +707,149 @@ async def test_config_save_new_format(client, mock_plugin):
     assert config.inverters[0].host == "10.0.0.1"
     assert config.inverters[1].host == "10.0.0.2"
     assert config.inverters[1].enabled is False
+
+
+# ---------- Device-centric API endpoints (Phase 24) ----------
+
+
+async def test_devices_list(client, shared_ctx):
+    """GET /api/devices returns list with inverters + venus + virtual pseudo-devices."""
+    resp = await client.get("/api/devices")
+    assert resp.status == 200
+    data = await resp.json()
+    assert "devices" in data
+    devices = data["devices"]
+    # At least one inverter + venus + virtual
+    assert len(devices) >= 3
+    # Check inverter fields
+    inv = [d for d in devices if d["type"] not in ("venus", "virtual")][0]
+    assert "id" in inv
+    assert "name" in inv
+    assert "type" in inv
+    assert "enabled" in inv
+    assert "connection_state" in inv
+    assert "power_w" in inv
+    # Check venus pseudo-device
+    venus_devs = [d for d in devices if d["id"] == "venus"]
+    assert len(venus_devs) == 1
+    assert venus_devs[0]["type"] == "venus"
+    # Check virtual pseudo-device
+    virtual_devs = [d for d in devices if d["id"] == "virtual"]
+    assert len(virtual_devs) == 1
+    assert virtual_devs[0]["type"] == "virtual"
+
+
+async def test_device_snapshot_not_found(client):
+    """GET /api/devices/{id}/snapshot returns 404 for unknown device."""
+    resp = await client.get("/api/devices/nonexistent/snapshot")
+    assert resp.status == 404
+
+
+async def test_device_snapshot_no_data(client, shared_ctx):
+    """GET /api/devices/{id}/snapshot returns 503 when collector has no data."""
+    config: Config = client.app["config"]
+    inv_id = config.inverters[0].id
+    # Ensure device_state exists but collector has no snapshot
+    ds = shared_ctx.devices.get(inv_id)
+    if ds is None:
+        ds = DeviceState()
+        shared_ctx.devices[inv_id] = ds
+    ds.collector = None
+    resp = await client.get(f"/api/devices/{inv_id}/snapshot")
+    assert resp.status == 503
+
+
+async def test_device_snapshot_success(client, shared_ctx):
+    """GET /api/devices/{id}/snapshot returns 200 with snapshot + device_id + device_type."""
+    config: Config = client.app["config"]
+    inv_id = config.inverters[0].id
+    # Create a mock collector with a last_snapshot
+    mock_collector = MagicMock()
+    mock_collector.last_snapshot = {
+        "inverter": {"ac_power_w": 5000},
+        "timestamp": 1234567890,
+    }
+    ds = shared_ctx.devices.get(inv_id)
+    if ds is None:
+        ds = DeviceState()
+        shared_ctx.devices[inv_id] = ds
+    ds.collector = mock_collector
+    resp = await client.get(f"/api/devices/{inv_id}/snapshot")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["device_id"] == inv_id
+    assert "device_type" in data
+    assert "display_name" in data
+
+
+async def test_virtual_snapshot(client, shared_ctx):
+    """GET /api/devices/virtual/snapshot returns total_power_w and contributions list."""
+    config: Config = client.app["config"]
+    inv_id = config.inverters[0].id
+    # Set up collector with snapshot
+    mock_collector = MagicMock()
+    mock_collector.last_snapshot = {
+        "inverter": {"ac_power_w": 3000},
+    }
+    ds = shared_ctx.devices.get(inv_id)
+    if ds is None:
+        ds = DeviceState()
+        shared_ctx.devices[inv_id] = ds
+    ds.collector = mock_collector
+    resp = await client.get("/api/devices/virtual/snapshot")
+    assert resp.status == 200
+    data = await resp.json()
+    assert "total_power_w" in data
+    assert "contributions" in data
+    assert isinstance(data["contributions"], list)
+
+
+async def test_devices_crud_aliases(client):
+    """POST /api/devices adds inverter, PUT updates, DELETE removes (aliases)."""
+    # POST
+    resp = await client.post("/api/devices", json={
+        "host": "10.0.0.88",
+        "port": 502,
+        "unit_id": 1,
+        "name": "Test Inverter",
+    })
+    assert resp.status == 201
+    data = await resp.json()
+    new_id = data["id"]
+    assert data["name"] == "Test Inverter"
+
+    # PUT with name update
+    resp = await client.put(f"/api/devices/{new_id}", json={
+        "name": "Renamed Inverter",
+    })
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["name"] == "Renamed Inverter"
+
+    # DELETE
+    resp = await client.delete(f"/api/devices/{new_id}")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["success"] is True
+
+
+async def test_distributor_get_device_limits():
+    """PowerLimitDistributor.get_device_limits() returns dict of device_id -> current_limit_pct."""
+    from venus_os_fronius_proxy.distributor import PowerLimitDistributor, DeviceLimitState
+
+    config = Config()
+    registry = MagicMock()
+    dist = PowerLimitDistributor(registry, config)
+    # Manually inject device states
+    entry1 = InverterEntry(host="10.0.0.1", id="dev1", rated_power=5000)
+    entry2 = InverterEntry(host="10.0.0.2", id="dev2", rated_power=3000)
+    dist._device_states["dev1"] = DeviceLimitState(
+        device_id="dev1", entry=entry1, plugin=MagicMock(), conn_mgr=MagicMock(),
+        current_limit_pct=75.0,
+    )
+    dist._device_states["dev2"] = DeviceLimitState(
+        device_id="dev2", entry=entry2, plugin=MagicMock(), conn_mgr=MagicMock(),
+        current_limit_pct=100.0,
+    )
+    limits = dist.get_device_limits()
+    assert limits == {"dev1": 75.0, "dev2": 100.0}
