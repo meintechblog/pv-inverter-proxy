@@ -461,18 +461,24 @@ function buildInverterDashboard(container, data, deviceType) {
         var curMinKw = Math.round(curMinPct * ratedW / 100000);
         var curMaxKw = curMaxPct >= 100 ? maxKw : Math.round(curMaxPct * ratedW / 100000);
 
+        // Min dropdown: descending kW + "0.3 kW (1%)" + "0 kW"
         var minOpts = '';
-        for (var kw = 0; kw < maxKw; kw++) {
-            minOpts += '<option value="' + kw + '"' + (kw === curMinKw ? ' selected' : '') + '>' + kw + ' kW</option>';
+        for (var kw = maxKw - 1; kw >= 1; kw--) {
+            minOpts += '<option value="' + kw + '"' + (kw === curMinKw && curMinPct > 1 ? ' selected' : '') + '>' + kw + ' kW</option>';
         }
+        var minKwAt1Pct = (ratedW * 0.01 / 1000).toFixed(1);
+        minOpts += '<option value="min"' + (curMinPct === 1 ? ' selected' : '') + '>' + minKwAt1Pct + ' kW (1%)</option>';
+        minOpts += '<option value="0"' + (curMinPct === 0 ? ' selected' : '') + '>0 kW</option>';
+        // Max dropdown: "Max" + descending kW + "0.3 kW (1%)"
         var maxOpts = '<option value="max"' + (curMaxPct >= 100 ? ' selected' : '') + '>Max</option>';
         for (var kw = maxKw - 1; kw >= 1; kw--) {
-            maxOpts += '<option value="' + kw + '"' + (kw === curMaxKw && curMaxPct < 100 ? ' selected' : '') + '>' + kw + ' kW</option>';
+            maxOpts += '<option value="' + kw + '"' + (kw === curMaxKw && curMaxPct < 100 && curMaxPct > 1 ? ' selected' : '') + '>' + kw + ' kW</option>';
         }
+        maxOpts += '<option value="min"' + (curMaxPct === 1 ? ' selected' : '') + '>' + minKwAt1Pct + ' kW (1%)</option>';
         clampHtml =
             '<div class="ve-gauge-clamp">' +
             '  <select class="ve-ctrl-dropdown ve-clamp-min" title="Minimum power (floor)">' + minOpts + '</select>' +
-            '  <span class="ve-text-dim ve-clamp-label">Clamp</span>' +
+            '  <span class="ve-text-dim ve-clamp-label">Limit</span>' +
             '  <select class="ve-ctrl-dropdown ve-clamp-max" title="Maximum power (ceiling)">' + maxOpts + '</select>' +
             '</div>';
     }
@@ -494,30 +500,35 @@ function buildInverterDashboard(container, data, deviceType) {
         var clampMaxDD = gaugeCard.querySelector('.ve-clamp-max');
         if (clampMinDD && clampMaxDD) {
             var _ratedW = ratedW;
+            function _ddPct(dd) {
+                if (dd.value === 'max') return 100;
+                if (dd.value === 'min') return 1;
+                return Math.round(parseInt(dd.value) * 1000 / _ratedW * 100);
+            }
+            function _ddLabel(dd) {
+                if (dd.value === 'max') return 'Max';
+                if (dd.value === 'min') return dd.options[dd.selectedIndex].text;
+                return dd.value + ' kW';
+            }
             function sendClamp() {
-                var minKw = parseInt(clampMinDD.value) || 0;
-                var maxKw = clampMaxDD.value === 'max' ? Math.round(_ratedW / 1000) : parseInt(clampMaxDD.value);
-                // Enforce min <= max
-                if (minKw > maxKw) { clampMinDD.value = maxKw; minKw = maxKw; }
-                var minPct = Math.round(minKw * 1000 / _ratedW * 100);
-                var maxPct = clampMaxDD.value === 'max' ? 100 : Math.round(maxKw * 1000 / _ratedW * 100);
+                var minPct = _ddPct(clampMinDD);
+                var maxPct = _ddPct(clampMaxDD);
+                if (minPct > maxPct) { clampMinDD.value = clampMaxDD.value; minPct = maxPct; }
                 fetch('/api/power-clamp', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ min_pct: minPct, max_pct: maxPct })
                 }).then(function(r) { return r.json(); }).then(function(d) {
-                    if (d.success) showToast('Clamp: ' + minKw + '–' + (clampMaxDD.value === 'max' ? 'Max' : maxKw + ' kW'), 'success');
+                    if (d.success) showToast('Limit: ' + _ddLabel(clampMinDD) + ' – ' + _ddLabel(clampMaxDD), 'success');
                     else showToast(d.error || 'Failed', 'error');
                 }).catch(function(e) { showToast('Error: ' + e.message, 'error'); });
             }
             clampMinDD.addEventListener('change', function() {
-                var maxKw = clampMaxDD.value === 'max' ? 9999 : parseInt(clampMaxDD.value);
-                if (parseInt(clampMinDD.value) > maxKw) clampMaxDD.value = clampMinDD.value;
+                if (_ddPct(clampMinDD) > _ddPct(clampMaxDD)) clampMaxDD.value = clampMinDD.value;
                 sendClamp();
             });
             clampMaxDD.addEventListener('change', function() {
-                var maxKw = clampMaxDD.value === 'max' ? 9999 : parseInt(clampMaxDD.value);
-                if (parseInt(clampMinDD.value) > maxKw) clampMinDD.value = clampMaxDD.value;
+                if (_ddPct(clampMinDD) > _ddPct(clampMaxDD)) clampMinDD.value = clampMaxDD.value;
                 sendClamp();
             });
         }
