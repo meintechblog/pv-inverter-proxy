@@ -57,3 +57,9 @@ class AppContext:
     mqtt_pub_task: object = None           # asyncio.Task
     mqtt_pub_connected: bool = False
     mqtt_pub_queue: object = None          # asyncio.Queue
+
+    # MQTT Publisher stats
+    mqtt_pub_messages: int = 0             # Total messages published
+    mqtt_pub_bytes: int = 0                # Total bytes published
+    mqtt_pub_skipped: int = 0              # Messages skipped (change detection)
+    mqtt_pub_last_ts: float = 0.0          # Timestamp of last publish

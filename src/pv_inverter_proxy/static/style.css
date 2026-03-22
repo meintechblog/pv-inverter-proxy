@@ -2354,6 +2354,23 @@ body {
     border-radius: var(--ve-radius-sm);
     word-break: break-all;
 }
+.ve-mqtt-pub-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 12px;
+}
+.ve-mqtt-pub-stat {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--ve-border);
+}
+.ve-mqtt-pub-stat:nth-last-child(-n+2) {
+    border-bottom: none;
+}
+
 .ve-mqtt-pub-status-dot {
     display: inline-block;
     width: 10px;

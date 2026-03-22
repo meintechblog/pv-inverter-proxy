@@ -30,6 +30,10 @@ def _make_ctx(queue_maxsize=100):
         mqtt_pub_queue=asyncio.Queue(maxsize=queue_maxsize),
         mqtt_pub_connected=False,
         shutdown_event=asyncio.Event(),
+        mqtt_pub_messages=0,
+        mqtt_pub_bytes=0,
+        mqtt_pub_skipped=0,
+        mqtt_pub_last_ts=0.0,
     )
 
 

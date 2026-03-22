@@ -842,6 +842,12 @@ def _build_device_list(app_ctx: Any, config: Config) -> list[dict]:
         "type": "mqtt_pub",
         "enabled": config.mqtt_publish.enabled,
         "connection_state": mqtt_pub_conn,
+        "stats": {
+            "messages": app_ctx.mqtt_pub_messages,
+            "bytes": app_ctx.mqtt_pub_bytes,
+            "skipped": app_ctx.mqtt_pub_skipped,
+            "last_ts": app_ctx.mqtt_pub_last_ts,
+        },
     })
     return devices
 
@@ -1484,6 +1490,12 @@ async def devices_list_handler(request: web.Request) -> web.Response:
         "type": "mqtt_pub",
         "enabled": config.mqtt_publish.enabled,
         "connection_state": mqtt_pub_conn,
+        "stats": {
+            "messages": app_ctx.mqtt_pub_messages,
+            "bytes": app_ctx.mqtt_pub_bytes,
+            "skipped": app_ctx.mqtt_pub_skipped,
+            "last_ts": app_ctx.mqtt_pub_last_ts,
+        },
     })
 
     return web.json_response({"devices": devices})

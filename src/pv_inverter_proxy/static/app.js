@@ -23,6 +23,7 @@ var _regPollInterval = null;
 
 // ===== MQTT Publisher State =====
 var _mqttPubConnected = false;
+var _mqttPubStats = null;
 var _lastDeviceList = [];
 
 // ===== Discovery / Scan State =====
@@ -316,15 +317,17 @@ function connectWebSocket() {
             if (msg.type === 'virtual_snapshot') handleVirtualSnapshot(msg.data);
             if (msg.type === 'device_list') {
                 _lastDeviceList = msg.data.devices || [];
-                // Extract mqtt_pub connection state from device list
+                // Extract mqtt_pub connection state + stats from device list
                 for (var di = 0; di < _lastDeviceList.length; di++) {
                     if (_lastDeviceList[di].type === 'mqtt_pub') {
                         _mqttPubConnected = _lastDeviceList[di].connection_state === 'connected';
+                        _mqttPubStats = _lastDeviceList[di].stats || null;
                         break;
                     }
                 }
                 renderSidebar(msg.data.devices);
                 updateMqttPubStatusDot();
+                updateMqttPubStats();
                 renderMqttTopicPreview();
             }
             if (msg.type === 'history') handleHistory(msg.data);
@@ -899,6 +902,33 @@ function updateMqttPubStatusDot() {
     if (pageText) pageText.textContent = _mqttPubConnected ? 'Connected' : 'Disconnected';
 }
 
+function _formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function _timeAgo(ts) {
+    if (!ts) return 'never';
+    var secs = Math.floor(Date.now() / 1000 - ts);
+    if (secs < 5) return 'just now';
+    if (secs < 60) return secs + 's ago';
+    if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+    return Math.floor(secs / 3600) + 'h ago';
+}
+
+function updateMqttPubStats() {
+    var el = document.querySelector('.ve-mqtt-pub-stats');
+    if (!el) return;
+    if (!_mqttPubStats) { el.innerHTML = ''; return; }
+    var s = _mqttPubStats;
+    el.innerHTML =
+        '<div class="ve-mqtt-pub-stat"><span class="ve-text-dim">Messages</span><span>' + s.messages.toLocaleString() + '</span></div>' +
+        '<div class="ve-mqtt-pub-stat"><span class="ve-text-dim">Data sent</span><span>' + _formatBytes(s.bytes) + '</span></div>' +
+        '<div class="ve-mqtt-pub-stat"><span class="ve-text-dim">Skipped (dedup)</span><span>' + s.skipped.toLocaleString() + '</span></div>' +
+        '<div class="ve-mqtt-pub-stat"><span class="ve-text-dim">Last publish</span><span>' + _timeAgo(s.last_ts) + '</span></div>';
+}
+
 function renderMqttTopicPreview() {
     var list = document.querySelector('.ve-mqtt-pub-topic-list');
     if (!list) return;
@@ -1102,8 +1132,10 @@ function buildMqttPubPage(container, config) {
     var mqttDotClass = _mqttPubConnected ? 've-dot--ok' : 've-dot--err';
     statusCard.innerHTML =
         '<h2 class="ve-card-title">Broker Connection</h2>' +
-        '<div class="ve-status-row"><span class="ve-dot ' + mqttDotClass + ' ve-mqtt-pub-page-dot"></span><span class="ve-mqtt-pub-page-text">' + mqttConn + '</span></div>';
+        '<div class="ve-status-row"><span class="ve-dot ' + mqttDotClass + ' ve-mqtt-pub-page-dot"></span><span class="ve-mqtt-pub-page-text">' + mqttConn + '</span></div>' +
+        '<div class="ve-mqtt-pub-stats"></div>';
     container.appendChild(statusCard);
+    updateMqttPubStats();
 
     // Config panel
     var mqttPubPanel = document.createElement('div');

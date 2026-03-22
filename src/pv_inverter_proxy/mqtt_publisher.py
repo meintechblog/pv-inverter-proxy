@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 
 import aiomqtt
 import structlog
@@ -126,11 +127,15 @@ async def mqtt_publish_loop(ctx, config, inverters=None, virtual_name="") -> Non
 
                         # Change detection (D-05 / PUB-04)
                         if last_payloads.get(device_id) == payload_json:
+                            ctx.mqtt_pub_skipped += 1
                             continue  # Skip identical payload
 
                         last_payloads[device_id] = payload_json
                         topic = f"{config.topic_prefix}/device/{device_id}/state"
                         await client.publish(topic, payload=payload_json, qos=0, retain=True)
+                        ctx.mqtt_pub_messages += 1
+                        ctx.mqtt_pub_bytes += len(payload_json)
+                        ctx.mqtt_pub_last_ts = time.time()
 
                     elif msg_type == "virtual":
                         from pv_inverter_proxy.mqtt_payloads import virtual_payload
@@ -138,11 +143,15 @@ async def mqtt_publish_loop(ctx, config, inverters=None, virtual_name="") -> Non
                         payload_json = json.dumps(payload, separators=(",", ":"))
 
                         if last_payloads.get("__virtual__") == payload_json:
+                            ctx.mqtt_pub_skipped += 1
                             continue
 
                         last_payloads["__virtual__"] = payload_json
                         topic = f"{config.topic_prefix}/virtual/state"
                         await client.publish(topic, payload=payload_json, qos=0, retain=True)
+                        ctx.mqtt_pub_messages += 1
+                        ctx.mqtt_pub_bytes += len(payload_json)
+                        ctx.mqtt_pub_last_ts = time.time()
 
                     else:
                         # Legacy format: topic + payload (backward compatibility)
