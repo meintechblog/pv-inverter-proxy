@@ -119,7 +119,10 @@ Plans:
   3. Home Assistant auto-discovers all inverter sensors with correct device_class (power, energy, voltage, temperature) and state_class (measurement, total_increasing) without manual YAML configuration
   4. Each inverter appears as a grouped device in Home Assistant with manufacturer, model, and SW version metadata
   5. When telemetry data has not changed since the last publish, no redundant MQTT message is sent (change-based optimization)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 26-01-PLAN.md — Pure payload extraction + HA discovery config builder (mqtt_payloads.py)
+- [ ] 26-02-PLAN.md — Publisher integration: HA discovery on connect, change detection, queue wiring
 
 ### Phase 27: Webapp Config & Status UI
 **Goal**: Users can configure, monitor, and troubleshoot MQTT publishing entirely from the webapp
@@ -140,5 +143,5 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 25. Publisher Infrastructure & Broker Connectivity | 2/2 | Complete    | 2026-03-22 |
-| 26. Telemetry Publishing & Home Assistant Discovery | 0/0 | Not started | - |
+| 26. Telemetry Publishing & Home Assistant Discovery | 0/2 | In progress | - |
 | 27. Webapp Config & Status UI | 0/0 | Not started | - |
