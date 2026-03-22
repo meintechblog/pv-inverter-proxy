@@ -1120,8 +1120,18 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
 
     control.save_ui_state()
 
-    # Immediately write the max clamp (if plugin available)
-    plugin = request.app.get("plugin")
+    # Find first SolarEdge plugin for immediate write
+    plugin = request.app.get("plugin")  # Legacy single-plugin
+    if plugin is None:
+        # Multi-device: find first solaredge plugin
+        config = request.app["config"]
+        for inv in config.inverters:
+            if inv.type == "solaredge" and inv.enabled:
+                ds = app_ctx.devices.get(inv.id)
+                if ds and ds.plugin:
+                    plugin = ds.plugin
+                    break
+
     if control.clamp_max_pct < 100:
         effective_pct = max(control.clamp_max_pct, 1)  # Max clamp, at least 1%
         control.update_wmaxlimpct(effective_pct)
