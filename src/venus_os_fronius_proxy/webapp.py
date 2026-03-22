@@ -27,6 +27,7 @@ from venus_os_fronius_proxy.config import (
 )
 from venus_os_fronius_proxy.control import validate_wmaxlimpct
 from venus_os_fronius_proxy.scanner import scan_subnet, ScanConfig
+from venus_os_fronius_proxy.mqtt_publisher import mqtt_publish_loop
 from venus_os_fronius_proxy.venus_reader import venus_mqtt_loop
 
 import structlog
@@ -352,6 +353,9 @@ async def config_save_handler(request: web.Request) -> web.Response:
             status=400,
         )
 
+    # --- Parse mqtt_publish config ---
+    mqtt_pub_body = body.get("mqtt_publish", {})
+
     try:
         app_ctx = request.app["app_ctx"]
 
@@ -359,6 +363,22 @@ async def config_save_handler(request: web.Request) -> web.Response:
         old_venus = (config.venus.host, config.venus.port, config.venus.portal_id)
         new_venus = (venus_host, venus_port, venus_portal_id)
         venus_changed = old_venus != new_venus
+
+        # Detect mqtt_publish config change
+        old_mqtt_pub = (config.mqtt_publish.enabled, config.mqtt_publish.host,
+                        config.mqtt_publish.port, config.mqtt_publish.topic_prefix,
+                        config.mqtt_publish.interval_s, config.mqtt_publish.client_id)
+
+        # Update mqtt_publish config fields
+        if mqtt_pub_body:
+            for k, v in mqtt_pub_body.items():
+                if k in config.mqtt_publish.__dataclass_fields__:
+                    setattr(config.mqtt_publish, k, v)
+
+        new_mqtt_pub = (config.mqtt_publish.enabled, config.mqtt_publish.host,
+                        config.mqtt_publish.port, config.mqtt_publish.topic_prefix,
+                        config.mqtt_publish.interval_s, config.mqtt_publish.client_id)
+        mqtt_publish_changed = old_mqtt_pub != new_mqtt_pub
 
         # Update venus config
         config.venus.host = venus_host
@@ -387,6 +407,28 @@ async def config_save_handler(request: web.Request) -> web.Response:
                 # Venus disabled -- clear state
                 app_ctx.venus_mqtt_connected = False
                 app_ctx.venus_task = None
+
+        # Hot-reload MQTT publisher if config changed
+        if mqtt_publish_changed:
+            old_task = app_ctx.mqtt_pub_task
+            if old_task is not None and not old_task.done():
+                old_task.cancel()
+                try:
+                    await old_task
+                except asyncio.CancelledError:
+                    pass
+
+            if config.mqtt_publish.enabled:
+                app_ctx.mqtt_pub_queue = asyncio.Queue(maxsize=100)
+                app_ctx.mqtt_pub_task = asyncio.create_task(
+                    mqtt_publish_loop(app_ctx, config.mqtt_publish)
+                )
+                log.info("user_action", action="mqtt_publisher_reloaded", host=config.mqtt_publish.host)
+            else:
+                app_ctx.mqtt_pub_connected = False
+                app_ctx.mqtt_pub_task = None
+                app_ctx.mqtt_pub_queue = None
+                log.info("user_action", action="mqtt_publisher_disabled")
 
         return web.json_response({"success": True})
     except Exception as e:

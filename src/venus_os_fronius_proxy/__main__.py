@@ -23,6 +23,7 @@ from venus_os_fronius_proxy.device_registry import DeviceRegistry
 from venus_os_fronius_proxy.distributor import PowerLimitDistributor
 from venus_os_fronius_proxy.logging_config import configure_logging
 from venus_os_fronius_proxy.proxy import run_modbus_server
+from venus_os_fronius_proxy.mqtt_publisher import mqtt_publish_loop
 from venus_os_fronius_proxy.webapp import create_webapp
 
 
@@ -168,6 +169,16 @@ def main():
 
         aggregation._broadcast_fn = _on_aggregation_broadcast
 
+        # Start MQTT publisher if enabled (per D-11)
+        if config.mqtt_publish.enabled:
+            app_ctx.mqtt_pub_queue = asyncio.Queue(maxsize=100)
+            app_ctx.mqtt_pub_task = asyncio.create_task(
+                mqtt_publish_loop(app_ctx, config.mqtt_publish)
+            )
+            log.info("mqtt_publisher_started", host=config.mqtt_publish.host, port=config.mqtt_publish.port)
+        else:
+            log.info("mqtt_publish_skipped", reason="mqtt_publish.enabled is false")
+
         # Start Venus OS MQTT reader only if host is configured
         if config.venus.host:
             from venus_os_fronius_proxy.venus_reader import venus_mqtt_loop
@@ -193,6 +204,15 @@ def main():
             await heartbeat_task
         except asyncio.CancelledError:
             pass
+
+        # Stop MQTT publisher
+        if app_ctx.mqtt_pub_task is not None:
+            app_ctx.mqtt_pub_task.cancel()
+            try:
+                await app_ctx.mqtt_pub_task
+            except asyncio.CancelledError:
+                pass
+            log.info("mqtt_publisher_stopped")
 
         # Stop webapp
         if runner is not None:
