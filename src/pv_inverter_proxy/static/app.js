@@ -546,7 +546,7 @@ function buildInverterDashboard(container, data, deviceType) {
             fetch('/api/power-clamp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ min_pct: minPct, max_pct: maxPct })
+                body: JSON.stringify({ device_id: _activeDeviceId, min_pct: minPct, max_pct: maxPct })
             }).then(function(r) { return r.json(); }).then(function(d) {
                 if (d.success) showToast('Limit: ' + _ddLabel(clampMinDD) + ' – ' + _ddLabel(clampMaxDD), 'success');
                 else showToast(d.error || 'Failed', 'error');

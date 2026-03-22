@@ -112,6 +112,8 @@ class ControlState:
         # Power clamp: min/max bounds for Venus OS regulation (in %)
         self.clamp_min_pct: int = 0    # 0 = no floor (but proxy enforces min 1%)
         self.clamp_max_pct: int = 100  # 100 = no ceiling
+        # Per-device clamps: {device_id: {"min": int, "max": int}}
+        self.device_clamps: dict = {}
         # Load persistent clamp + lock state
         self._load_ui_state()
         # Load last Venus OS limit (survives restarts)
@@ -157,6 +159,7 @@ class ControlState:
                 data = json.load(f)
             self.clamp_min_pct = data.get("clamp_min_pct", 0)
             self.clamp_max_pct = data.get("clamp_max_pct", 100)
+            self.device_clamps = data.get("device_clamps", {})
             # Restore lock only if not expired
             if data.get("is_locked") and data.get("lock_ts", 0) > 0:
                 age = _time.time() - data["lock_ts"]
@@ -176,11 +179,28 @@ class ControlState:
                 json.dump({
                     "clamp_min_pct": self.clamp_min_pct,
                     "clamp_max_pct": self.clamp_max_pct,
+                    "device_clamps": self.device_clamps,
                     "is_locked": self.is_locked,
                     "lock_ts": _time.time() if self.is_locked else 0,
                 }, f)
         except OSError:
             pass
+
+    def get_device_clamp(self, device_id: str) -> tuple[int, int]:
+        """Return (min_pct, max_pct) for a device, falling back to global."""
+        dc = self.device_clamps.get(device_id)
+        if dc:
+            return dc.get("min", 0), dc.get("max", 100)
+        return self.clamp_min_pct, self.clamp_max_pct
+
+    def set_device_clamp(self, device_id: str, min_pct: int, max_pct: int) -> None:
+        """Set per-device clamp values."""
+        min_pct = max(0, min(100, min_pct))
+        max_pct = max(0, min(100, max_pct))
+        if min_pct > max_pct:
+            min_pct = max_pct
+        self.device_clamps[device_id] = {"min": min_pct, "max": max_pct}
+        self.save_ui_state()
 
     @property
     def is_enabled(self) -> bool:

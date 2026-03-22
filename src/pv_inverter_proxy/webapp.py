@@ -609,10 +609,16 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
             if ds.collector and ds.collector.last_snapshot:
                 if first_collector is None:
                     first_collector = ds.collector
+                snap = ds.collector.last_snapshot
+                # Override with per-device clamp values
+                if ws_app_ctx.control_state and "control" in snap:
+                    dmin, dmax = ws_app_ctx.control_state.get_device_clamp(dev_id)
+                    snap["control"]["clamp_min_pct"] = dmin
+                    snap["control"]["clamp_max_pct"] = dmax
                 await ws.send_json({
                     "type": "device_snapshot",
                     "device_id": dev_id,
-                    "data": ds.collector.last_snapshot,
+                    "data": snap,
                 })
                 sent_any = True
 
@@ -713,6 +719,11 @@ async def broadcast_device_snapshot(app: web.Application, device_id: str, snapsh
     venus_settings = bc_ctx.venus_settings if bc_ctx else None
     if venus_settings:
         snapshot["venus_settings"] = venus_settings
+    # Override clamp values with per-device clamp if available
+    if bc_ctx and bc_ctx.control_state and "control" in snapshot:
+        dmin, dmax = bc_ctx.control_state.get_device_clamp(device_id)
+        snapshot["control"]["clamp_min_pct"] = dmin
+        snapshot["control"]["clamp_max_pct"] = dmax
     payload = json.dumps({"type": "device_snapshot", "device_id": device_id, "data": snapshot})
     for ws in set(clients):
         try:
@@ -1096,10 +1107,9 @@ async def power_limit_handler(request: web.Request) -> web.Response:
 
 
 async def power_clamp_handler(request: web.Request) -> web.Response:
-    """Set min/max power clamp for Venus OS regulation.
+    """Set per-device min/max power limit.
 
-    Body: {"min_kw": 3, "max_kw": 20}
-    Venus OS writes will be clamped to [min, max] kW range.
+    Body: {"device_id": "abc123", "min_pct": 0, "max_pct": 13}
     """
     try:
         body = await request.json()
@@ -1108,46 +1118,30 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
             {"success": False, "error": "Invalid JSON body"}, status=400,
         )
 
+    device_id = body.get("device_id")
+    if not device_id:
+        return web.json_response(
+            {"success": False, "error": "device_id required"}, status=400,
+        )
+
     app_ctx = request.app["app_ctx"]
     control = app_ctx.control_state
+    min_pct = max(0, min(100, int(body.get("min_pct", 0))))
+    max_pct = max(0, min(100, int(body.get("max_pct", 100))))
 
-    control.clamp_min_pct = max(0, min(100, int(body.get("min_pct", 0))))
-    control.clamp_max_pct = max(0, min(100, int(body.get("max_pct", 100))))
+    control.set_device_clamp(device_id, min_pct, max_pct)
 
-    # Enforce min <= max
-    if control.clamp_min_pct > control.clamp_max_pct:
-        control.clamp_min_pct = control.clamp_max_pct
+    # Find the plugin for this device
+    plugin = None
+    ds = app_ctx.devices.get(device_id)
+    if ds and ds.plugin:
+        plugin = ds.plugin
 
-    control.save_ui_state()
-
-    # Collect all enabled plugins for immediate write
-    config = request.app["config"]
-    plugins = []
-    for inv in config.inverters:
-        if inv.enabled:
-            ds = app_ctx.devices.get(inv.id)
-            if ds and ds.plugin:
-                plugins.append(ds.plugin)
-    # Fallback: legacy single-plugin
-    legacy = request.app.get("plugin")
-    if not plugins and legacy is not None:
-        plugins = [legacy]
-
-    if control.clamp_max_pct < 100:
-        effective_pct = max(control.clamp_max_pct, 1)  # Max clamp, at least 1%
-        control.update_wmaxlimpct(effective_pct)
-        control.update_wmaxlim_ena(1)
-        control.last_source = "webapp"
-        control.last_change_ts = __import__("time").time()
-        control.webapp_revert_at = None
-        for plugin in plugins:
-            await plugin.write_power_limit(True, effective_pct)
-    elif control.last_source == "webapp" and control.clamp_max_pct >= 100:
-        # Max set back to 100% -- disable webapp limit
-        for plugin in plugins:
-            await plugin.write_power_limit(True, 100.0)
-        control.update_wmaxlim_ena(0)
-        control.last_source = "none"
+    if max_pct < 100 and plugin is not None:
+        effective_pct = max(max_pct, 1)
+        await plugin.write_power_limit(True, effective_pct)
+    elif max_pct >= 100 and plugin is not None:
+        await plugin.write_power_limit(True, 100.0)
 
     return web.json_response({"success": True})
 
