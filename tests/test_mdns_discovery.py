@@ -2,11 +2,19 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Module under test -- will be created in GREEN phase
+# Ensure zeroconf is mockable even when not installed
+if "zeroconf" not in sys.modules:
+    _mock_zc = MagicMock()
+    _mock_zc.ServiceStateChange = MagicMock()
+    _mock_zc.ServiceStateChange.Added = 1
+    sys.modules["zeroconf"] = _mock_zc
+    sys.modules["zeroconf.asyncio"] = MagicMock()
+
 from venus_os_fronius_proxy.mdns_discovery import discover_mqtt_brokers, SERVICE_TYPE
 
 
@@ -33,9 +41,11 @@ async def test_discover_finds_broker():
     mock_aiozc.zeroconf = MagicMock()
 
     def fake_browser(zc, stype, handlers):
-        # Simulate a service being added
+        # Simulate a service being added via the on_state_change callback
+        from venus_os_fronius_proxy.mdns_discovery import SERVICE_TYPE as st
+        from zeroconf import ServiceStateChange
         for handler in handlers:
-            handler(zc, stype, f"Mosquitto.{SERVICE_TYPE}", MagicMock(value=1))  # Added=1
+            handler(zc, stype, f"Mosquitto.{st}", ServiceStateChange.Added)
         return AsyncMock()
 
     mock_info = AsyncMock()

@@ -27,6 +27,7 @@ from venus_os_fronius_proxy.config import (
 )
 from venus_os_fronius_proxy.control import validate_wmaxlimpct
 from venus_os_fronius_proxy.scanner import scan_subnet, ScanConfig
+from venus_os_fronius_proxy.mdns_discovery import discover_mqtt_brokers
 from venus_os_fronius_proxy.mqtt_publisher import mqtt_publish_loop
 from venus_os_fronius_proxy.venus_reader import venus_mqtt_loop
 
@@ -1292,6 +1293,19 @@ async def scanner_discover_handler(request: web.Request) -> web.Response:
     return web.json_response({"status": "started", "auto_add": auto_add})
 
 
+async def mqtt_discover_handler(request: web.Request) -> web.Response:
+    """POST /api/mqtt/discover -- scan LAN for MQTT brokers via mDNS."""
+    try:
+        brokers = await discover_mqtt_brokers(timeout=3.0)
+        return web.json_response({"success": True, "brokers": brokers})
+    except Exception as e:
+        log.error("mdns_scan_failed", error=str(e))
+        return web.json_response(
+            {"success": False, "error": f"mDNS scan failed: {e}"},
+            status=500,
+        )
+
+
 async def _reconfigure_active(app: web.Application, config: Config, device_id: str = "", action: str = "") -> None:
     """Reconfigure devices via DeviceRegistry.
 
@@ -1643,6 +1657,7 @@ async def create_webapp(
     app.router.add_get("/api/scanner/config", scanner_config_get_handler)
     app.router.add_put("/api/scanner/config", scanner_config_save_handler)
     app.router.add_post("/api/scanner/discover", scanner_discover_handler)
+    app.router.add_post("/api/mqtt/discover", mqtt_discover_handler)
     app.router.add_get("/api/inverters", inverters_list_handler)
     app.router.add_post("/api/inverters", inverters_add_handler)
     app.router.add_put("/api/inverters/{id}", inverters_update_handler)
