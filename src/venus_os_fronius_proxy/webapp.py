@@ -366,6 +366,7 @@ async def config_save_handler(request: web.Request) -> web.Response:
         config.venus.portal_id = venus_portal_id
 
         save_config(request.app["config_path"], config)
+        log.info("user_action", action="config_saved", venus_changed=venus_changed, venus_host=venus_host)
 
         # Hot-reload active inverter
         await _reconfigure_active(request.app, config)
@@ -907,6 +908,8 @@ async def power_limit_handler(request: web.Request) -> web.Response:
             {"success": False, "error": f"Unknown action: {action}"}, status=400,
         )
 
+    log.info("user_action", action="power_limit", limit_action=action, limit_pct=body.get("limit_pct"))
+
     app_ctx = request.app["app_ctx"]
     control = app_ctx.control_state
     plugin = request.app.get("plugin")
@@ -1157,6 +1160,8 @@ async def venus_lock_handler(request: web.Request) -> web.Response:
             {"success": False, "error": f"Unknown action: {action}"}, status=400,
         )
 
+    log.info("user_action", action="venus_control", control_action=action)
+
     app_ctx = request.app["app_ctx"]
     control = app_ctx.control_state
     override_log = app_ctx.override_log
@@ -1240,6 +1245,7 @@ async def scanner_discover_handler(request: web.Request) -> web.Response:
     has_inverters = len(config.inverters) > 0
     auto_add = body.get("auto_add", not has_inverters)
 
+    log.info("user_action", action="scan_triggered", ports=ports, auto_add=auto_add)
     asyncio.create_task(_run_scan(app, scan_config, auto_add=auto_add))
     return web.json_response({"status": "started", "auto_add": auto_add})
 
@@ -1474,6 +1480,7 @@ async def inverters_add_handler(request: web.Request) -> web.Response:
     config: Config = request.app["config"]
     config.inverters.append(entry)
     save_config(request.app["config_path"], config)
+    log.info("user_action", action="inverter_added", device_id=entry.id, host=host, port=port, unit_id=unit_id, name=entry.name, type=entry.type)
 
     # Start device immediately if enabled (per locked decision)
     if entry.enabled:
@@ -1511,6 +1518,15 @@ async def inverters_update_handler(request: web.Request) -> web.Response:
     if error:
         return web.json_response({"error": error}, status=400)
 
+    # Determine what changed for logging
+    changes = {k: body[k] for k in body if k in ("host", "port", "unit_id", "enabled", "name", "rated_power", "throttle_order", "throttle_enabled")}
+    if was_enabled and not entry.enabled:
+        log.info("user_action", action="inverter_disabled", device_id=inv_id, name=entry.name or entry.model)
+    elif not was_enabled and entry.enabled:
+        log.info("user_action", action="inverter_enabled", device_id=inv_id, name=entry.name or entry.model)
+    else:
+        log.info("user_action", action="inverter_updated", device_id=inv_id, changes=changes)
+
     save_config(request.app["config_path"], config)
 
     # Handle enable/disable transitions via DeviceRegistry
@@ -1540,6 +1556,7 @@ async def inverters_delete_handler(request: web.Request) -> web.Response:
         return web.json_response({"error": "Inverter not found"}, status=404)
 
     save_config(request.app["config_path"], config)
+    log.info("user_action", action="inverter_deleted", device_id=inv_id)
 
     # Stop the device via DeviceRegistry
     await _reconfigure_active(request.app, config, device_id=inv_id, action="stop")
