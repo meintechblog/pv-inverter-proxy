@@ -32,8 +32,8 @@ Requirements for MQTT Data Publishing milestone. Each maps to roadmap phases.
 
 ### Webapp Config
 
-- [ ] **UI-01**: Config-Seite zeigt MQTT Publishing Settings (Enable/Disable, Broker, Port, Intervall)
-- [ ] **UI-02**: mDNS Discovery Button findet Broker im LAN und fuellt Formular
+- [x] **UI-01**: Config-Seite zeigt MQTT Publishing Settings (Enable/Disable, Broker, Port, Intervall)
+- [x] **UI-02**: mDNS Discovery Button findet Broker im LAN und fuellt Formular
 - [ ] **UI-03**: Connection-Status-Dot zeigt ob MQTT Publisher verbunden ist
 - [ ] **UI-04**: Topic-Preview zeigt die generierten MQTT Topics
 
