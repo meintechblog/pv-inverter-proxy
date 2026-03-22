@@ -705,6 +705,17 @@ async def broadcast_device_snapshot(app: web.Application, device_id: str, snapsh
         except (ConnectionError, RuntimeError, ConnectionResetError):
             clients.discard(ws)
 
+    # MQTT telemetry queue (Phase 26)
+    if bc_ctx and bc_ctx.mqtt_pub_queue is not None:
+        try:
+            bc_ctx.mqtt_pub_queue.put_nowait({
+                "type": "device",
+                "device_id": device_id,
+                "snapshot": snapshot,
+            })
+        except asyncio.QueueFull:
+            pass  # Drop oldest-style: publisher behind, stale data has no value
+
 
 async def broadcast_virtual_snapshot(app: web.Application) -> None:
     """Broadcast aggregated virtual inverter snapshot to all WebSocket clients."""
@@ -748,6 +759,20 @@ async def broadcast_virtual_snapshot(app: web.Application) -> None:
             await ws.send_str(payload)
         except (ConnectionError, RuntimeError, ConnectionResetError):
             clients.discard(ws)
+
+    # MQTT telemetry queue (Phase 26)
+    if app_ctx and app_ctx.mqtt_pub_queue is not None:
+        try:
+            app_ctx.mqtt_pub_queue.put_nowait({
+                "type": "virtual",
+                "virtual_data": {
+                    "total_power_w": total_power_w,
+                    "virtual_name": config.virtual_inverter.name,
+                    "contributions": contributions,
+                },
+            })
+        except asyncio.QueueFull:
+            pass
 
 
 async def broadcast_device_list(app: web.Application) -> None:
