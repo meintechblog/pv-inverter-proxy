@@ -89,7 +89,7 @@ Full details: `.planning/milestones/v4.0-ROADMAP.md`
 **Milestone Goal:** Publish inverter telemetry data to an external MQTT broker for integration with Home Assistant, Node-RED, Grafana, and other consumers. Zero-config Home Assistant integration via MQTT Auto-Discovery.
 
 - [x] **Phase 25: Publisher Infrastructure & Broker Connectivity** - aiomqtt-based publisher with queue-decoupled architecture, config dataclass, LWT, reconnect, and mDNS broker discovery (completed 2026-03-22)
-- [ ] **Phase 26: Telemetry Publishing & Home Assistant Discovery** - Per-device and virtual-PV topic hierarchy, JSON payloads, HA auto-discovery config payloads, wired into broadcast chain
+- [x] **Phase 26: Telemetry Publishing & Home Assistant Discovery** - Per-device and virtual-PV topic hierarchy, JSON payloads, HA auto-discovery config payloads, wired into broadcast chain (completed 2026-03-22)
 - [ ] **Phase 27: Webapp Config & Status UI** - MQTT Publishing config panel, mDNS discover button, connection status dot, topic preview
 
 ## Phase Details
@@ -119,10 +119,10 @@ Plans:
   3. Home Assistant auto-discovers all inverter sensors with correct device_class (power, energy, voltage, temperature) and state_class (measurement, total_increasing) without manual YAML configuration
   4. Each inverter appears as a grouped device in Home Assistant with manufacturer, model, and SW version metadata
   5. When telemetry data has not changed since the last publish, no redundant MQTT message is sent (change-based optimization)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 26-01-PLAN.md — Pure payload extraction + HA discovery config builder (mqtt_payloads.py)
-- [ ] 26-02-PLAN.md — Publisher integration: HA discovery on connect, change detection, queue wiring
+- [x] 26-02-PLAN.md — Publisher integration: HA discovery on connect, change detection, queue wiring
 
 ### Phase 27: Webapp Config & Status UI
 **Goal**: Users can configure, monitor, and troubleshoot MQTT publishing entirely from the webapp
@@ -143,5 +143,5 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 25. Publisher Infrastructure & Broker Connectivity | 2/2 | Complete    | 2026-03-22 |
-| 26. Telemetry Publishing & Home Assistant Discovery | 1/2 | In Progress|  |
+| 26. Telemetry Publishing & Home Assistant Discovery | 2/2 | Complete   | 2026-03-22 |
 | 27. Webapp Config & Status UI | 0/0 | Not started | - |

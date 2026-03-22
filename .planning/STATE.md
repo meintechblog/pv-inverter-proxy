@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: MQTT Data Publishing
 status: unknown
-stopped_at: Completed 26-01-PLAN.md
-last_updated: "2026-03-22T10:44:25.632Z"
+stopped_at: Completed 26-02-PLAN.md
+last_updated: "2026-03-22T10:50:24.902Z"
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -61,6 +61,9 @@ Plan: 2 of 2
 - [Phase 25]: Publisher lifecycle mirrors venus_task pattern: conditional start, cancel on shutdown, hot-reload on config save
 - [Phase 26]: SENSOR_DEFS as list-of-tuples for data-driven HA config generation
 - [Phase 26]: Pure-function payload module (mqtt_payloads.py) with zero side effects, no MQTT dependency
+- [Phase 26]: Use ha_discovery_topic() function rather than embedding _topic in config dicts
+- [Phase 26]: JSON hash comparison for change detection with compact separators
+- [Phase 26]: Legacy message format kept as backward-compatible fallback in publisher
 
 ### Research Flags
 
@@ -77,6 +80,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-22T10:44:25.630Z
-Stopped at: Completed 26-01-PLAN.md
+Last session: 2026-03-22T10:50:24.900Z
+Stopped at: Completed 26-02-PLAN.md
 Resume point: Plan Phase 25
