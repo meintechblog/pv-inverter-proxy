@@ -4,7 +4,7 @@ milestone: v5.0
 milestone_name: MQTT Data Publishing
 status: unknown
 stopped_at: Completed 26-02-PLAN.md
-last_updated: "2026-03-22T10:50:24.902Z"
+last_updated: "2026-03-22T10:53:45.743Z"
 progress:
   total_phases: 3
   completed_phases: 2
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 
 ## Current Position
 
-Phase: 26 (Telemetry Publishing & Home Assistant Discovery) — EXECUTING
-Plan: 2 of 2
+Phase: 27
+Plan: Not started
 
 ## Performance Metrics
 
