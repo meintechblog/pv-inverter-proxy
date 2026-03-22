@@ -104,9 +104,9 @@ Full details: `.planning/milestones/v4.0-ROADMAP.md`
   3. When the proxy shuts down or crashes, the broker receives an "offline" LWT message so subscribers know the proxy is unavailable
   4. The user can change broker host, port, and publish interval in config.yaml and the publisher hot-reloads without restarting the service
   5. An mDNS scan discovers MQTT brokers advertising _mqtt._tcp.local. on the LAN
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
-- [ ] 25-01-PLAN.md — Config dataclass, publisher module with LWT/reconnect, unit tests
+- [x] 25-01-PLAN.md — Config dataclass, publisher module with LWT/reconnect, unit tests
 - [ ] 25-02-PLAN.md — Lifecycle wiring (__main__.py + webapp.py hot-reload), mDNS discovery endpoint
 
 ### Phase 26: Telemetry Publishing & Home Assistant Discovery
@@ -139,6 +139,6 @@ Phases execute in numeric order: 25 -> 26 -> 27
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 25. Publisher Infrastructure & Broker Connectivity | 0/2 | Planning complete | - |
+| 25. Publisher Infrastructure & Broker Connectivity | 1/2 | In Progress|  |
 | 26. Telemetry Publishing & Home Assistant Discovery | 0/0 | Not started | - |
 | 27. Webapp Config & Status UI | 0/0 | Not started | - |

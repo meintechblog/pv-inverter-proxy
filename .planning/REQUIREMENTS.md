@@ -11,9 +11,9 @@ Requirements for MQTT Data Publishing milestone. Each maps to roadmap phases.
 
 - [ ] **PUB-01**: Proxy publisht Inverter-Daten (Leistung, Spannung, Strom, Temperatur, Status) pro Device an MQTT Broker
 - [ ] **PUB-02**: Proxy publisht aggregierte Virtual-PV-Daten (Gesamtleistung, Contributions) an MQTT Broker
-- [ ] **PUB-03**: Publish-Intervall ist konfigurierbar (Default: 5s)
+- [x] **PUB-03**: Publish-Intervall ist konfigurierbar (Default: 5s)
 - [ ] **PUB-04**: Publisher nutzt Change-based Optimization — kein Publish wenn Daten unveraendert
-- [ ] **PUB-05**: Publisher nutzt LWT fuer Online/Offline-Availability-Tracking
+- [x] **PUB-05**: Publisher nutzt LWT fuer Online/Offline-Availability-Tracking
 - [ ] **PUB-06**: Device-Status-Messages sind retained fuer neue Subscriber
 
 ### Home Assistant Integration
@@ -25,8 +25,8 @@ Requirements for MQTT Data Publishing milestone. Each maps to roadmap phases.
 
 ### Broker Connectivity
 
-- [ ] **CONN-01**: MQTT Broker Host/Port ist konfigurierbar (Default: mqtt-master.local:1883)
-- [ ] **CONN-02**: Publisher reconnected automatisch mit Exponential Backoff bei Verbindungsverlust
+- [x] **CONN-01**: MQTT Broker Host/Port ist konfigurierbar (Default: mqtt-master.local:1883)
+- [x] **CONN-02**: Publisher reconnected automatisch mit Exponential Backoff bei Verbindungsverlust
 - [ ] **CONN-03**: mDNS Autodiscovery findet MQTT Broker im LAN
 - [ ] **CONN-04**: Broker-Konfiguration ist hot-reloadable ohne Service-Restart
 
@@ -60,16 +60,16 @@ Requirements for MQTT Data Publishing milestone. Each maps to roadmap phases.
 |-------------|-------|--------|
 | PUB-01 | Phase 26 | Pending |
 | PUB-02 | Phase 26 | Pending |
-| PUB-03 | Phase 25 | Pending |
+| PUB-03 | Phase 25 | Complete |
 | PUB-04 | Phase 26 | Pending |
-| PUB-05 | Phase 25 | Pending |
+| PUB-05 | Phase 25 | Complete |
 | PUB-06 | Phase 26 | Pending |
 | HA-01 | Phase 26 | Pending |
 | HA-02 | Phase 26 | Pending |
 | HA-03 | Phase 26 | Pending |
 | HA-04 | Phase 26 | Pending |
-| CONN-01 | Phase 25 | Pending |
-| CONN-02 | Phase 25 | Pending |
+| CONN-01 | Phase 25 | Complete |
+| CONN-02 | Phase 25 | Complete |
 | CONN-03 | Phase 25 | Pending |
 | CONN-04 | Phase 25 | Pending |
 | UI-01 | Phase 27 | Pending |
