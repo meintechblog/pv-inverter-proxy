@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: MQTT Data Publishing
 status: unknown
-stopped_at: Completed 25-01-PLAN.md
-last_updated: "2026-03-22T10:03:36.243Z"
+stopped_at: Completed 25-02-PLAN.md
+last_updated: "2026-03-22T10:09:34.526Z"
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -58,6 +58,7 @@ Plan: 2 of 2
 - [v5.0]: HA discovery payloads built into initial architecture, not bolted on later
 - [Phase 25]: aiomqtt for publisher with QoS 1, LWT, exponential backoff reconnect
 - [Phase 25]: Queue-based decoupling: asyncio.Queue(maxsize=100) between broadcast chain and publisher
+- [Phase 25]: Publisher lifecycle mirrors venus_task pattern: conditional start, cancel on shutdown, hot-reload on config save
 
 ### Research Flags
 
@@ -74,6 +75,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-22T10:03:36.240Z
-Stopped at: Completed 25-01-PLAN.md
+Last session: 2026-03-22T10:09:34.524Z
+Stopped at: Completed 25-02-PLAN.md
 Resume point: Plan Phase 25

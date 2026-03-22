@@ -88,7 +88,7 @@ Full details: `.planning/milestones/v4.0-ROADMAP.md`
 
 **Milestone Goal:** Publish inverter telemetry data to an external MQTT broker for integration with Home Assistant, Node-RED, Grafana, and other consumers. Zero-config Home Assistant integration via MQTT Auto-Discovery.
 
-- [ ] **Phase 25: Publisher Infrastructure & Broker Connectivity** - aiomqtt-based publisher with queue-decoupled architecture, config dataclass, LWT, reconnect, and mDNS broker discovery
+- [x] **Phase 25: Publisher Infrastructure & Broker Connectivity** - aiomqtt-based publisher with queue-decoupled architecture, config dataclass, LWT, reconnect, and mDNS broker discovery (completed 2026-03-22)
 - [ ] **Phase 26: Telemetry Publishing & Home Assistant Discovery** - Per-device and virtual-PV topic hierarchy, JSON payloads, HA auto-discovery config payloads, wired into broadcast chain
 - [ ] **Phase 27: Webapp Config & Status UI** - MQTT Publishing config panel, mDNS discover button, connection status dot, topic preview
 
@@ -104,10 +104,10 @@ Full details: `.planning/milestones/v4.0-ROADMAP.md`
   3. When the proxy shuts down or crashes, the broker receives an "offline" LWT message so subscribers know the proxy is unavailable
   4. The user can change broker host, port, and publish interval in config.yaml and the publisher hot-reloads without restarting the service
   5. An mDNS scan discovers MQTT brokers advertising _mqtt._tcp.local. on the LAN
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 25-01-PLAN.md — Config dataclass, publisher module with LWT/reconnect, unit tests
-- [ ] 25-02-PLAN.md — Lifecycle wiring (__main__.py + webapp.py hot-reload), mDNS discovery endpoint
+- [x] 25-02-PLAN.md — Lifecycle wiring (__main__.py + webapp.py hot-reload), mDNS discovery endpoint
 
 ### Phase 26: Telemetry Publishing & Home Assistant Discovery
 **Goal**: All inverter data flows to the MQTT broker with per-device topics and Home Assistant discovers all sensors automatically
@@ -139,6 +139,6 @@ Phases execute in numeric order: 25 -> 26 -> 27
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 25. Publisher Infrastructure & Broker Connectivity | 1/2 | In Progress|  |
+| 25. Publisher Infrastructure & Broker Connectivity | 2/2 | Complete   | 2026-03-22 |
 | 26. Telemetry Publishing & Home Assistant Discovery | 0/0 | Not started | - |
 | 27. Webapp Config & Status UI | 0/0 | Not started | - |

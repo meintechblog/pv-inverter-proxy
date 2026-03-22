@@ -27,8 +27,8 @@ Requirements for MQTT Data Publishing milestone. Each maps to roadmap phases.
 
 - [x] **CONN-01**: MQTT Broker Host/Port ist konfigurierbar (Default: mqtt-master.local:1883)
 - [x] **CONN-02**: Publisher reconnected automatisch mit Exponential Backoff bei Verbindungsverlust
-- [ ] **CONN-03**: mDNS Autodiscovery findet MQTT Broker im LAN
-- [ ] **CONN-04**: Broker-Konfiguration ist hot-reloadable ohne Service-Restart
+- [x] **CONN-03**: mDNS Autodiscovery findet MQTT Broker im LAN
+- [x] **CONN-04**: Broker-Konfiguration ist hot-reloadable ohne Service-Restart
 
 ### Webapp Config
 
@@ -70,8 +70,8 @@ Requirements for MQTT Data Publishing milestone. Each maps to roadmap phases.
 | HA-04 | Phase 26 | Pending |
 | CONN-01 | Phase 25 | Complete |
 | CONN-02 | Phase 25 | Complete |
-| CONN-03 | Phase 25 | Pending |
-| CONN-04 | Phase 25 | Pending |
+| CONN-03 | Phase 25 | Complete |
+| CONN-04 | Phase 25 | Complete |
 | UI-01 | Phase 27 | Pending |
 | UI-02 | Phase 27 | Pending |
 | UI-03 | Phase 27 | Pending |
