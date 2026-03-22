@@ -147,4 +147,4 @@ Phases execute in numeric order: 25 -> 26 -> 27
 |-------|----------------|--------|-----------|
 | 25. Publisher Infrastructure & Broker Connectivity | 2/2 | Complete    | 2026-03-22 |
 | 26. Telemetry Publishing & Home Assistant Discovery | 2/2 | Complete    | 2026-03-22 |
-| 27. Webapp Config & Status UI | 2/2 | Complete   | 2026-03-22 |
+| 27. Webapp Config & Status UI | 2/2 | Complete    | 2026-03-22 |
