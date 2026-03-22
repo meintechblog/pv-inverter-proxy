@@ -667,6 +667,10 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
             if history:
                 await ws.send_json({"type": "history", "data": history})
 
+        # Send initial device list so client knows connection states (MQTT etc.)
+        devices = _build_device_list(ws_app_ctx, config)
+        await ws.send_json({"type": "device_list", "data": {"devices": devices}})
+
         # Keep connection alive; read loop for future commands (Phase 7)
         async for msg in ws:
             if msg.type in (web.WSMsgType.ERROR, web.WSMsgType.CLOSE):
@@ -795,16 +799,8 @@ async def broadcast_virtual_snapshot(app: web.Application) -> None:
             pass
 
 
-async def broadcast_device_list(app: web.Application) -> None:
-    """Broadcast updated device list to all WebSocket clients."""
-    clients = app.get("ws_clients")
-    if not clients:
-        return
-    app_ctx = app.get("app_ctx")
-    config: Config = app.get("config")
-    if app_ctx is None or config is None:
-        return
-
+def _build_device_list(app_ctx: Any, config: Config) -> list[dict]:
+    """Build the device list payload used by WS clients for sidebar + status dots."""
     devices = []
     for inv in config.inverters:
         ds = app_ctx.devices.get(inv.id)
@@ -847,7 +843,20 @@ async def broadcast_device_list(app: web.Application) -> None:
         "enabled": config.mqtt_publish.enabled,
         "connection_state": mqtt_pub_conn,
     })
+    return devices
 
+
+async def broadcast_device_list(app: web.Application) -> None:
+    """Broadcast updated device list to all WebSocket clients."""
+    clients = app.get("ws_clients")
+    if not clients:
+        return
+    app_ctx = app.get("app_ctx")
+    config: Config = app.get("config")
+    if app_ctx is None or config is None:
+        return
+
+    devices = _build_device_list(app_ctx, config)
     payload = json.dumps({"type": "device_list", "data": {
         "devices": devices,
     }})
