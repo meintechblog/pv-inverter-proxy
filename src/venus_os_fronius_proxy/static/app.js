@@ -152,7 +152,7 @@ function createSidebarDevice(device) {
 
     var powerStr = '';
     if (device.power_w != null && device.type !== 'venus') {
-        powerStr = (device.power_w / 1000).toFixed(1) + ' kW';
+        powerStr = Math.round(device.power_w) + ' W';
     } else if (device.type === 'venus') {
         powerStr = device.connection_state === 'connected' ? 'Connected' : '';
     }
@@ -342,7 +342,7 @@ function handleVirtualSnapshot(data) {
     if (entry) {
         var pwrEl = entry.querySelector('.ve-sidebar-device-power');
         if (pwrEl && data.total_power_w != null) {
-            pwrEl.textContent = (data.total_power_w / 1000).toFixed(1) + ' kW';
+            pwrEl.textContent = Math.round(data.total_power_w) + ' W';
         }
     }
 
@@ -362,7 +362,7 @@ function updateSidebarPower(deviceId, data) {
         var inv = data.inverter || data;
         var pw = inv.ac_power_w || data.power_w;
         if (pw != null) {
-            pwrEl.textContent = (pw / 1000).toFixed(1) + ' kW';
+            pwrEl.textContent = Math.round(pw) + ' W';
         }
     }
 
@@ -417,7 +417,6 @@ function buildInverterDashboard(container, data, deviceType) {
     var gaugeCard = document.createElement('div');
     gaugeCard.className = 've-card ve-gauge-card';
     var ratedW = data.rated_power_w || CAPACITY_W;
-    var ratedKw = Math.round(ratedW / 1000);
     var acPower = inv.ac_power_w || 0;
     var pct = Math.min(acPower / ratedW, 1.0);
     var arcLength = 251.3;
@@ -429,8 +428,8 @@ function buildInverterDashboard(container, data, deviceType) {
         '<svg viewBox="0 0 200 130" class="ve-gauge-svg">' +
         '  <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--ve-border)" stroke-width="12" stroke-linecap="round"/>' +
         '  <path class="ve-gauge-fill" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="' + gaugeColor + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + arcLength + '" stroke-dashoffset="' + offset + '"/>' +
-        '  <text x="100" y="82" text-anchor="middle" fill="var(--ve-text)" font-size="32" font-weight="700" class="ve-gauge-value-text">' + (acPower / 1000).toFixed(1) + '</text>' +
-        '  <text x="100" y="100" text-anchor="middle" fill="var(--ve-text-dim)" font-size="11">kW / ' + ratedKw + ' kW</text>' +
+        '  <text x="100" y="82" text-anchor="middle" fill="var(--ve-text)" font-size="32" font-weight="700" class="ve-gauge-value-text">' + Math.round(acPower) + '</text>' +
+        '  <text x="100" y="100" text-anchor="middle" fill="var(--ve-text-dim)" font-size="11">W / ' + Math.round(ratedW) + ' W</text>' +
         '  <text x="100" y="122" text-anchor="middle" fill="var(--ve-text-dim)" font-size="11" class="ve-gauge-status-text">' + (data.display_name || data.inverter_name || '--') + '</text>' +
         '</svg>';
     topRow.appendChild(gaugeCard);
@@ -464,7 +463,7 @@ function buildInverterDashboard(container, data, deviceType) {
         '<h2 class="ve-card-title">Today\'s Performance</h2>' +
         '<div class="ve-grid">' +
         '  <div><label>Energy</label><span class="ve-live-value ve-daily-energy">' + ((inv.daily_energy_wh || 0) / 1000).toFixed(1) + ' kWh</span></div>' +
-        '  <div><label>Peak Power</label><span class="ve-live-value ve-peak-power">' + (inv.peak_power_w != null ? (inv.peak_power_w / 1000).toFixed(1) + ' kW' : '-- kW') + '</span></div>' +
+        '  <div><label>Peak Power</label><span class="ve-live-value ve-peak-power">' + (inv.peak_power_w != null ? Math.round(inv.peak_power_w) + ' W' : '-- W') + '</span></div>' +
         '  <div><label>Status</label><span class="ve-live-value ve-inv-status">' + (inv.status || '--') + '</span></div>' +
         '  <div><label>Heatsink</label><span class="ve-live-value ve-inv-temp">' + (inv.temperature_sink_c != null ? inv.temperature_sink_c.toFixed(1) + ' \u00B0C' : '--') + '</span></div>' +
         '</div>';
@@ -512,7 +511,7 @@ function buildDCChannelCard(data) {
             '<tbody><tr><td>DC</td>' +
             '<td>' + (inv.dc_voltage_v != null ? inv.dc_voltage_v.toFixed(1) + ' V' : '--') + '</td>' +
             '<td>' + (inv.dc_current_a != null ? inv.dc_current_a.toFixed(2) + ' A' : '--') + '</td>' +
-            '<td>' + (inv.dc_power_w != null ? (inv.dc_power_w / 1000).toFixed(2) + ' kW' : '--') + '</td>' +
+            '<td>' + (inv.dc_power_w != null ? Math.round(inv.dc_power_w) + ' W' : '--') + '</td>' +
             '</tr></tbody></table>';
     } else {
         var rows = '';
@@ -521,7 +520,7 @@ function buildDCChannelCard(data) {
             rows += '<tr><td>' + (ch.name || 'Ch ' + (i + 1)) + '</td>' +
                 '<td>' + (ch.voltage_v != null ? ch.voltage_v.toFixed(1) + ' V' : '--') + '</td>' +
                 '<td>' + (ch.current_a != null ? ch.current_a.toFixed(2) + ' A' : '--') + '</td>' +
-                '<td>' + (ch.power_w != null ? (ch.power_w / 1000).toFixed(2) + ' kW' : '--') + '</td>' +
+                '<td>' + (ch.power_w != null ? Math.round(ch.power_w) + ' W' : '--') + '</td>' +
                 '</tr>';
         }
         card.innerHTML +=
@@ -551,7 +550,7 @@ function updateActiveDeviceDashboard(data) {
         gaugeFill.style.stroke = gaugeColor;
     }
     var gaugeVal = _activeDeviceContainer.querySelector('.ve-gauge-value-text');
-    if (gaugeVal) gaugeVal.textContent = (acPower / 1000).toFixed(1);
+    if (gaugeVal) gaugeVal.textContent = Math.round(acPower);
 
     // Update phase values (SolarEdge)
     function updatePhaseVal(cls, val) {
@@ -581,7 +580,7 @@ function updateActiveDeviceDashboard(data) {
     var energyEl = _activeDeviceContainer.querySelector('.ve-daily-energy');
     if (energyEl) energyEl.textContent = ((inv.daily_energy_wh || 0) / 1000).toFixed(1) + ' kWh';
     var peakEl = _activeDeviceContainer.querySelector('.ve-peak-power');
-    if (peakEl && inv.peak_power_w != null) peakEl.textContent = (inv.peak_power_w / 1000).toFixed(1) + ' kW';
+    if (peakEl && inv.peak_power_w != null) peakEl.textContent = Math.round(inv.peak_power_w) + ' W';
     var statusEl = _activeDeviceContainer.querySelector('.ve-inv-status');
     if (statusEl) statusEl.textContent = inv.status || '--';
     var tempEl = _activeDeviceContainer.querySelector('.ve-inv-temp');
@@ -897,14 +896,15 @@ function buildVenusPage(container, config, venusDevice) {
     var feedInDD = essCard.querySelector('.ve-ess-feed-in-dd');
     var invLimitDD = essCard.querySelector('.ve-ess-max-inverter-dd');
     for (var kw = 30; kw >= 0; kw--) {
+        var watts = kw * 1000;
         var opt1 = document.createElement('option');
-        opt1.value = kw * 1000;
-        opt1.textContent = kw + ' kW';
+        opt1.value = watts;
+        opt1.textContent = watts + ' W';
         feedInDD.appendChild(opt1);
         if (kw > 0) {
             var opt2 = document.createElement('option');
-            opt2.value = kw * 1000;
-            opt2.textContent = kw + ' kW';
+            opt2.value = watts;
+            opt2.textContent = watts + ' W';
             invLimitDD.appendChild(opt2);
         }
     }
@@ -1029,7 +1029,7 @@ function wireESSToggles(essCard) {
         limitToggle._userChangedAt = Date.now();
         if (limitToggle.checked) {
             writeVenusDbus('/Settings/CGwacs/MaxFeedInPower', 10000);
-            showToast('Feed-in limit: 10 kW', 'success');
+            showToast('Feed-in limit: 10000 W', 'success');
         } else {
             writeVenusDbus('/Settings/CGwacs/MaxFeedInPower', -1);
             showToast('Feed-in limit: Off', 'success');
@@ -1044,7 +1044,7 @@ function wireESSToggles(essCard) {
         invLimitToggle._userChangedAt = Date.now();
         if (invLimitToggle.checked) {
             writeVenusDbus('/Settings/CGwacs/MaxDischargePower', 20000);
-            showToast('Inverter limit: 20 kW', 'success');
+            showToast('Inverter limit: 20000 W', 'success');
         } else {
             writeVenusDbus('/Settings/CGwacs/MaxDischargePower', -1);
             showToast('Inverter limit: Off', 'success');
@@ -1085,8 +1085,8 @@ function buildVirtualPVPage(container, data) {
     var totalDiv = document.createElement('div');
     totalDiv.className = 've-virtual-total';
     totalDiv.innerHTML =
-        '<span class="ve-virtual-total-value">' + (totalW / 1000).toFixed(1) + '</span>' +
-        '<span class="ve-virtual-total-unit">kW</span>';
+        '<span class="ve-virtual-total-value">' + Math.round(totalW) + '</span>' +
+        '<span class="ve-virtual-total-unit">W</span>';
     container.appendChild(totalDiv);
 
     // Virtual name
@@ -1125,7 +1125,7 @@ function buildVirtualPVPage(container, data) {
         legendItem.innerHTML =
             '<span class="ve-contribution-legend-dot" style="background:' + color + '"></span>' +
             '<span class="ve-contribution-legend-name">' + (c.name || c.device_id) + '</span>' +
-            '<span class="ve-contribution-legend-power">' + (c.power_w / 1000).toFixed(1) + ' kW</span>';
+            '<span class="ve-contribution-legend-power">' + Math.round(c.power_w) + ' W</span>';
         legendItem.setAttribute('data-device-id', c.device_id);
         legend.appendChild(legendItem);
     }
@@ -1181,7 +1181,7 @@ function updateVirtualPVPage(data) {
     var legendItems = _activeDeviceContainer.parentElement.querySelectorAll('.ve-contribution-legend-item');
     for (var j = 0; j < legendItems.length && j < contributions.length; j++) {
         var pwrEl = legendItems[j].querySelector('.ve-contribution-legend-power');
-        if (pwrEl) pwrEl.textContent = (contributions[j].power_w / 1000).toFixed(1) + ' kW';
+        if (pwrEl) pwrEl.textContent = Math.round(contributions[j].power_w) + ' W';
     }
 
     // Update throttle table
@@ -1824,8 +1824,7 @@ function formatValue(val) {
 
 function formatKw(watts) {
     if (watts == null) return '--';
-    var kw = watts / 1000;
-    return (kw === Math.floor(kw) ? kw.toFixed(0) : kw.toFixed(1)) + ' kW';
+    return Math.round(watts) + ' W';
 }
 
 async function writeVenusDbus(path, value) {
