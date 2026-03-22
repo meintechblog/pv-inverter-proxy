@@ -80,8 +80,9 @@ class TestDevicePayload:
             "status", "status_code",
             "peak_power_w", "operating_hours", "efficiency_pct",
         }
+        expected_keys.add("name")
         assert set(result.keys()) == expected_keys
-        assert len(result) == 21
+        assert len(result) == 22
 
     def test_maps_temperature(self):
         snap = _make_snapshot()

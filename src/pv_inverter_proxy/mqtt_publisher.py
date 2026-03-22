@@ -120,7 +120,7 @@ async def mqtt_publish_loop(ctx, config, inverters=None, virtual_name="") -> Non
 
                     if msg_type == "device":
                         from pv_inverter_proxy.mqtt_payloads import device_payload
-                        payload = device_payload(msg["snapshot"])
+                        payload = device_payload(msg["snapshot"], device_name=msg.get("device_name", ""))
                         payload_json = json.dumps(payload, separators=(",", ":"))
                         device_id = msg["device_id"]
 

@@ -71,14 +71,14 @@ def _slugify(name: str) -> str:
 # ── Payload extraction ────────────────────────────────────────────────
 
 
-def device_payload(snapshot: dict[str, Any]) -> dict[str, Any]:
+def device_payload(snapshot: dict[str, Any], device_name: str = "") -> dict[str, Any]:
     """Extract flat telemetry dict from a DashboardCollector snapshot.
 
-    Returns a dict with 21 keys (ts + 20 inverter fields).
+    Returns a dict with keys: name, ts, and 20 inverter fields.
     Missing inverter keys produce None values for graceful degradation.
     """
     inverter = snapshot.get("inverter", {})
-    result: dict[str, Any] = {"ts": snapshot.get("ts")}
+    result: dict[str, Any] = {"name": device_name, "ts": snapshot.get("ts")}
     for payload_key, inverter_key in _PAYLOAD_FIELDS.items():
         result[payload_key] = inverter.get(inverter_key)
     return result

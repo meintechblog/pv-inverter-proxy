@@ -719,9 +719,18 @@ async def broadcast_device_snapshot(app: web.Application, device_id: str, snapsh
     # MQTT telemetry queue (Phase 26)
     if bc_ctx and bc_ctx.mqtt_pub_queue is not None:
         try:
+            # Resolve device name from config for MQTT payload
+            _cfg = app.get("config")
+            _dev_name = ""
+            if _cfg:
+                for _ie in getattr(_cfg, "inverters", []):
+                    if _ie.id == device_id:
+                        _dev_name = _ie.name or f"{_ie.manufacturer} {_ie.model}".strip()
+                        break
             bc_ctx.mqtt_pub_queue.put_nowait({
                 "type": "device",
                 "device_id": device_id,
+                "device_name": _dev_name or device_id,
                 "snapshot": snapshot,
             })
         except asyncio.QueueFull:
