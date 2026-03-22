@@ -64,7 +64,10 @@ Venus OS muss alle PV-Inverter (egal welche Marke/Protokoll) als einen einzigen 
 
 ### Active
 
-(Keine — neuer Milestone noetig)
+- [ ] MQTT Data Publishing: Inverter-Daten in Echtzeit an externen MQTT Broker publishen
+- [ ] MQTT Broker Autodiscovery im LAN (mDNS/DNS-SD)
+- [ ] Konfigurierbare MQTT Topics und Publish-Intervalle
+- [ ] Bekannter Broker: mqtt-master.local als Default/Ziel
 
 ### Out of Scope
 
@@ -161,5 +164,33 @@ Tech stack: Python 3.12, pymodbus 3.8+, aiohttp (HTTP + WebSocket + REST client 
 - LXC Container: 192.168.3.191 (Debian 13, Proxmox)
 - Proxy: Port 502 (Modbus) + Port 80 (Webapp)
 
+## Current Milestone: v5.0 MQTT Data Publishing
+
+**Goal:** Inverter-Daten per MQTT an externen Broker publishen fuer Integration mit Home Assistant, Node-RED, Grafana etc.
+
+**Target features:**
+- MQTT Publisher: Alle gesammelten Inverter-Daten (Leistung, Ertrag, Status, DC-Werte) in Echtzeit publishen
+- MQTT Broker Autodiscovery im LAN (mDNS)
+- Konfigurierbarer Broker (Default: mqtt-master.local), Topics, Publish-Intervall
+- Pro-Device Topics mit strukturiertem JSON Payload
+- Webapp-Config fuer MQTT Publishing (Broker, Port, Intervall, Enable/Disable)
+
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd:transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-03-21 after v4.0 milestone completion*
+*Last updated: 2026-03-22 after v5.0 milestone start*

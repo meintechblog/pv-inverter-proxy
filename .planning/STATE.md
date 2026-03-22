@@ -1,90 +1,53 @@
 ---
 gsd_state_version: 1.0
-milestone: v4.0
-milestone_name: Multi-Source Virtual Inverter
-status: completed
-stopped_at: Completed 24-02-PLAN.md -- v4.0 milestone complete
-last_updated: "2026-03-21T23:12:08.154Z"
-last_activity: 2026-03-21 -- Completed 24-02 (Device-Centric Frontend)
+milestone: v5.0
+milestone_name: MQTT Data Publishing
+status: planning
+stopped_at: Defining requirements
+last_updated: "2026-03-22T09:00:00.000Z"
+last_activity: 2026-03-22 -- Milestone v5.0 started
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-20)
+See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** Venus OS muss alle PV-Inverter als einen virtuellen Fronius-Inverter erkennen und steuern koennen
-**Current focus:** Phase 24 - Device-Centric API & Frontend
+**Current focus:** Milestone v5.0 — MQTT Data Publishing
 
 ## Current Position
 
-Phase: 24 of 24 (Device-Centric API & Frontend)
-Plan: 2 of 2 in current phase
-Status: complete
-Last activity: 2026-03-21 -- Completed 24-02 (Device-Centric Frontend)
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-22 — Milestone v5.0 started
 
 ## Performance Metrics
 
 **Prior milestones:**
-- v1.0: 4 phases, 9 plans, ~1 hour
-- v2.0: 4 phases, 7 plans, ~3 hours
+- v1.0: 4 phases, 9 plans
+- v2.0: 4 phases, 7 plans
 - v2.1: 4 phases, 7 plans
 - v3.0: 4 phases, 6 plans
 - v3.1: 4 phases, 7 plans
-
-**v4.0:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 21 | 2/2 | 18min | 9min |
-| 22 | 2/2 | 25min | 12min |
-| 23 | 2/2 | 8min | 4min |
-| 24 | 1/2 | 5min | 5min |
-| Phase 24 P02 | 12min | 4 tasks | 3 files |
+- v4.0: 4 phases, 8 plans
 
 ## Accumulated Context
 
 ### Decisions
 
-- [v4.0 Roadmap]: Coarse granularity -- 4 phases (21-24) covering 28 requirements
-- [v4.0 Roadmap]: Config refactor + OpenDTU plugin bundled in Phase 21 (both foundational)
-- [v4.0 Roadmap]: Discovery uses manual scan only -- no auto-scan-on-empty-list
-- [v3.1]: SolarEdge single-connection constraint remains (scanner uses sequential access)
-- [v3.1]: Inverters use instant CRUD (PUT/DELETE) not dirty-tracking
-- [21-01]: Removed old inverter: migration code entirely (fresh config only)
-- [21-01]: AppContext uses object type hints to avoid circular imports
-- [21-01]: Compat property accessors on AppContext for minimal diff during migration
-- [21-02]: DC channel summation: sum power+current, power-weighted average for voltage
-- [21-02]: Fixed SunSpec scale factors: SF=0 power, SF=-1 voltage, SF=-2 current/freq
-- [21-02]: Dead-time guard at 30s (25s typical + 5s margin)
-- [22-01]: Lazy imports for plugin_factory/DashboardCollector to avoid Python 3.9 slots= incompatibility
-- [22-01]: Poll loop stores raw data but defers cache writes and aggregation to Plan 02
-- [22-01]: enable/disable_device delegate to start/stop_device for simplicity
-- [22-02]: Power limit forwarding deferred to Phase 23 -- local-only acceptance with warning log
-- [22-02]: Modbus server kept running when 0 active devices (stale errors) to preserve Venus OS discovery
-- [22-02]: Fixed SFs for aggregated output: SF=0 power, SF=-1 voltage, SF=-2 current/freq
-- [22-02]: Webapp plugin references made optional with None guards for multi-device mode
-- [23-01]: DeviceLimitState.last_write_ts defaults to None to avoid false dead-time on first write
-- [23-01]: Waterfall walks TO ascending: TO 1 gets budget first, throttled first when budget < rated
-- [23-01]: Monitoring-only device power counts toward total_rated for pct-to-watt conversion
-- [23-02]: Post-hoc injection: distributor set on slave_ctx after creation (avoids reordering run_modbus_server)
-- [23-02]: Legacy _handle_control_write kept but marked superseded by PowerLimitDistributor
-- [24-01]: Display name fallback: name -> manufacturer+model -> "Inverter"
-- [24-01]: Venus/virtual as pseudo-devices in device list for unified frontend
-- [24-01]: AggregationLayer._broadcast_fn wired post-init to avoid circular imports
-- [24-01]: broadcast_device_list fires after _reconfigure_active for real-time CRUD propagation
-- [Phase 24]: All device pages use container-scoped queries to prevent DOM collisions
-- [Phase 24]: Venus OS and Virtual PV as pseudo-devices with sidebar entries for unified navigation
-- [Phase 24]: Legacy hash routes redirect to device-centric equivalents for backward compatibility
+- [v4.0]: DeviceRegistry per-device asyncio poll loops with independent lifecycle
+- [v4.0]: AggregationLayer SunSpec register summation across heterogeneous sources
+- [v4.0]: Device-centric SPA with hash routing and per-device sub-tabs
+- Existing MQTT: paho-mqtt used for Venus OS MQTT reading (subscriber), not publishing
 
 ### Pending Todos
 
@@ -92,12 +55,10 @@ None.
 
 ### Blockers/Concerns
 
-- OpenDTU dead-time (25-30s) estimated from GitHub issues -- validate on real HM-800 during Phase 21
-- Hoymiles serials at 192.168.3.98 must be confirmed from live API response
-- SolarEdge single-connection constraint affects concurrent polling design
+None.
 
 ## Session Continuity
 
-Last session: 2026-03-21T10:37:23.377Z
-Stopped at: Completed 24-02-PLAN.md -- v4.0 milestone complete
+Last session: 2026-03-22
+Stopped at: Defining requirements for v5.0
 Resume file: None
