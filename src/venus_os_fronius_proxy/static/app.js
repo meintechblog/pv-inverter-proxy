@@ -5,8 +5,8 @@ var POLL_INTERVAL = 10000;
 var previousRegValues = {};
 var ws = null;
 var sparklineData = [];
-var CAPACITY_W = 30000;
-var previousSnapshot = null;
+var CAPACITY_W = 800;
+var GAUGE_ARC_LENGTH = 251.3;
 var TEMP_WARNING_C = 75;
 var venusLockRemaining = null;
 var venusLockSnapshotTs = null;
@@ -19,6 +19,7 @@ var _activeDeviceTab = null;
 var _activeDeviceContainer = null;
 var _activeDeviceType = null;
 var _lastVirtualSnapshot = null;
+var _regPollInterval = null;
 
 // ===== Discovery / Scan State =====
 var _scanRunning = false;
@@ -59,6 +60,22 @@ window.addEventListener('hashchange', function() {
     var route = parseRoute();
     showDevicePage(route.id, route.tab);
 });
+
+function esc(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function gaugeColor(pct) {
+    return pct < 0.5 ? 'var(--ve-green)' : pct < 0.8 ? 'var(--ve-orange)' : 'var(--ve-red)';
+}
+
+function dotColorForState(state) {
+    if (state === 'connected') return '--ve-green';
+    if (state === 'reconnecting') return '--ve-orange';
+    if (state === 'disconnected') return '--ve-red';
+    return '--ve-text-dim';
+}
 
 // ===== Sidebar Rendering =====
 
@@ -138,28 +155,18 @@ function createSidebarDevice(device) {
         entry.classList.add('ve-sidebar-device--disabled');
     }
 
-    // Status dot — reflects connection state for all device types
-    var dotColor = '--ve-text-dim';
-    if (device.connection_state === 'connected') {
-        dotColor = '--ve-green';
-    } else if (device.connection_state === 'night_mode') {
-        dotColor = '--ve-text-dim';
-    } else if (device.connection_state === 'reconnecting') {
-        dotColor = '--ve-orange';
-    } else if (device.connection_state === 'disconnected') {
-        dotColor = '--ve-red';
-    }
+    var dotColor = dotColorForState(device.connection_state);
 
     var powerStr = '';
     if (device.power_w != null && device.type !== 'venus') {
-        powerStr = Math.round(device.power_w) + ' W';
+        powerStr = formatW(device.power_w);
     } else if (device.type === 'venus') {
         powerStr = device.connection_state === 'connected' ? 'Connected' : '';
     }
 
     entry.innerHTML =
         '<span class="ve-dot" style="background:var(' + dotColor + ')"></span>' +
-        '<span class="ve-sidebar-device-name">' + (device.name || device.id) + '</span>' +
+        '<span class="ve-sidebar-device-name">' + esc(device.name || device.id) + '</span>' +
         '<span class="ve-sidebar-device-power">' + powerStr + '</span>';
 
     if (!device.enabled && device.type !== 'virtual') {
@@ -168,8 +175,7 @@ function createSidebarDevice(device) {
 
     entry.addEventListener('click', function(e) {
         e.preventDefault();
-        var defaultTab = device.type === 'venus' ? 'dashboard' : 'dashboard';
-        navigateTo(device.id, defaultTab);
+        navigateTo(device.id, 'dashboard');
         // Close mobile sidebar
         document.getElementById('sidebar').classList.remove('open');
         var overlay = document.getElementById('sidebar-overlay');
@@ -193,6 +199,7 @@ function highlightActiveSidebar() {
 // ===== Page Dispatcher =====
 
 function showDevicePage(deviceId, tab) {
+    if (_regPollInterval) { clearInterval(_regPollInterval); _regPollInterval = null; }
     _activeDeviceId = deviceId;
     _activeDeviceTab = tab || 'dashboard';
     _activeDeviceContainer = null;
@@ -342,7 +349,7 @@ function handleVirtualSnapshot(data) {
     if (entry) {
         var pwrEl = entry.querySelector('.ve-sidebar-device-power');
         if (pwrEl && data.total_power_w != null) {
-            pwrEl.textContent = Math.round(data.total_power_w) + ' W';
+            pwrEl.textContent = formatW(data.total_power_w);
         }
     }
 
@@ -362,21 +369,14 @@ function updateSidebarPower(deviceId, data) {
         var inv = data.inverter || data;
         var pw = inv.ac_power_w || data.power_w;
         if (pw != null) {
-            pwrEl.textContent = Math.round(pw) + ' W';
+            pwrEl.textContent = formatW(pw);
         }
     }
 
-    // Update dot color
     var dot = entry.querySelector('.ve-dot');
     if (dot) {
         var connState = data.connection ? data.connection.state : data.connection_state;
-        if (connState === 'connected') {
-            dot.style.background = 'var(--ve-green)';
-        } else if (connState === 'reconnecting') {
-            dot.style.background = 'var(--ve-orange)';
-        } else if (connState === 'disconnected') {
-            dot.style.background = 'var(--ve-red)';
-        }
+        dot.style.background = 'var(' + dotColorForState(connState) + ')';
     }
 }
 
@@ -419,18 +419,18 @@ function buildInverterDashboard(container, data, deviceType) {
     var ratedW = data.rated_power_w || CAPACITY_W;
     var acPower = inv.ac_power_w || 0;
     var pct = Math.min(acPower / ratedW, 1.0);
-    var arcLength = 251.3;
+    var arcLength = GAUGE_ARC_LENGTH;
     var offset = arcLength * (1 - pct);
-    var gaugeColor = pct < 0.5 ? 'var(--ve-green)' : pct < 0.8 ? 'var(--ve-orange)' : 'var(--ve-red)';
+    var gc = gaugeColor(pct);
 
     gaugeCard.innerHTML =
         '<h2 class="ve-card-title">Power Output</h2>' +
         '<svg viewBox="0 0 200 130" class="ve-gauge-svg">' +
         '  <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--ve-border)" stroke-width="12" stroke-linecap="round"/>' +
-        '  <path class="ve-gauge-fill" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="' + gaugeColor + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + arcLength + '" stroke-dashoffset="' + offset + '"/>' +
-        '  <text x="100" y="82" text-anchor="middle" fill="var(--ve-text)" font-size="32" font-weight="700" class="ve-gauge-value-text">' + Math.round(acPower) + '</text>' +
-        '  <text x="100" y="100" text-anchor="middle" fill="var(--ve-text-dim)" font-size="11">W / ' + Math.round(ratedW) + ' W</text>' +
-        '  <text x="100" y="122" text-anchor="middle" fill="var(--ve-text-dim)" font-size="11" class="ve-gauge-status-text">' + (data.display_name || data.inverter_name || '--') + '</text>' +
+        '  <path class="ve-gauge-fill" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="' + gc + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + arcLength + '" stroke-dashoffset="' + offset + '"/>' +
+        '  <text x="100" y="76" text-anchor="middle" fill="var(--ve-text)" font-size="32" font-weight="700" class="ve-gauge-value-text">' + formatW(acPower) + '</text>' +
+        '  <text x="100" y="94" text-anchor="middle" fill="var(--ve-text-dim)" font-size="11">' + formatW(ratedW) + ' max</text>' +
+        '  <text x="100" y="122" text-anchor="middle" fill="var(--ve-text-dim)" font-size="11" class="ve-gauge-status-text">' + esc(data.display_name || data.inverter_name || '--') + '</text>' +
         '</svg>';
     topRow.appendChild(gaugeCard);
 
@@ -463,7 +463,7 @@ function buildInverterDashboard(container, data, deviceType) {
         '<h2 class="ve-card-title">Today\'s Performance</h2>' +
         '<div class="ve-grid">' +
         '  <div><label>Energy</label><span class="ve-live-value ve-daily-energy">' + ((inv.daily_energy_wh || 0) / 1000).toFixed(1) + ' kWh</span></div>' +
-        '  <div><label>Peak Power</label><span class="ve-live-value ve-peak-power">' + (inv.peak_power_w != null ? Math.round(inv.peak_power_w) + ' W' : '-- W') + '</span></div>' +
+        '  <div><label>Peak Power</label><span class="ve-live-value ve-peak-power">' + (inv.peak_power_w != null ? formatW(inv.peak_power_w) : '--') + '</span></div>' +
         '  <div><label>Status</label><span class="ve-live-value ve-inv-status">' + (inv.status || '--') + '</span></div>' +
         '  <div><label>Heatsink</label><span class="ve-live-value ve-inv-temp">' + (inv.temperature_sink_c != null ? inv.temperature_sink_c.toFixed(1) + ' \u00B0C' : '--') + '</span></div>' +
         '</div>';
@@ -482,7 +482,7 @@ function buildPhaseCard(data) {
 
     function fmtV(v) { return v != null ? v.toFixed(1) + ' V' : '-- V'; }
     function fmtA(a) { return a != null ? a.toFixed(2) + ' A' : '-- A'; }
-    function fmtW(v, a) { return (v != null && a != null) ? (v * a).toFixed(0) + ' W' : '-- W'; }
+    function fmtW(v, a) { return (v != null && a != null) ? formatW(v * a) : '--'; }
 
     card.innerHTML =
         '<h2 class="ve-card-title">3-Phase AC</h2>' +
@@ -511,7 +511,7 @@ function buildDCChannelCard(data) {
             '<tbody><tr><td>DC</td>' +
             '<td>' + (inv.dc_voltage_v != null ? inv.dc_voltage_v.toFixed(1) + ' V' : '--') + '</td>' +
             '<td>' + (inv.dc_current_a != null ? inv.dc_current_a.toFixed(2) + ' A' : '--') + '</td>' +
-            '<td>' + (inv.dc_power_w != null ? Math.round(inv.dc_power_w) + ' W' : '--') + '</td>' +
+            '<td>' + (inv.dc_power_w != null ? formatW(inv.dc_power_w) : '--') + '</td>' +
             '</tr></tbody></table>';
     } else {
         var rows = '';
@@ -520,7 +520,7 @@ function buildDCChannelCard(data) {
             rows += '<tr><td>' + (ch.name || 'Ch ' + (i + 1)) + '</td>' +
                 '<td>' + (ch.voltage_v != null ? ch.voltage_v.toFixed(1) + ' V' : '--') + '</td>' +
                 '<td>' + (ch.current_a != null ? ch.current_a.toFixed(2) + ' A' : '--') + '</td>' +
-                '<td>' + (ch.power_w != null ? Math.round(ch.power_w) + ' W' : '--') + '</td>' +
+                '<td>' + (ch.power_w != null ? formatW(ch.power_w) : '--') + '</td>' +
                 '</tr>';
         }
         card.innerHTML +=
@@ -539,18 +539,18 @@ function updateActiveDeviceDashboard(data) {
     var ratedW = data.rated_power_w || CAPACITY_W;
     var acPower = inv.ac_power_w || 0;
     var pct = Math.min(acPower / ratedW, 1.0);
-    var arcLength = 251.3;
+    var arcLength = GAUGE_ARC_LENGTH;
     var offset = arcLength * (1 - pct);
-    var gaugeColor = pct < 0.5 ? 'var(--ve-green)' : pct < 0.8 ? 'var(--ve-orange)' : 'var(--ve-red)';
+    var gc = gaugeColor(pct);
 
     // Update gauge
     var gaugeFill = _activeDeviceContainer.querySelector('.ve-gauge-fill');
     if (gaugeFill) {
         gaugeFill.style.strokeDashoffset = offset;
-        gaugeFill.style.stroke = gaugeColor;
+        gaugeFill.style.stroke = gc;
     }
     var gaugeVal = _activeDeviceContainer.querySelector('.ve-gauge-value-text');
-    if (gaugeVal) gaugeVal.textContent = Math.round(acPower);
+    if (gaugeVal) gaugeVal.textContent = formatW(acPower);
 
     // Update phase values (SolarEdge)
     function updatePhaseVal(cls, val) {
@@ -560,19 +560,19 @@ function updateActiveDeviceDashboard(data) {
     if (inv.ac_voltage_an_v != null) {
         updatePhaseVal('ve-l1-voltage', inv.ac_voltage_an_v.toFixed(1) + ' V');
         updatePhaseVal('ve-l1-current', inv.ac_current_l1_a != null ? inv.ac_current_l1_a.toFixed(2) + ' A' : '-- A');
-        var l1w = (inv.ac_voltage_an_v != null && inv.ac_current_l1_a != null) ? (inv.ac_voltage_an_v * inv.ac_current_l1_a).toFixed(0) + ' W' : '-- W';
+        var l1w = (inv.ac_voltage_an_v != null && inv.ac_current_l1_a != null) ? formatW(inv.ac_voltage_an_v * inv.ac_current_l1_a) : '--';
         updatePhaseVal('ve-l1-power', l1w);
     }
     if (inv.ac_voltage_bn_v != null) {
         updatePhaseVal('ve-l2-voltage', inv.ac_voltage_bn_v.toFixed(1) + ' V');
         updatePhaseVal('ve-l2-current', inv.ac_current_l2_a != null ? inv.ac_current_l2_a.toFixed(2) + ' A' : '-- A');
-        var l2w = (inv.ac_voltage_bn_v != null && inv.ac_current_l2_a != null) ? (inv.ac_voltage_bn_v * inv.ac_current_l2_a).toFixed(0) + ' W' : '-- W';
+        var l2w = (inv.ac_voltage_bn_v != null && inv.ac_current_l2_a != null) ? formatW(inv.ac_voltage_bn_v * inv.ac_current_l2_a) : '--';
         updatePhaseVal('ve-l2-power', l2w);
     }
     if (inv.ac_voltage_cn_v != null) {
         updatePhaseVal('ve-l3-voltage', inv.ac_voltage_cn_v.toFixed(1) + ' V');
         updatePhaseVal('ve-l3-current', inv.ac_current_l3_a != null ? inv.ac_current_l3_a.toFixed(2) + ' A' : '-- A');
-        var l3w = (inv.ac_voltage_cn_v != null && inv.ac_current_l3_a != null) ? (inv.ac_voltage_cn_v * inv.ac_current_l3_a).toFixed(0) + ' W' : '-- W';
+        var l3w = (inv.ac_voltage_cn_v != null && inv.ac_current_l3_a != null) ? formatW(inv.ac_voltage_cn_v * inv.ac_current_l3_a) : '--';
         updatePhaseVal('ve-l3-power', l3w);
     }
 
@@ -580,7 +580,7 @@ function updateActiveDeviceDashboard(data) {
     var energyEl = _activeDeviceContainer.querySelector('.ve-daily-energy');
     if (energyEl) energyEl.textContent = ((inv.daily_energy_wh || 0) / 1000).toFixed(1) + ' kWh';
     var peakEl = _activeDeviceContainer.querySelector('.ve-peak-power');
-    if (peakEl && inv.peak_power_w != null) peakEl.textContent = Math.round(inv.peak_power_w) + ' W';
+    if (peakEl && inv.peak_power_w != null) peakEl.textContent = formatW(inv.peak_power_w);
     var statusEl = _activeDeviceContainer.querySelector('.ve-inv-status');
     if (statusEl) statusEl.textContent = inv.status || '--';
     var tempEl = _activeDeviceContainer.querySelector('.ve-inv-temp');
@@ -627,23 +627,25 @@ function renderInverterRegisters(container, deviceId) {
 
     // Fetch registers for this specific device
     var regUrl = '/api/devices/' + encodeURIComponent(deviceId) + '/registers';
+    var regSpinner = container.querySelector('.ve-reg-spinner');
     fetch(regUrl)
         .then(function(res) { return res.json(); })
         .then(function(models) {
-            var spinner = container.querySelector('.ve-reg-spinner');
-            if (spinner) spinner.style.display = 'none';
+            if (regSpinner) regSpinner.style.display = 'none';
             var modelsContainer = container.querySelector('.ve-reg-models');
             buildRegisterViewer(modelsContainer, models);
         })
         .catch(function(err) {
-            var spinner = container.querySelector('.ve-reg-spinner');
-            if (spinner) spinner.innerHTML = '<span class="ve-hint-subtext">Failed to load registers: ' + err.message + '</span>';
+            if (regSpinner) regSpinner.innerHTML = '<span class="ve-hint-subtext">Failed to load registers</span>';
+            console.error('Register load failed:', err);
         });
 
     // Poll registers while this tab is active
-    var regPollInterval = setInterval(function() {
+    if (_regPollInterval) clearInterval(_regPollInterval);
+    _regPollInterval = setInterval(function() {
         if (_activeDeviceTab !== 'registers' || _activeDeviceId !== deviceId) {
-            clearInterval(regPollInterval);
+            clearInterval(_regPollInterval);
+            _regPollInterval = null;
             return;
         }
         fetch(regUrl)
@@ -699,12 +701,12 @@ function buildInverterConfigForm(container, device) {
         '  <label>Enabled</label>' +
         '  <label class="ve-toggle"><input type="checkbox" class="ve-cfg-enabled" ' + (device.enabled ? 'checked' : '') + '><span class="ve-toggle-track"></span></label>' +
         '</div>' +
-        '<div class="ve-form-group"><label>Display Name</label><input type="text" class="ve-input ve-cfg-name" value="' + (device.name || '') + '" placeholder="e.g. SE30K"></div>' +
-        '<div class="ve-form-group"><label>Host</label><input type="text" class="ve-input ve-cfg-host" value="' + (device.host || '') + '" placeholder="192.168.1.100"></div>' +
+        '<div class="ve-form-group"><label>Display Name</label><input type="text" class="ve-input ve-cfg-name" value="' + esc(device.name || '') + '" placeholder="e.g. SE30K"></div>' +
+        '<div class="ve-form-group"><label>Host</label><input type="text" class="ve-input ve-cfg-host" value="' + esc(device.host || '') + '" placeholder="192.168.1.100"></div>' +
         '<div class="ve-form-group"><label>Port</label><input type="number" class="ve-input ve-cfg-port" value="' + (device.port || 1502) + '" min="1" max="65535"></div>' +
         '<div class="ve-form-group"><label>Unit ID</label><input type="number" class="ve-input ve-cfg-unit" value="' + (device.unit_id || 1) + '" min="1" max="247"></div>' +
         '<div class="ve-form-group"><label>Type</label><input type="text" class="ve-input" value="' + (device.type || '') + '" readonly style="opacity:0.6"></div>' +
-        (identity ? '<div class="ve-form-group"><label>Identity</label><input type="text" class="ve-input" value="' + identity + '" readonly style="opacity:0.6"></div>' : '') +
+        (identity ? '<div class="ve-form-group"><label>Identity</label><input type="text" class="ve-input" value="' + esc(identity) + '" readonly style="opacity:0.6"></div>' : '') +
         '<div class="ve-form-group"><label>Throttle Order</label><input type="number" class="ve-input ve-cfg-throttle-order" value="' + (device.throttle_order || 1) + '" min="1" max="99"></div>' +
         '<div class="ve-ess-row" style="margin-top:10px">' +
         '  <label>Throttle Enabled</label>' +
@@ -899,12 +901,12 @@ function buildVenusPage(container, config, venusDevice) {
         var watts = kw * 1000;
         var opt1 = document.createElement('option');
         opt1.value = watts;
-        opt1.textContent = watts + ' W';
+        opt1.textContent = formatW(watts);
         feedInDD.appendChild(opt1);
         if (kw > 0) {
             var opt2 = document.createElement('option');
             opt2.value = watts;
-            opt2.textContent = watts + ' W';
+            opt2.textContent = formatW(watts);
             invLimitDD.appendChild(opt2);
         }
     }
@@ -1005,6 +1007,196 @@ function buildVenusPage(container, config, venusDevice) {
             btn.disabled = false;
         });
     });
+
+    // Section 5: MQTT Publishing Config panel
+    var mqttPubPanel = document.createElement('div');
+    mqttPubPanel.className = 've-panel ve-mqtt-pub-panel';
+
+    var mqttPub = config.mqtt_publish || {};
+    var origMqttPub = {
+        host: mqttPub.host || '',
+        port: String(mqttPub.port || 1883),
+        topic_prefix: mqttPub.topic_prefix || 'pvproxy',
+        interval_s: String(mqttPub.interval_s || 5)
+    };
+
+    mqttPubPanel.innerHTML =
+        '<div class="ve-panel-header">' +
+        '  <h2>MQTT Publishing</h2>' +
+        '  <span class="ve-btn-pair ve-mqtt-pub-save-pair" style="display:none">' +
+        '    <button type="button" class="ve-btn ve-btn--sm ve-btn--cancel ve-mqtt-pub-cancel">Cancel</button>' +
+        '    <button type="button" class="ve-btn ve-btn--sm ve-btn--save ve-mqtt-pub-save">Save</button>' +
+        '  </span>' +
+        '</div>' +
+        '<div class="ve-form-group"><label>Enable</label><label class="ve-toggle"><input type="checkbox" class="ve-mqtt-pub-enabled"><span class="ve-toggle-track"></span></label></div>' +
+        '<div class="ve-form-group"><label>Broker Host</label>' +
+        '  <div class="ve-mqtt-pub-discover-row">' +
+        '    <input type="text" class="ve-input ve-mqtt-pub-host" value="' + origMqttPub.host + '" placeholder="e.g. mqtt-master.local">' +
+        '    <button type="button" class="ve-mqtt-pub-discover-btn">Discover</button>' +
+        '  </div>' +
+        '  <select class="ve-mqtt-pub-broker-select" style="display:none"></select>' +
+        '</div>' +
+        '<div class="ve-form-group"><label>Port</label><input type="number" class="ve-input ve-mqtt-pub-port" value="' + origMqttPub.port + '" placeholder="1883" min="1" max="65535"></div>' +
+        '<div class="ve-form-group"><label>Topic Prefix</label><input type="text" class="ve-input ve-mqtt-pub-prefix" value="' + origMqttPub.topic_prefix + '" placeholder="pvproxy"></div>' +
+        '<div class="ve-form-group"><label>Publish Interval (s)</label><input type="number" class="ve-input ve-mqtt-pub-interval" value="' + origMqttPub.interval_s + '" placeholder="5" min="1" max="3600"></div>';
+    container.appendChild(mqttPubPanel);
+
+    // MQTT Publishing: enable toggle (instant-save)
+    var mqttPubEnabled = mqttPubPanel.querySelector('.ve-mqtt-pub-enabled');
+    mqttPubEnabled.checked = !!mqttPub.enabled;
+    mqttPubEnabled.addEventListener('change', function() {
+        fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mqtt_publish: { enabled: mqttPubEnabled.checked } })
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.success) {
+                showToast('MQTT Publishing: ' + (mqttPubEnabled.checked ? 'On' : 'Off'), 'success');
+            } else {
+                showToast('Failed: ' + data.error, 'error');
+                mqttPubEnabled.checked = !mqttPubEnabled.checked;
+            }
+        })
+        .catch(function(e) {
+            showToast('Failed: ' + e.message, 'error');
+            mqttPubEnabled.checked = !mqttPubEnabled.checked;
+        });
+    });
+
+    // MQTT Publishing: dirty tracking
+    var mpHost = mqttPubPanel.querySelector('.ve-mqtt-pub-host');
+    var mpPort = mqttPubPanel.querySelector('.ve-mqtt-pub-port');
+    var mpPrefix = mqttPubPanel.querySelector('.ve-mqtt-pub-prefix');
+    var mpInterval = mqttPubPanel.querySelector('.ve-mqtt-pub-interval');
+    var mpSavePair = mqttPubPanel.querySelector('.ve-mqtt-pub-save-pair');
+
+    function checkMqttPubDirty() {
+        var dirty = mpHost.value !== origMqttPub.host ||
+                    mpPort.value !== origMqttPub.port ||
+                    mpPrefix.value !== origMqttPub.topic_prefix ||
+                    mpInterval.value !== origMqttPub.interval_s;
+        mpSavePair.style.display = dirty ? '' : 'none';
+        var fields = [
+            { el: mpHost, orig: origMqttPub.host },
+            { el: mpPort, orig: origMqttPub.port },
+            { el: mpPrefix, orig: origMqttPub.topic_prefix },
+            { el: mpInterval, orig: origMqttPub.interval_s }
+        ];
+        fields.forEach(function(f) {
+            if (f.el.value !== f.orig) f.el.classList.add('ve-input--dirty');
+            else f.el.classList.remove('ve-input--dirty');
+        });
+    }
+    [mpHost, mpPort, mpPrefix, mpInterval].forEach(function(el) {
+        el.addEventListener('input', checkMqttPubDirty);
+    });
+
+    // MQTT Publishing: cancel
+    mqttPubPanel.querySelector('.ve-mqtt-pub-cancel').addEventListener('click', function() {
+        mpHost.value = origMqttPub.host;
+        mpPort.value = origMqttPub.port;
+        mpPrefix.value = origMqttPub.topic_prefix;
+        mpInterval.value = origMqttPub.interval_s;
+        checkMqttPubDirty();
+    });
+
+    // MQTT Publishing: save
+    mqttPubPanel.querySelector('.ve-mqtt-pub-save').addEventListener('click', function() {
+        var btn = mqttPubPanel.querySelector('.ve-mqtt-pub-save');
+        btn.textContent = 'Saving...';
+        btn.disabled = true;
+
+        var payload = {
+            mqtt_publish: {
+                host: mpHost.value.trim(),
+                port: parseInt(mpPort.value) || 1883,
+                topic_prefix: mpPrefix.value.trim(),
+                interval_s: parseInt(mpInterval.value) || 5
+            }
+        };
+
+        fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.success) {
+                showToast('MQTT config saved', 'success');
+                origMqttPub.host = payload.mqtt_publish.host;
+                origMqttPub.port = String(payload.mqtt_publish.port);
+                origMqttPub.topic_prefix = payload.mqtt_publish.topic_prefix;
+                origMqttPub.interval_s = String(payload.mqtt_publish.interval_s);
+                checkMqttPubDirty();
+            } else {
+                showToast('Save failed: ' + data.error, 'error');
+            }
+        })
+        .catch(function(e) { showToast('Save failed: ' + e.message, 'error'); })
+        .finally(function() {
+            btn.textContent = 'Save';
+            btn.disabled = false;
+        });
+    });
+
+    // MQTT Publishing: discover button
+    var discoverBtn = mqttPubPanel.querySelector('.ve-mqtt-pub-discover-btn');
+    var brokerSelect = mqttPubPanel.querySelector('.ve-mqtt-pub-broker-select');
+
+    discoverBtn.addEventListener('click', function() {
+        discoverBtn.textContent = 'Scanning...';
+        discoverBtn.disabled = true;
+        brokerSelect.style.display = 'none';
+
+        fetch('/api/mqtt/discover', { method: 'POST' })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (!data.success) {
+                showToast('Discovery failed: ' + (data.error || 'unknown'), 'error');
+                return;
+            }
+            var brokers = data.brokers || [];
+            if (brokers.length === 0) {
+                showToast('No MQTT brokers found', 'warning');
+            } else if (brokers.length === 1) {
+                mpHost.value = brokers[0].host;
+                if (brokers[0].port) mpPort.value = String(brokers[0].port);
+                checkMqttPubDirty();
+                showToast('Found broker: ' + brokers[0].host, 'success');
+            } else {
+                // Multiple brokers: show dropdown
+                brokerSelect.innerHTML = '';
+                brokers.forEach(function(b) {
+                    var opt = document.createElement('option');
+                    opt.value = b.host + ':' + (b.port || 1883);
+                    opt.textContent = (b.name || b.host) + ' (' + b.host + ':' + (b.port || 1883) + ')';
+                    brokerSelect.appendChild(opt);
+                });
+                brokerSelect.style.display = '';
+                // Auto-select first
+                var parts = brokerSelect.value.split(':');
+                mpHost.value = parts[0];
+                mpPort.value = parts[1] || '1883';
+                checkMqttPubDirty();
+                showToast('Found ' + brokers.length + ' brokers — select one', 'success');
+
+                brokerSelect.addEventListener('change', function() {
+                    var p = brokerSelect.value.split(':');
+                    mpHost.value = p[0];
+                    mpPort.value = p[1] || '1883';
+                    checkMqttPubDirty();
+                });
+            }
+        })
+        .catch(function(e) { showToast('Discovery failed: ' + e.message, 'error'); })
+        .finally(function() {
+            discoverBtn.textContent = 'Discover';
+            discoverBtn.disabled = false;
+        });
+    });
 }
 
 function wireESSToggles(essCard) {
@@ -1029,7 +1221,7 @@ function wireESSToggles(essCard) {
         limitToggle._userChangedAt = Date.now();
         if (limitToggle.checked) {
             writeVenusDbus('/Settings/CGwacs/MaxFeedInPower', 10000);
-            showToast('Feed-in limit: 10000 W', 'success');
+            showToast('Feed-in limit: ' + formatW(10000), 'success');
         } else {
             writeVenusDbus('/Settings/CGwacs/MaxFeedInPower', -1);
             showToast('Feed-in limit: Off', 'success');
@@ -1038,13 +1230,13 @@ function wireESSToggles(essCard) {
     if (feedInDD) feedInDD.addEventListener('change', function() {
         var watts = parseInt(feedInDD.value);
         writeVenusDbus('/Settings/CGwacs/MaxFeedInPower', watts);
-        showToast('Max feed-in: ' + formatKw(watts), 'success');
+        showToast('Max feed-in: ' + formatW(watts), 'success');
     });
     if (invLimitToggle) invLimitToggle.addEventListener('change', function() {
         invLimitToggle._userChangedAt = Date.now();
         if (invLimitToggle.checked) {
             writeVenusDbus('/Settings/CGwacs/MaxDischargePower', 20000);
-            showToast('Inverter limit: 20000 W', 'success');
+            showToast('Inverter limit: ' + formatW(20000), 'success');
         } else {
             writeVenusDbus('/Settings/CGwacs/MaxDischargePower', -1);
             showToast('Inverter limit: Off', 'success');
@@ -1053,7 +1245,7 @@ function wireESSToggles(essCard) {
     if (invLimitDD) invLimitDD.addEventListener('change', function() {
         var watts = parseInt(invLimitDD.value);
         writeVenusDbus('/Settings/CGwacs/MaxDischargePower', watts);
-        showToast('Max inverter: ' + formatKw(watts), 'success');
+        showToast('Max inverter: ' + formatW(watts), 'success');
     });
 }
 
@@ -1124,8 +1316,8 @@ function buildVirtualPVPage(container, data) {
         legendItem.className = 've-contribution-legend-item';
         legendItem.innerHTML =
             '<span class="ve-contribution-legend-dot" style="background:' + color + '"></span>' +
-            '<span class="ve-contribution-legend-name">' + (c.name || c.device_id) + '</span>' +
-            '<span class="ve-contribution-legend-power">' + Math.round(c.power_w) + ' W</span>';
+            '<span class="ve-contribution-legend-name">' + esc(c.name || c.device_id) + '</span>' +
+            '<span class="ve-contribution-legend-power">' + formatW(c.power_w) + '</span>';
         legendItem.setAttribute('data-device-id', c.device_id);
         legend.appendChild(legendItem);
     }
@@ -1147,7 +1339,7 @@ function buildVirtualPVPage(container, data) {
         for (var j = 0; j < contributions.length; j++) {
             var ct = contributions[j];
             tbody += '<tr>' +
-                '<td>' + (ct.name || ct.device_id) + '</td>' +
+                '<td>' + esc(ct.name || ct.device_id) + '</td>' +
                 '<td>' + (ct.throttle_order || '--') + '</td>' +
                 '<td>' + (ct.throttle_enabled ? 'On' : 'Off') + '</td>' +
                 '<td>' + (ct.current_limit_pct != null ? ct.current_limit_pct.toFixed(1) + '%' : '--') + '</td>' +
@@ -1163,29 +1355,32 @@ function buildVirtualPVPage(container, data) {
 function updateVirtualPVPage(data) {
     if (!_activeDeviceContainer) return;
 
+    var parent = _activeDeviceContainer.parentElement;
+    if (!parent) return;
+
     var totalW = data.total_power_w || 0;
     var contributions = data.contributions || [];
 
     // Update total
-    var totalEl = _activeDeviceContainer.parentElement.querySelector('.ve-virtual-total-value');
-    if (totalEl) totalEl.textContent = (totalW / 1000).toFixed(1);
+    var totalEl = parent.querySelector('.ve-virtual-total-value');
+    if (totalEl) totalEl.textContent = Math.round(totalW);
 
     // Update bar segments
-    var segments = _activeDeviceContainer.parentElement.querySelectorAll('.ve-contribution-segment');
+    var segments = parent.querySelectorAll('.ve-contribution-segment');
     for (var i = 0; i < segments.length && i < contributions.length; i++) {
         var pct = totalW > 0 ? (contributions[i].power_w / totalW * 100) : 0;
         segments[i].style.width = pct.toFixed(1) + '%';
     }
 
     // Update legend powers
-    var legendItems = _activeDeviceContainer.parentElement.querySelectorAll('.ve-contribution-legend-item');
+    var legendItems = parent.querySelectorAll('.ve-contribution-legend-item');
     for (var j = 0; j < legendItems.length && j < contributions.length; j++) {
         var pwrEl = legendItems[j].querySelector('.ve-contribution-legend-power');
-        if (pwrEl) pwrEl.textContent = Math.round(contributions[j].power_w) + ' W';
+        if (pwrEl) pwrEl.textContent = formatW(contributions[j].power_w);
     }
 
     // Update throttle table
-    var tds = _activeDeviceContainer.parentElement.querySelectorAll('.ve-throttle-table tbody tr');
+    var tds = parent.querySelectorAll('.ve-throttle-table tbody tr');
     for (var k = 0; k < tds.length && k < contributions.length; k++) {
         var cells = tds[k].querySelectorAll('td');
         if (cells.length >= 4) {
@@ -1326,6 +1521,7 @@ function triggerAddModalScan(formArea) {
     var status = formArea.querySelector('.ve-add-scan-status');
     var results = formArea.querySelector('.ve-add-scan-results');
 
+    _scanRunning = true;
     scanArea.style.display = '';
     progress.style.display = '';
     fill.style.width = '0%';
@@ -1490,7 +1686,7 @@ function updateVenusESSOnPage(snapshot) {
     if (maxRow) maxRow.style.display = (excessActive && feedInLimited) ? '' : 'none';
 
     if (feedInActual) {
-        feedInActual.textContent = formatKw(vs.grid_feed_in_w);
+        feedInActual.textContent = formatW(vs.grid_feed_in_w);
         if (vs.max_feed_in_w > 0 && vs.grid_feed_in_w > vs.max_feed_in_w) {
             feedInActual.style.color = 'var(--ve-red)';
         } else if (vs.grid_feed_in_w > 0) {
@@ -1608,7 +1804,7 @@ function handleScanComplete(data) {
                 row.className = 've-scan-result';
                 row.style.cursor = 'pointer';
                 var ident = ((dev.manufacturer || '') + ' ' + (dev.model || '')).trim() || 'Unknown';
-                row.innerHTML = '<span class="ve-scan-result-host">' + dev.ip + ':' + dev.port + '</span><span class="ve-scan-result-identity">' + ident + '</span>';
+                row.innerHTML = '<span class="ve-scan-result-host">' + esc(dev.ip) + ':' + esc(dev.port) + '</span><span class="ve-scan-result-identity">' + esc(ident) + '</span>';
                 row._device = dev;
                 row.addEventListener('click', function() {
                     var d = this._device;
@@ -1822,8 +2018,12 @@ function formatValue(val) {
 
 // ===== Venus OS dbus write =====
 
-function formatKw(watts) {
+function formatW(watts) {
     if (watts == null) return '--';
+    if (Math.abs(watts) >= 1000) {
+        var kw = watts / 1000;
+        return (kw % 1 === 0 ? kw.toFixed(0) : kw.toFixed(1)) + ' kW';
+    }
     return Math.round(watts) + ' W';
 }
 
@@ -1904,7 +2104,7 @@ function showToast(message, type, actionLabel, actionCallback, duration) {
 function dismissToast(toast) {
     if (!toast || toast.classList.contains('ve-toast--exiting')) return;
     toast.classList.add('ve-toast--exiting');
-    toast.addEventListener('animationend', function() { toast.remove(); });
+    toast.addEventListener('animationend', function() { toast.remove(); }, { once: true });
 }
 
 // ===== Initialization =====
