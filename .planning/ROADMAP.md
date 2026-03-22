@@ -133,7 +133,10 @@ Plans:
   2. A "Discover" button scans the LAN for MQTT brokers via mDNS and populates the broker field with the result
   3. A connection status dot on the dashboard shows whether the MQTT publisher is currently connected to the broker (green/red)
   4. A topic preview section shows the exact MQTT topics that will be published for each configured device
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 27-01-PLAN.md — Backend API + MQTT config panel with dirty tracking, save, enable toggle, mDNS discover
+- [ ] 27-02-PLAN.md — Connection status dot via WebSocket, topic preview, human verification
 
 ## Progress
 
@@ -144,4 +147,4 @@ Phases execute in numeric order: 25 -> 26 -> 27
 |-------|----------------|--------|-----------|
 | 25. Publisher Infrastructure & Broker Connectivity | 2/2 | Complete    | 2026-03-22 |
 | 26. Telemetry Publishing & Home Assistant Discovery | 2/2 | Complete    | 2026-03-22 |
-| 27. Webapp Config & Status UI | 0/0 | Not started | - |
+| 27. Webapp Config & Status UI | 0/2 | In progress | - |
