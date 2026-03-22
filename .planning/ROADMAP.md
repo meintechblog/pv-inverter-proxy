@@ -90,7 +90,7 @@ Full details: `.planning/milestones/v4.0-ROADMAP.md`
 
 - [x] **Phase 25: Publisher Infrastructure & Broker Connectivity** - aiomqtt-based publisher with queue-decoupled architecture, config dataclass, LWT, reconnect, and mDNS broker discovery (completed 2026-03-22)
 - [x] **Phase 26: Telemetry Publishing & Home Assistant Discovery** - Per-device and virtual-PV topic hierarchy, JSON payloads, HA auto-discovery config payloads, wired into broadcast chain (completed 2026-03-22)
-- [ ] **Phase 27: Webapp Config & Status UI** - MQTT Publishing config panel, mDNS discover button, connection status dot, topic preview
+- [x] **Phase 27: Webapp Config & Status UI** - MQTT Publishing config panel, mDNS discover button, connection status dot, topic preview (completed 2026-03-22)
 
 ## Phase Details
 
@@ -133,10 +133,10 @@ Plans:
   2. A "Discover" button scans the LAN for MQTT brokers via mDNS and populates the broker field with the result
   3. A connection status dot on the dashboard shows whether the MQTT publisher is currently connected to the broker (green/red)
   4. A topic preview section shows the exact MQTT topics that will be published for each configured device
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 27-01-PLAN.md — Backend API + MQTT config panel with dirty tracking, save, enable toggle, mDNS discover
-- [ ] 27-02-PLAN.md — Connection status dot via WebSocket, topic preview, human verification
+- [x] 27-02-PLAN.md — Connection status dot via WebSocket, topic preview, human verification
 
 ## Progress
 
@@ -147,4 +147,4 @@ Phases execute in numeric order: 25 -> 26 -> 27
 |-------|----------------|--------|-----------|
 | 25. Publisher Infrastructure & Broker Connectivity | 2/2 | Complete    | 2026-03-22 |
 | 26. Telemetry Publishing & Home Assistant Discovery | 2/2 | Complete    | 2026-03-22 |
-| 27. Webapp Config & Status UI | 1/2 | In progress | - |
+| 27. Webapp Config & Status UI | 2/2 | Complete   | 2026-03-22 |

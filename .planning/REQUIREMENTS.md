@@ -34,8 +34,8 @@ Requirements for MQTT Data Publishing milestone. Each maps to roadmap phases.
 
 - [x] **UI-01**: Config-Seite zeigt MQTT Publishing Settings (Enable/Disable, Broker, Port, Intervall)
 - [x] **UI-02**: mDNS Discovery Button findet Broker im LAN und fuellt Formular
-- [ ] **UI-03**: Connection-Status-Dot zeigt ob MQTT Publisher verbunden ist
-- [ ] **UI-04**: Topic-Preview zeigt die generierten MQTT Topics
+- [x] **UI-03**: Connection-Status-Dot zeigt ob MQTT Publisher verbunden ist
+- [x] **UI-04**: Topic-Preview zeigt die generierten MQTT Topics
 
 ## Future Requirements
 
@@ -74,8 +74,8 @@ Requirements for MQTT Data Publishing milestone. Each maps to roadmap phases.
 | CONN-04 | Phase 25 | Complete |
 | UI-01 | Phase 27 | Pending |
 | UI-02 | Phase 27 | Pending |
-| UI-03 | Phase 27 | Pending |
-| UI-04 | Phase 27 | Pending |
+| UI-03 | Phase 27 | Complete |
+| UI-04 | Phase 27 | Complete |
 
 **Coverage:**
 - v5.0 requirements: 18 total

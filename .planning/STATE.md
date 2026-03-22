@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: MQTT Data Publishing
 status: unknown
-stopped_at: Completed 27-01-PLAN.md
-last_updated: "2026-03-22T11:16:34.378Z"
+stopped_at: Completed 27-02-PLAN.md
+last_updated: "2026-03-22T11:22:36.175Z"
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -64,6 +64,7 @@ Plan: 2 of 2
 - [Phase 26]: Use ha_discovery_topic() function rather than embedding _topic in config dicts
 - [Phase 26]: JSON hash comparison for change detection with compact separators
 - [Phase 26]: Legacy message format kept as backward-compatible fallback in publisher
+- [Phase 27]: Status dot inline-style for dynamic green/red, topic preview seeded from config.inverters then replaced by WS data
 
 ### Research Flags
 
@@ -80,6 +81,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-22T11:18:28Z
-Stopped at: Completed 27-01-PLAN.md
+Last session: 2026-03-22T11:22:36.172Z
+Stopped at: Completed 27-02-PLAN.md
 Resume point: Plan 27-02
