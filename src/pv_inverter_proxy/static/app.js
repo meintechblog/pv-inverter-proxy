@@ -693,25 +693,21 @@ function buildPhaseCard(data) {
     var temp = inv.temperature_sink_c;
 
     card.innerHTML =
-        '<h2 class="ve-card-title">AC Output</h2>' +
-        '<div class="ve-grid ve-ac-summary" style="margin-bottom:12px">' +
-        '  <div><label>Frequency</label><span class="ve-live-value ve-se-freq">' + fmtHz(freq) + '</span></div>' +
-        '  <div><label>Efficiency</label><span class="ve-live-value ve-se-eff">' + (eff != null ? eff.toFixed(1) + '%' : '--') + '</span></div>' +
-        '  <div><label>Temperature</label><span class="ve-live-value ve-se-temp">' + (temp != null ? temp.toFixed(1) + ' \u00B0C' : '--') + '</span></div>' +
-        '  <div><label>Total Current</label><span class="ve-live-value ve-se-total-a">' + (inv.ac_current_a != null ? inv.ac_current_a.toFixed(1) + ' A' : '--') + '</span></div>' +
-        '</div>' +
+        '<h2 class="ve-card-title">AC Output' +
+        '  <span class="ve-card-subtitle">' + fmtHz(freq) +
+            ' · <span class="ve-se-eff">' + (eff != null ? eff.toFixed(1) + '%' : '--') + '</span> eff' +
+            ' · <span class="ve-se-temp">' + (temp != null ? temp.toFixed(1) + '°C' : '--') + '</span>' +
+        '</span></h2>' +
         '<table class="ve-phase-table"><thead><tr><th></th><th>Voltage</th><th>Current</th><th>Power</th></tr></thead>' +
         '<tbody>' +
         '<tr><td class="ve-phase-label">L1</td><td class="ve-live-value ve-l1-voltage">' + fmtV(l1v) + '</td><td class="ve-live-value ve-l1-current">' + fmtA(l1a) + '</td><td class="ve-live-value ve-l1-power">' + fmtW(l1v, l1a) + '</td></tr>' +
         '<tr><td class="ve-phase-label">L2</td><td class="ve-live-value ve-l2-voltage">' + fmtV(l2v) + '</td><td class="ve-live-value ve-l2-current">' + fmtA(l2a) + '</td><td class="ve-live-value ve-l2-power">' + fmtW(l2v, l2a) + '</td></tr>' +
         '<tr><td class="ve-phase-label">L3</td><td class="ve-live-value ve-l3-voltage">' + fmtV(l3v) + '</td><td class="ve-live-value ve-l3-current">' + fmtA(l3a) + '</td><td class="ve-live-value ve-l3-power">' + fmtW(l3v, l3a) + '</td></tr>' +
         '</tbody></table>' +
-        '<h2 class="ve-card-title" style="margin-top:16px">DC Input</h2>' +
-        '<div class="ve-grid ve-dc-summary">' +
-        '  <div><label>Voltage</label><span class="ve-live-value ve-se-dc-v">' + (dcV != null ? dcV.toFixed(1) + ' V' : '--') + '</span></div>' +
-        '  <div><label>Current</label><span class="ve-live-value ve-se-dc-a">' + (dcA != null ? dcA.toFixed(2) + ' A' : '--') + '</span></div>' +
-        '  <div><label>Power</label><span class="ve-live-value ve-se-dc-w">' + (dcW != null ? formatW(dcW) : '--') + '</span></div>' +
-        '</div>';
+        '<h2 class="ve-card-title" style="margin-top:12px">DC Input' +
+        '  <span class="ve-card-subtitle"><span class="ve-se-dc-v">' + (dcV != null ? dcV.toFixed(0) + 'V' : '--') + '</span>' +
+            ' · <span class="ve-se-dc-a">' + (dcA != null ? dcA.toFixed(1) + 'A' : '--') + '</span>' +
+            ' · <span class="ve-se-dc-w">' + (dcW != null ? formatW(dcW) : '--') + '</span></span></h2>';
 
     return card;
 }
