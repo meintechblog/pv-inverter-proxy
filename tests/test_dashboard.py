@@ -346,24 +346,27 @@ def test_operating_hours_mppt_only(monkeypatch):
 
 
 def test_efficiency_calculation():
-    """efficiency_pct = current_ac_power / peak_power * 100."""
+    """efficiency_pct = ac_power / dc_power * 100."""
     collector = DashboardCollector()
     overrides = _zero_sf_overrides()
     overrides[40093] = [0, 0]
     overrides[40095] = 0
 
-    # First collect: 10000W -- sets peak
-    overrides[40083] = 10000
-    overrides[40084] = 0
+    # AC=9500W, DC=10000W -> 95% efficiency
+    overrides[40083] = 9500   # AC power
+    overrides[40084] = 0      # AC power SF
+    overrides[40100] = 10000  # DC power
+    overrides[40101] = 0      # DC power SF
     cache = _make_cache_with_values(overrides)
     snap1 = collector.collect(cache)
-    assert snap1["inverter"]["efficiency_pct"] == 100.0
+    assert snap1["inverter"]["efficiency_pct"] == 95.0
 
-    # Second collect: 5000W -- 50% efficiency
+    # AC=5000W, DC=5200W -> 96.2%
     overrides[40083] = 5000
+    overrides[40100] = 5200
     cache = _make_cache_with_values(overrides)
     snap2 = collector.collect(cache)
-    assert snap2["inverter"]["efficiency_pct"] == 50.0
+    assert snap2["inverter"]["efficiency_pct"] == 96.2
 
 
 def test_peak_stats_in_snapshot():

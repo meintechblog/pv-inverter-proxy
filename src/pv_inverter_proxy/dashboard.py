@@ -212,10 +212,9 @@ class DashboardCollector:
                 self._operating_seconds += delta
         self._last_collect_ts = now_mono
 
-        # Efficiency calculation
-        efficiency_pct = 0.0
-        if self._peak_power_w > 0:
-            efficiency_pct = round(ac_power / self._peak_power_w * 100, 1)
+        # Efficiency = AC power / DC power
+        dc_power = inverter.get("dc_power_w", 0) or 0
+        efficiency_pct = round(ac_power / dc_power * 100, 1) if dc_power > 0 else 0.0
 
         inverter["peak_power_w"] = self._peak_power_w
         inverter["operating_hours"] = round(self._operating_seconds / 3600, 4)
@@ -386,7 +385,8 @@ class DashboardCollector:
 
         inverter["peak_power_w"] = self._peak_power_w
         inverter["operating_hours"] = round(self._operating_seconds / 3600, 4)
-        inverter["efficiency_pct"] = round(ac_power / self._peak_power_w * 100, 1) if self._peak_power_w > 0 else 0.0
+        dc_power = inverter.get("dc_power_w", 0) or 0
+        inverter["efficiency_pct"] = round(ac_power / dc_power * 100, 1) if dc_power > 0 else 0.0
 
         # Persist daily stats periodically
         if self._energy_at_start is not None:
