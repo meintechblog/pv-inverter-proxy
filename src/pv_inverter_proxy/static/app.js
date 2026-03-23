@@ -681,18 +681,37 @@ function buildPhaseCard(data) {
     var l2v = inv.ac_voltage_bn_v, l2a = inv.ac_current_l2_a;
     var l3v = inv.ac_voltage_cn_v, l3a = inv.ac_current_l3_a;
 
-    function fmtV(v) { return v != null ? v.toFixed(1) + ' V' : '-- V'; }
-    function fmtA(a) { return a != null ? a.toFixed(2) + ' A' : '-- A'; }
+    function fmtV(v) { return v != null ? v.toFixed(1) + ' V' : '--'; }
+    function fmtA(a) { return a != null ? a.toFixed(2) + ' A' : '--'; }
     function fmtW(v, a) { return (v != null && a != null) ? formatW(v * a) : '--'; }
+    function fmtHz(f) { return f != null ? f.toFixed(1) + ' Hz' : '--'; }
+
+    // AC summary row
+    var eff = inv.efficiency_pct;
+    var freq = inv.ac_frequency_hz;
+    var dcV = inv.dc_voltage_v, dcA = inv.dc_current_a, dcW = inv.dc_power_w;
+    var temp = inv.temperature_sink_c;
 
     card.innerHTML =
-        '<h2 class="ve-card-title">3-Phase AC</h2>' +
+        '<h2 class="ve-card-title">AC Output</h2>' +
+        '<div class="ve-grid ve-ac-summary" style="margin-bottom:12px">' +
+        '  <div><label>Frequency</label><span class="ve-live-value ve-se-freq">' + fmtHz(freq) + '</span></div>' +
+        '  <div><label>Efficiency</label><span class="ve-live-value ve-se-eff">' + (eff != null ? eff.toFixed(1) + '%' : '--') + '</span></div>' +
+        '  <div><label>Temperature</label><span class="ve-live-value ve-se-temp">' + (temp != null ? temp.toFixed(1) + ' \u00B0C' : '--') + '</span></div>' +
+        '  <div><label>Total Current</label><span class="ve-live-value ve-se-total-a">' + (inv.ac_current_a != null ? inv.ac_current_a.toFixed(1) + ' A' : '--') + '</span></div>' +
+        '</div>' +
         '<table class="ve-phase-table"><thead><tr><th></th><th>Voltage</th><th>Current</th><th>Power</th></tr></thead>' +
         '<tbody>' +
         '<tr><td class="ve-phase-label">L1</td><td class="ve-live-value ve-l1-voltage">' + fmtV(l1v) + '</td><td class="ve-live-value ve-l1-current">' + fmtA(l1a) + '</td><td class="ve-live-value ve-l1-power">' + fmtW(l1v, l1a) + '</td></tr>' +
         '<tr><td class="ve-phase-label">L2</td><td class="ve-live-value ve-l2-voltage">' + fmtV(l2v) + '</td><td class="ve-live-value ve-l2-current">' + fmtA(l2a) + '</td><td class="ve-live-value ve-l2-power">' + fmtW(l2v, l2a) + '</td></tr>' +
         '<tr><td class="ve-phase-label">L3</td><td class="ve-live-value ve-l3-voltage">' + fmtV(l3v) + '</td><td class="ve-live-value ve-l3-current">' + fmtA(l3a) + '</td><td class="ve-live-value ve-l3-power">' + fmtW(l3v, l3a) + '</td></tr>' +
-        '</tbody></table>';
+        '</tbody></table>' +
+        '<h2 class="ve-card-title" style="margin-top:16px">DC Input</h2>' +
+        '<div class="ve-grid ve-dc-summary">' +
+        '  <div><label>Voltage</label><span class="ve-live-value ve-se-dc-v">' + (dcV != null ? dcV.toFixed(1) + ' V' : '--') + '</span></div>' +
+        '  <div><label>Current</label><span class="ve-live-value ve-se-dc-a">' + (dcA != null ? dcA.toFixed(2) + ' A' : '--') + '</span></div>' +
+        '  <div><label>Power</label><span class="ve-live-value ve-se-dc-w">' + (dcW != null ? formatW(dcW) : '--') + '</span></div>' +
+        '</div>';
 
     return card;
 }
@@ -793,6 +812,15 @@ function updateActiveDeviceDashboard(data) {
         var l3w = (inv.ac_voltage_cn_v != null && inv.ac_current_l3_a != null) ? formatW(inv.ac_voltage_cn_v * inv.ac_current_l3_a) : '--';
         updatePhaseVal('ve-l3-power', l3w);
     }
+
+    // Update SolarEdge AC summary + DC input
+    updatePhaseVal('ve-se-freq', inv.ac_frequency_hz != null ? inv.ac_frequency_hz.toFixed(1) + ' Hz' : null);
+    updatePhaseVal('ve-se-eff', inv.efficiency_pct != null ? inv.efficiency_pct.toFixed(1) + '%' : null);
+    updatePhaseVal('ve-se-temp', inv.temperature_sink_c != null ? inv.temperature_sink_c.toFixed(1) + ' \u00B0C' : null);
+    updatePhaseVal('ve-se-total-a', inv.ac_current_a != null ? inv.ac_current_a.toFixed(1) + ' A' : null);
+    updatePhaseVal('ve-se-dc-v', inv.dc_voltage_v != null ? inv.dc_voltage_v.toFixed(1) + ' V' : null);
+    updatePhaseVal('ve-se-dc-a', inv.dc_current_a != null ? inv.dc_current_a.toFixed(2) + ' A' : null);
+    updatePhaseVal('ve-se-dc-w', inv.dc_power_w != null ? formatW(inv.dc_power_w) : null);
 
     // Update performance values
     var energyEl = _activeDeviceContainer.querySelector('.ve-daily-energy');
