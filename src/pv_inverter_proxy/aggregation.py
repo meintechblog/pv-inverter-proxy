@@ -34,11 +34,16 @@ def decode_model_103_to_physical(inverter_regs: list[int]) -> dict:
     Returns:
         Dict with physical values in standard units (W, A, V, Hz, Wh, C)
     """
+    if len(inverter_regs) < 40:
+        return None  # Insufficient register data
+
     def _sf(idx: int) -> int:
         raw = inverter_regs[idx]
         return raw - 65536 if raw > 32767 else raw
 
     def _val(idx: int, sf_idx: int) -> float:
+        if idx >= len(inverter_regs) or sf_idx >= len(inverter_regs):
+            return 0.0
         raw = inverter_regs[idx]
         if raw in (0x8000, 0xFFFF):
             return 0.0
@@ -179,6 +184,9 @@ class AggregationLayer:
             decode_model_103_to_physical(d["inverter_registers"])
             for d in active_data
         ]
+        decoded_list = [d for d in decoded_list if d is not None]
+        if not decoded_list:
+            return
 
         # Aggregate: sum, average, max, worst-case
         n = len(decoded_list)

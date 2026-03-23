@@ -274,6 +274,6 @@ async def _device_poll_loop(
         except Exception as exc:
             poll_counter["total"] += 1
             conn_mgr.on_poll_failure()
-            log.error("poll_error", error=str(exc))
+            log.error("poll_error", error=str(exc), exc_info=True)
 
         await asyncio.sleep(conn_mgr.sleep_duration)
