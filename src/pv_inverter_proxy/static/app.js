@@ -589,12 +589,62 @@ function buildInverterDashboard(container, data, deviceType) {
 
     // Connection card
     var connCard = document.createElement('div');
-    connCard.className = 've-card';
+    connCard.className = 've-card ve-conn-card';
     var connState = data.connection ? data.connection.state : 'unknown';
     var connDotClass = connState === 'connected' ? 've-dot--ok' : connState === 'reconnecting' ? 've-dot--warn' : connState === 'night_mode' ? 've-dot--dim' : 've-dot--err';
     connCard.innerHTML =
         '<h2 class="ve-card-title">Connection</h2>' +
         '<div class="ve-status-row"><span class="ve-dot ' + connDotClass + '"></span><span>Inverter: ' + (connState === 'night_mode' ? 'sleeping' : connState) + '</span></div>';
+
+    if (deviceType === 'opendtu') {
+        connCard.innerHTML +=
+            '<div class="ve-opendtu-status" style="margin-top:10px">' +
+            '  <div class="ve-status-row"><span class="ve-text-dim">Producing:</span><span class="ve-opendtu-producing">--</span></div>' +
+            '  <div class="ve-status-row"><span class="ve-text-dim">Reachable:</span><span class="ve-opendtu-reachable">--</span></div>' +
+            '  <div class="ve-status-row"><span class="ve-text-dim">Limit:</span><span class="ve-opendtu-limit">--</span></div>' +
+            '</div>' +
+            '<div class="ve-opendtu-actions" style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">' +
+            '  <button class="ve-btn ve-btn--sm ve-opendtu-restart">Restart</button>' +
+            '  <button class="ve-btn ve-btn--sm ve-opendtu-on">Power On</button>' +
+            '  <button class="ve-btn ve-btn--sm ve-btn--cancel ve-opendtu-off">Power Off</button>' +
+            '</div>';
+
+        // Fetch live OpenDTU status
+        var _devId = data.device_id || _activeDeviceId;
+        function _refreshDtuStatus() {
+            fetch('/api/devices/' + _devId + '/opendtu/status')
+                .then(function(r) { return r.json(); })
+                .then(function(s) {
+                    if (s.error) return;
+                    var prodEl = connCard.querySelector('.ve-opendtu-producing');
+                    var reachEl = connCard.querySelector('.ve-opendtu-reachable');
+                    var limEl = connCard.querySelector('.ve-opendtu-limit');
+                    if (prodEl) prodEl.textContent = s.producing ? 'Yes' : 'No';
+                    if (reachEl) reachEl.textContent = s.reachable ? 'Yes' : 'No';
+                    if (limEl) limEl.textContent = s.limit_relative + '% (' + s.limit_absolute + ' W)';
+                }).catch(function() {});
+        }
+        _refreshDtuStatus();
+
+        // Wire power buttons
+        function _sendPower(action) {
+            fetch('/api/devices/' + _devId + '/opendtu/power', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: action })
+            }).then(function(r) { return r.json(); }).then(function(d) {
+                if (d.success) { showToast('Inverter: ' + action, 'success'); setTimeout(_refreshDtuStatus, 3000); }
+                else showToast(d.error || 'Failed', 'error');
+            }).catch(function(e) { showToast('Error: ' + e.message, 'error'); });
+        }
+        var restartBtn = connCard.querySelector('.ve-opendtu-restart');
+        var onBtn = connCard.querySelector('.ve-opendtu-on');
+        var offBtn = connCard.querySelector('.ve-opendtu-off');
+        if (restartBtn) restartBtn.addEventListener('click', function() { _sendPower('restart'); });
+        if (onBtn) onBtn.addEventListener('click', function() { _sendPower('on'); });
+        if (offBtn) offBtn.addEventListener('click', function() { _sendPower('off'); });
+    }
+
     row2.appendChild(connCard);
 
     // Performance card

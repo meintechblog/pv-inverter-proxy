@@ -1686,6 +1686,51 @@ async def config_import_handler(request: web.Request) -> web.Response:
     return web.json_response({"success": True, "message": "Config imported. Restart recommended."})
 
 
+async def opendtu_status_handler(request: web.Request) -> web.Response:
+    """Get OpenDTU inverter status (producing, reachable, limits)."""
+    device_id = request.match_info["id"]
+    app_ctx = request.app["app_ctx"]
+    ds = app_ctx.devices.get(device_id)
+    if not ds or not ds.plugin:
+        return web.json_response({"error": "Device not found"}, status=404)
+
+    from pv_inverter_proxy.plugins.opendtu import OpenDTUPlugin
+    if not isinstance(ds.plugin, OpenDTUPlugin):
+        return web.json_response({"error": "Not an OpenDTU device"}, status=400)
+
+    status = await ds.plugin.get_inverter_status()
+    return web.json_response(status)
+
+
+async def opendtu_power_handler(request: web.Request) -> web.Response:
+    """Send power on/off/restart to an OpenDTU inverter.
+
+    Body: {"action": "on"|"off"|"restart"}
+    """
+    device_id = request.match_info["id"]
+    app_ctx = request.app["app_ctx"]
+    ds = app_ctx.devices.get(device_id)
+    if not ds or not ds.plugin:
+        return web.json_response({"success": False, "error": "Device not found"}, status=404)
+
+    from pv_inverter_proxy.plugins.opendtu import OpenDTUPlugin
+    if not isinstance(ds.plugin, OpenDTUPlugin):
+        return web.json_response({"success": False, "error": "Not an OpenDTU device"}, status=400)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Invalid JSON"}, status=400)
+
+    action = body.get("action", "")
+    if action not in ("on", "off", "restart"):
+        return web.json_response({"success": False, "error": "action must be on/off/restart"}, status=400)
+
+    result = await ds.plugin.send_power_command(action)
+    log.info("user_action", action=f"opendtu_power_{action}", device_id=device_id)
+    return web.json_response({"success": result.success, "error": result.error})
+
+
 async def opendtu_test_auth_handler(request: web.Request) -> web.Response:
     """Test OpenDTU gateway connectivity and auth.
 
@@ -1761,6 +1806,8 @@ async def create_webapp(
     app.router.add_post("/api/scanner/discover", scanner_discover_handler)
     app.router.add_post("/api/mqtt/discover", mqtt_discover_handler)
     app.router.add_post("/api/opendtu/test-auth", opendtu_test_auth_handler)
+    app.router.add_get("/api/devices/{id}/opendtu/status", opendtu_status_handler)
+    app.router.add_post("/api/devices/{id}/opendtu/power", opendtu_power_handler)
     app.router.add_get("/api/inverters", inverters_list_handler)
     app.router.add_post("/api/inverters", inverters_add_handler)
     app.router.add_put("/api/inverters/{id}", inverters_update_handler)

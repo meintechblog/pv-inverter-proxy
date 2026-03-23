@@ -334,6 +334,58 @@ class OpenDTUPlugin(InverterPlugin):
         )
         await self.close()
 
+    async def get_inverter_status(self) -> dict:
+        """Query OpenDTU for this inverter's live status and limits.
+
+        Returns dict with: producing, reachable, limit_relative, limit_absolute.
+        """
+        if self._session is None:
+            return {"error": "Not connected"}
+        try:
+            url = f"http://{self._gw.host}/api/livedata/status"
+            async with self._session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                data = await resp.json()
+            for inv in data.get("inverters", []):
+                if inv.get("serial") == self.serial:
+                    return {
+                        "producing": inv.get("producing", False),
+                        "reachable": inv.get("reachable", False),
+                        "limit_relative": inv.get("limit_relative", 100),
+                        "limit_absolute": inv.get("limit_absolute", 0),
+                    }
+            return {"error": "Inverter not found in OpenDTU"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def send_power_command(self, action: str) -> WriteResult:
+        """Send power on/off/restart to this inverter via OpenDTU.
+
+        action: "on", "off", or "restart"
+        """
+        if self._session is None:
+            return WriteResult(success=False, error="Not connected")
+
+        url = f"http://{self._gw.host}/api/power/config"
+        payload = {"serial": self.serial}
+        if action == "on":
+            payload["power"] = True
+        elif action == "off":
+            payload["power"] = False
+        elif action == "restart":
+            payload["restart"] = True
+        else:
+            return WriteResult(success=False, error=f"Unknown action: {action}")
+
+        form_data = {"data": json.dumps(payload)}
+        try:
+            async with self._session.post(url, data=form_data) as resp:
+                await resp.json()
+            log.info("opendtu_power_command", serial=self.serial, action=action)
+            return WriteResult(success=True)
+        except Exception as e:
+            log.warning("opendtu_power_command_failed", serial=self.serial, action=action, error=str(e))
+            return WriteResult(success=False, error=str(e))
+
     async def close(self) -> None:
         """Close the aiohttp session."""
         if self._session is not None and not self._session.closed:
