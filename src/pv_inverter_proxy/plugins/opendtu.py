@@ -82,9 +82,10 @@ class OpenDTUPlugin(InverterPlugin):
         # Find our inverter by serial
         inv = self._find_inverter(data)
         if inv is None:
+            serials = [str(i.get("serial", "?")) for i in data.get("inverters", []) if isinstance(i, dict)] if isinstance(data, dict) else []
             return PollResult(
                 [], [], success=False,
-                error=f"Serial {self.serial} not found in response",
+                error=f"Serial {self.serial} not found (got: {serials})",
             )
 
         if not inv.get("reachable", False):
