@@ -26,6 +26,7 @@
 - [ ] **UI-03**: Device Dashboard mit Gauge, AC-Werte (kein DC-Section — Capability-Flag)
 - [ ] **UI-04**: Connection Card mit Shelly-spezifischen Infos (Generation, Switch-Status, On/Off Buttons)
 - [ ] **UI-05**: Config-Seite mit Shelly-Host und erkannter Generation (readonly)
+- [ ] **UI-06**: Auto-Discovery von Shelly-Devices im LAN (Netzwerk-Scan mit /shelly Probe auf gefundene Hosts)
 
 ## Aggregation
 
@@ -51,12 +52,12 @@
 | UI-03 | Phase 31 | Pending |
 | UI-04 | Phase 31 | Pending |
 | UI-05 | Phase 30 | Pending |
+| UI-06 | Phase 30 | Pending |
 | AGG-01 | Phase 32 | Pending |
 | AGG-02 | Phase 32 | Pending |
 
 ## Future Requirements
 
-- Shelly mDNS Auto-Discovery im LAN
 - Shelly Auth-Support (Digest Auth fuer Gen2+)
 - Multi-Channel Support (Shelly 2.5, Shelly Pro 2PM)
 

@@ -102,7 +102,7 @@ Full details: `.planning/milestones/v5.0-ROADMAP.md`
 
 - [ ] **Phase 28: Plugin Core & Profiles** - ShellyPlugin with Gen1/Gen2 profiles, auto-detection, polling, SunSpec encoding, graceful degradation
 - [ ] **Phase 29: Switch Control & Config Wiring** - On/Off relay control, switch status display, power-limit no-op, plugin_factory integration
-- [ ] **Phase 30: Add-Device Flow** - Shelly as third option in add-device dialog, auto-detection UI, config page
+- [ ] **Phase 30: Add-Device Flow & Discovery** - Shelly as third option in add-device dialog, auto-detection UI, LAN discovery, config page
 - [ ] **Phase 31: Device Dashboard & Connection Card** - Gauge, AC values, Shelly-specific connection card with on/off toggle
 - [ ] **Phase 32: Aggregation Integration** - Shelly data flows into virtual PV inverter, DC-averaging skip
 
@@ -130,14 +130,15 @@ Full details: `.planning/milestones/v5.0-ROADMAP.md`
   3. When Venus OS sends a power-limit command, write_power_limit() succeeds as a no-op and the device is excluded from throttling by default
 **Plans**: TBD
 
-### Phase 30: Add-Device Flow
-**Goal**: Users can add Shelly devices through the webapp with automatic generation detection
+### Phase 30: Add-Device Flow & Discovery
+**Goal**: Users can add Shelly devices through the webapp with automatic generation detection, and discover Shelly devices on the LAN
 **Depends on**: Phase 29
-**Requirements**: UI-01, UI-02, UI-05
+**Requirements**: UI-01, UI-02, UI-05, UI-06
 **Success Criteria** (what must be TRUE):
   1. The add-device dialog shows "Shelly Device" as a third option alongside SolarEdge and OpenDTU
   2. After entering a Shelly IP, the webapp probes the device and displays the detected generation (Gen1/Gen2/Gen3) before confirming
   3. The device config page shows the Shelly host and detected generation as a readonly field
+  4. The Discover button in the add-device flow finds Shelly devices on the LAN by scanning and probing /shelly
 **Plans**: TBD
 
 ### Phase 31: Device Dashboard & Connection Card
@@ -169,6 +170,6 @@ Phases execute in numeric order: 28 -> 29 -> 30 -> 31 -> 32
 |-------|----------------|--------|-----------|
 | 28. Plugin Core & Profiles | 0/? | Not started | - |
 | 29. Switch Control & Config Wiring | 0/? | Not started | - |
-| 30. Add-Device Flow | 0/? | Not started | - |
+| 30. Add-Device Flow & Discovery | 0/? | Not started | - |
 | 31. Device Dashboard & Connection Card | 0/? | Not started | - |
 | 32. Aggregation Integration | 0/? | Not started | - |
