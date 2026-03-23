@@ -35,15 +35,36 @@ class TestConnectionStateTransitions:
         mgr = ConnectionManager(poll_interval=1.0)
         assert mgr.state == ConnectionState.CONNECTED
 
-    def test_first_failure_transitions_to_reconnecting(self):
+    def test_first_failure_stays_connected(self):
         mgr = ConnectionManager()
         new_state = mgr.on_poll_failure(now=0.0)
+        assert new_state == ConnectionState.CONNECTED
+        assert mgr.state == ConnectionState.CONNECTED
+
+    def test_third_failure_transitions_to_reconnecting(self):
+        mgr = ConnectionManager()
+        mgr.on_poll_failure(now=0.0)
+        mgr.on_poll_failure(now=1.0)
+        new_state = mgr.on_poll_failure(now=2.0)
         assert new_state == ConnectionState.RECONNECTING
         assert mgr.state == ConnectionState.RECONNECTING
 
-    def test_success_returns_to_connected(self):
+    def test_success_resets_consecutive_failures(self):
         mgr = ConnectionManager()
         mgr.on_poll_failure(now=0.0)
+        mgr.on_poll_failure(now=1.0)
+        # 2 failures, still CONNECTED
+        assert mgr.state == ConnectionState.CONNECTED
+        new_state = mgr.on_poll_success()
+        assert new_state == ConnectionState.CONNECTED
+        assert mgr.state == ConnectionState.CONNECTED
+
+    def test_success_returns_to_connected_from_reconnecting(self):
+        mgr = ConnectionManager()
+        mgr.on_poll_failure(now=0.0)
+        mgr.on_poll_failure(now=1.0)
+        mgr.on_poll_failure(now=2.0)
+        assert mgr.state == ConnectionState.RECONNECTING
         new_state = mgr.on_poll_success()
         assert new_state == ConnectionState.CONNECTED
         assert mgr.state == ConnectionState.CONNECTED
@@ -54,22 +75,36 @@ class TestBackoff:
 
     def test_backoff_doubles(self):
         mgr = ConnectionManager(poll_interval=1.0)
+        # First 2 failures: state stays CONNECTED, no backoff increase
         mgr.on_poll_failure(now=0.0)
+        assert mgr.sleep_duration == 1.0  # still CONNECTED → poll_interval
+        mgr.on_poll_failure(now=1.0)
+        assert mgr.sleep_duration == 1.0  # still CONNECTED → poll_interval
+        # 3rd failure: transitions to RECONNECTING, backoff doubles
+        mgr.on_poll_failure(now=2.0)
         assert mgr.sleep_duration == 10.0  # 5.0 * 2
-        mgr.on_poll_failure(now=10.0)
+        # 4th failure: backoff doubles again
+        mgr.on_poll_failure(now=12.0)
         assert mgr.sleep_duration == 20.0  # 10.0 * 2
 
     def test_backoff_caps_at_max(self):
         mgr = ConnectionManager(poll_interval=1.0)
-        # Drive backoff up past max: 5->10->20->40->60(capped)->60
-        for i in range(10):
+        # Drive backoff up past max
+        # First 2 failures stay CONNECTED (no backoff change)
+        # Then: 5->10->20->40->60(capped)->60
+        for i in range(12):
             mgr.on_poll_failure(now=float(i))
         assert mgr.sleep_duration == 60.0
 
     def test_reconnect_resets_backoff(self):
         mgr = ConnectionManager(poll_interval=1.0)
+        # 3 failures to reach RECONNECTING
         mgr.on_poll_failure(now=0.0)
-        mgr.on_poll_failure(now=10.0)
+        mgr.on_poll_failure(now=1.0)
+        mgr.on_poll_failure(now=2.0)
+        assert mgr.state == ConnectionState.RECONNECTING
+        # One more failure to increase backoff further
+        mgr.on_poll_failure(now=12.0)
         assert mgr.sleep_duration == 20.0
         mgr.on_poll_success()
         assert mgr.sleep_duration == 1.0  # poll_interval when CONNECTED
@@ -81,6 +116,8 @@ class TestBackoff:
     def test_sleep_duration_is_backoff_when_reconnecting(self):
         mgr = ConnectionManager(poll_interval=1.0)
         mgr.on_poll_failure(now=0.0)
+        mgr.on_poll_failure(now=1.0)
+        mgr.on_poll_failure(now=2.0)
         assert mgr.state == ConnectionState.RECONNECTING
         assert mgr.sleep_duration == 10.0  # INITIAL_BACKOFF * 2
 
@@ -90,8 +127,14 @@ class TestNightMode:
 
     def test_night_mode_after_threshold(self):
         mgr = ConnectionManager(poll_interval=1.0)
-        # First failure sets the clock
+        # First failure sets the clock, stays CONNECTED (strike 1)
         mgr.on_poll_failure(now=0.0)
+        assert mgr.state == ConnectionState.CONNECTED
+        # Second failure (strike 2), still CONNECTED
+        mgr.on_poll_failure(now=1.0)
+        assert mgr.state == ConnectionState.CONNECTED
+        # Third failure transitions to RECONNECTING
+        mgr.on_poll_failure(now=2.0)
         assert mgr.state == ConnectionState.RECONNECTING
         # 4 minutes: still reconnecting
         mgr.on_poll_failure(now=240.0)
@@ -103,6 +146,8 @@ class TestNightMode:
     def test_night_mode_stays_in_night_mode_on_further_failures(self):
         mgr = ConnectionManager(poll_interval=1.0)
         mgr.on_poll_failure(now=0.0)
+        mgr.on_poll_failure(now=1.0)
+        mgr.on_poll_failure(now=2.0)
         mgr.on_poll_failure(now=301.0)
         assert mgr.state == ConnectionState.NIGHT_MODE
         mgr.on_poll_failure(now=600.0)
@@ -111,6 +156,8 @@ class TestNightMode:
     def test_reconnect_from_night_mode(self):
         mgr = ConnectionManager(poll_interval=1.0)
         mgr.on_poll_failure(now=0.0)
+        mgr.on_poll_failure(now=1.0)
+        mgr.on_poll_failure(now=2.0)
         mgr.on_poll_failure(now=301.0)
         assert mgr.state == ConnectionState.NIGHT_MODE
         mgr.on_poll_success()
@@ -123,6 +170,8 @@ class TestNightMode:
     def test_reconnect_from_reconnecting_not_night(self):
         mgr = ConnectionManager(poll_interval=1.0)
         mgr.on_poll_failure(now=0.0)
+        mgr.on_poll_failure(now=1.0)
+        mgr.on_poll_failure(now=2.0)
         assert mgr.state == ConnectionState.RECONNECTING
         mgr.on_poll_success()
         assert mgr.reconnected_from_night is False
@@ -130,6 +179,8 @@ class TestNightMode:
     def test_backoff_resets_after_night_mode_reconnect(self):
         mgr = ConnectionManager(poll_interval=1.0)
         mgr.on_poll_failure(now=0.0)
+        mgr.on_poll_failure(now=1.0)
+        mgr.on_poll_failure(now=2.0)
         mgr.on_poll_failure(now=301.0)
         assert mgr.state == ConnectionState.NIGHT_MODE
         mgr.on_poll_success()
@@ -225,8 +276,8 @@ class TestPollLoopReconnection:
             inverter_registers=_make_sample_inverter(),
             success=True,
         )
-        # Fail twice, then succeed
-        results = [fail_result, fail_result, success_result]
+        # Fail 3 times (to trigger RECONNECTING), then succeed
+        results = [fail_result, fail_result, fail_result, success_result]
         plugin = _make_mock_plugin_with_sequence(results)
 
         cache, _ = _make_cache_and_datablock()
@@ -237,7 +288,7 @@ class TestPollLoopReconnection:
 
         async def limited_poll_loop():
             nonlocal loop_count
-            while loop_count < 3:
+            while loop_count < 4:
                 loop_count += 1
                 try:
                     result = await plugin.poll()
@@ -259,7 +310,7 @@ class TestPollLoopReconnection:
 
         await limited_poll_loop()
 
-        # After 2 failures and 1 success, should be back to CONNECTED
+        # After 3 failures and 1 success, should be back to CONNECTED
         assert conn_mgr.state == ConnectionState.CONNECTED
         # Plugin should have been reconnected (close + connect called)
         assert plugin.close.call_count >= 1
@@ -273,6 +324,8 @@ class TestPollLoopReconnection:
 
         # Manually simulate: failures over 5+ minutes using injectable time
         conn_mgr.on_poll_failure(now=0.0)
+        conn_mgr.on_poll_failure(now=1.0)
+        conn_mgr.on_poll_failure(now=2.0)
         assert conn_mgr.state == ConnectionState.RECONNECTING
 
         conn_mgr.on_poll_failure(now=301.0)
@@ -309,6 +362,8 @@ class TestPollLoopReconnection:
 
         # Simulate: was in night mode, now reconnecting
         conn_mgr.on_poll_failure(now=0.0)
+        conn_mgr.on_poll_failure(now=1.0)
+        conn_mgr.on_poll_failure(now=2.0)
         conn_mgr.on_poll_failure(now=301.0)
         assert conn_mgr.state == ConnectionState.NIGHT_MODE
 

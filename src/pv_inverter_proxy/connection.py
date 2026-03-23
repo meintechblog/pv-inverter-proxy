@@ -36,12 +36,15 @@ class ConnectionManager:
     MAX_BACKOFF = 60.0
     NIGHT_MODE_THRESHOLD = 300.0  # 5 minutes
 
+    CONSECUTIVE_FAILURES_BEFORE_RECONNECTING = 3
+
     def __init__(self, poll_interval: float = 1.0):
         self._poll_interval = poll_interval
         self._backoff = self.INITIAL_BACKOFF
         self._first_failure_time: float | None = None
         self._state = ConnectionState.CONNECTED
         self._reconnected_from_night = False
+        self._consecutive_failures: int = 0
 
     @property
     def state(self) -> ConnectionState:
@@ -65,6 +68,7 @@ class ConnectionManager:
         prev = self._state
         self._backoff = self.INITIAL_BACKOFF
         self._first_failure_time = None
+        self._consecutive_failures = 0
         self._state = ConnectionState.CONNECTED
         if prev == ConnectionState.NIGHT_MODE:
             self._reconnected_from_night = True
@@ -84,12 +88,15 @@ class ConnectionManager:
 
         elapsed = now - self._first_failure_time
 
+        self._consecutive_failures += 1
+
         if elapsed > self.NIGHT_MODE_THRESHOLD and self._state != ConnectionState.NIGHT_MODE:
             self._state = ConnectionState.NIGHT_MODE
-        elif self._state == ConnectionState.CONNECTED:
+        elif self._state == ConnectionState.CONNECTED and self._consecutive_failures >= self.CONSECUTIVE_FAILURES_BEFORE_RECONNECTING:
             self._state = ConnectionState.RECONNECTING
 
-        self._backoff = min(self._backoff * 2, self.MAX_BACKOFF)
+        if self._state != ConnectionState.CONNECTED:
+            self._backoff = min(self._backoff * 2, self.MAX_BACKOFF)
         return self._state
 
 

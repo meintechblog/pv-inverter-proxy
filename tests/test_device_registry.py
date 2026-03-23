@@ -294,16 +294,19 @@ async def test_backoff_on_failure(app_ctx, entry_a):
     on_success = AsyncMock()
     registry = DeviceRegistry(app_ctx, config, on_poll_success=on_success)
 
+    # Override proxy poll_interval so the poll loop runs fast
+    config.proxy.poll_interval = 0.01
+
     mock_plugin = _make_mock_plugin(poll_result=_fail_result())
     with _patch_factories(mock_plugin):
         await registry.start_device("dev_a")
-        # Let a few poll failures happen
-        await asyncio.sleep(0.1)
+        # Let enough poll failures happen (need 3+ for RECONNECTING with 3-strike rule)
+        await asyncio.sleep(0.3)
 
     state = app_ctx.devices.get("dev_a")
     if state and state.conn_mgr:
         cm = state.conn_mgr
-        # After failures, state should be RECONNECTING and backoff > initial
+        # After 3+ failures, state should be RECONNECTING and backoff > initial
         assert cm.state != ConnectionState.CONNECTED
         assert cm.sleep_duration >= ConnectionManager.INITIAL_BACKOFF
 

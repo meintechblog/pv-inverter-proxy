@@ -70,7 +70,7 @@ class OpenDTUPlugin(InverterPlugin):
 
         try:
             url = f"http://{self._gw.host}/api/livedata/status"
-            async with self._session.get(url) as resp:
+            async with self._session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 data = await resp.json()
         except Exception as e:
             log.warning("opendtu_poll_failed", serial=self.serial, error=str(e))
