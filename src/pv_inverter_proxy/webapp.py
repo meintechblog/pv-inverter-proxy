@@ -1587,7 +1587,7 @@ async def inverters_update_handler(request: web.Request) -> web.Response:
         return web.json_response({"error": f"Invalid request: {e}"}, status=400)
 
     was_enabled = entry.enabled
-    for field_name in ("host", "port", "unit_id", "enabled", "manufacturer", "model", "serial", "firmware_version", "rated_power", "name", "gateway_host", "gateway_user", "gateway_password"):
+    for field_name in ("host", "port", "unit_id", "enabled", "manufacturer", "model", "serial", "firmware_version", "rated_power", "name", "gateway_host", "gateway_user", "gateway_password", "throttle_order", "throttle_enabled"):
         if field_name in body:
             setattr(entry, field_name, body[field_name])
 
