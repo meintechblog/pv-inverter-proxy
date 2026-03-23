@@ -506,16 +506,17 @@ function buildInverterDashboard(container, data, deviceType) {
             minOpts += '<option value="' + s.w + '"' + (_closestStep(curMinW) === String(s.w) ? ' selected' : '') + '>' + s.label + '</option>';
         }
         minOpts += '<option value="min"' + (curMinPct === 1 ? ' selected' : '') + '>' + label1pct + '</option>';
-        minOpts += '<option value="0"' + (curMinPct === 0 ? ' selected' : '') + '>0</option>';
+        var zeroLabel = ratedW >= 2000 ? '0 kW' : '0 W';
+        minOpts += '<option value="0"' + (curMinPct === 0 ? ' selected' : '') + '>' + zeroLabel + '</option>';
 
-        // Max dropdown: Max → descending steps → 1%
+        // Max dropdown: Max → descending steps → 1% → 0
         var maxOpts = '<option value="max"' + (curMaxPct >= 100 ? ' selected' : '') + '>Max</option>';
         for (var i = 0; i < steps.length; i++) {
             var s = steps[i];
             maxOpts += '<option value="' + s.w + '"' + (curMaxPct < 100 && curMaxPct > 1 && _closestStep(curMaxW) === String(s.w) ? ' selected' : '') + '>' + s.label + '</option>';
         }
         maxOpts += '<option value="min"' + (curMaxPct === 1 ? ' selected' : '') + '>' + label1pct + '</option>';
-        maxOpts += '<option value="0"' + (curMaxPct === 0 ? ' selected' : '') + '>0</option>';
+        maxOpts += '<option value="0"' + (curMaxPct === 0 ? ' selected' : '') + '>' + zeroLabel + '</option>';
 
         clampHtml =
             '<div class="ve-gauge-clamp">' +

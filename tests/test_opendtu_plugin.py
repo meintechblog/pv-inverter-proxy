@@ -379,7 +379,7 @@ class TestWritePowerLimit:
         form_data = call_kwargs[1].get("data", call_kwargs.kwargs.get("data"))
         posted_json = json.loads(form_data["data"])
         assert posted_json["serial"] == "112183818450"
-        assert posted_json["limit_type"] == 1
+        assert posted_json["limit_type"] == 257  # Relative %, non-persistent (temporary)
         assert posted_json["limit_value"] == 50.0
 
     @pytest.mark.asyncio

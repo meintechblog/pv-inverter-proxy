@@ -296,7 +296,7 @@ class OpenDTUPlugin(InverterPlugin):
         url = f"http://{self._gw.host}/api/limit/config"
         payload = {
             "serial": self.serial,
-            "limit_type": 1,  # Relative percentage
+            "limit_type": 257,  # Relative percentage, non-persistent (temporary)
             "limit_value": limit_pct,
         }
         form_data = {"data": json.dumps(payload)}
