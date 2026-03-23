@@ -699,34 +699,51 @@ function buildPhaseCard(data) {
 
 function buildDCChannelCard(data) {
     var card = document.createElement('div');
-    card.className = 've-card';
+    card.className = 've-card ve-ac-dc-card';
     var channels = data.dc_channels || [];
     var inv = data.inverter || {};
 
-    card.innerHTML = '<h2 class="ve-card-title">DC Channels</h2>';
+    // AC section
+    var acV = inv.ac_voltage_an_v, acA = inv.ac_current_l1_a, acW = inv.ac_power_w;
+    var acFreq = inv.ac_frequency_hz, eff = inv.efficiency_pct;
+    card.innerHTML =
+        '<h2 class="ve-card-title">AC Output</h2>' +
+        '<table class="ve-phase-table"><thead><tr><th>Voltage</th><th>Current</th><th>Power</th><th>Frequency</th></tr></thead>' +
+        '<tbody><tr>' +
+        '<td class="ve-live-value ve-ac-voltage">' + (acV != null ? acV.toFixed(1) + ' V' : '--') + '</td>' +
+        '<td class="ve-live-value ve-ac-current">' + (acA != null ? acA.toFixed(2) + ' A' : '--') + '</td>' +
+        '<td class="ve-live-value ve-ac-power">' + (acW != null ? formatW(acW) : '--') + '</td>' +
+        '<td class="ve-live-value ve-ac-freq">' + (acFreq != null ? acFreq.toFixed(1) + ' Hz' : '--') + '</td>' +
+        '</tr></tbody></table>' +
+        (eff != null ? '<div style="margin-top:6px" class="ve-text-dim ve-live-value ve-ac-eff">Efficiency: ' + eff.toFixed(1) + '%</div>' : '');
 
-    if (channels.length === 0) {
-        // Fallback: show single DC from inverter data
-        card.innerHTML +=
-            '<table class="ve-dc-channel-table"><thead><tr><th>Channel</th><th>Voltage</th><th>Current</th><th>Power</th></tr></thead>' +
-            '<tbody><tr><td>DC</td>' +
-            '<td>' + (inv.dc_voltage_v != null ? inv.dc_voltage_v.toFixed(1) + ' V' : '--') + '</td>' +
-            '<td>' + (inv.dc_current_a != null ? inv.dc_current_a.toFixed(2) + ' A' : '--') + '</td>' +
-            '<td>' + (inv.dc_power_w != null ? formatW(inv.dc_power_w) : '--') + '</td>' +
-            '</tr></tbody></table>';
-    } else {
-        var rows = '';
+    // DC Strings section
+    if (channels.length > 0) {
+        var dcRows = '';
         for (var i = 0; i < channels.length; i++) {
             var ch = channels[i];
-            rows += '<tr><td>' + (ch.name || 'Ch ' + (i + 1)) + '</td>' +
-                '<td>' + (ch.voltage_v != null ? ch.voltage_v.toFixed(1) + ' V' : '--') + '</td>' +
-                '<td>' + (ch.current_a != null ? ch.current_a.toFixed(2) + ' A' : '--') + '</td>' +
-                '<td>' + (ch.power_w != null ? formatW(ch.power_w) : '--') + '</td>' +
+            dcRows += '<tr>' +
+                '<td>' + esc(ch.name || 'String ' + (i + 1)) + '</td>' +
+                '<td class="ve-live-value ve-dc' + i + '-voltage">' + (ch.voltage_v != null ? ch.voltage_v.toFixed(1) + ' V' : '--') + '</td>' +
+                '<td class="ve-live-value ve-dc' + i + '-current">' + (ch.current_a != null ? ch.current_a.toFixed(2) + ' A' : '--') + '</td>' +
+                '<td class="ve-live-value ve-dc' + i + '-power">' + (ch.power_w != null ? formatW(ch.power_w) : '--') + '</td>' +
+                '<td class="ve-live-value ve-dc' + i + '-yield">' + (ch.yield_day_wh != null ? ch.yield_day_wh + ' Wh' : '--') + '</td>' +
                 '</tr>';
         }
         card.innerHTML +=
-            '<table class="ve-dc-channel-table"><thead><tr><th>Channel</th><th>Voltage</th><th>Current</th><th>Power</th></tr></thead>' +
-            '<tbody>' + rows + '</tbody></table>';
+            '<h2 class="ve-card-title" style="margin-top:16px">DC Strings</h2>' +
+            '<table class="ve-phase-table"><thead><tr><th>String</th><th>Voltage</th><th>Current</th><th>Power</th><th>Today</th></tr></thead>' +
+            '<tbody>' + dcRows + '</tbody></table>';
+    } else {
+        // Fallback: single DC from inverter data
+        card.innerHTML +=
+            '<h2 class="ve-card-title" style="margin-top:16px">DC Input</h2>' +
+            '<table class="ve-phase-table"><thead><tr><th>Voltage</th><th>Current</th><th>Power</th></tr></thead>' +
+            '<tbody><tr>' +
+            '<td class="ve-live-value">' + (inv.dc_voltage_v != null ? inv.dc_voltage_v.toFixed(1) + ' V' : '--') + '</td>' +
+            '<td class="ve-live-value">' + (inv.dc_current_a != null ? inv.dc_current_a.toFixed(2) + ' A' : '--') + '</td>' +
+            '<td class="ve-live-value">' + (inv.dc_power_w != null ? formatW(inv.dc_power_w) : '--') + '</td>' +
+            '</tr></tbody></table>';
     }
 
     return card;
@@ -786,6 +803,20 @@ function updateActiveDeviceDashboard(data) {
     if (statusEl) statusEl.textContent = inv.status || '--';
     var tempEl = _activeDeviceContainer.querySelector('.ve-inv-temp');
     if (tempEl && inv.temperature_sink_c != null) tempEl.textContent = inv.temperature_sink_c.toFixed(1) + ' \u00B0C';
+
+    // Update AC/DC values for OpenDTU
+    updatePhaseVal('ve-ac-voltage', inv.ac_voltage_an_v != null ? inv.ac_voltage_an_v.toFixed(1) + ' V' : null);
+    updatePhaseVal('ve-ac-current', inv.ac_current_l1_a != null ? inv.ac_current_l1_a.toFixed(2) + ' A' : null);
+    updatePhaseVal('ve-ac-power', inv.ac_power_w != null ? formatW(inv.ac_power_w) : null);
+    updatePhaseVal('ve-ac-freq', inv.ac_frequency_hz != null ? inv.ac_frequency_hz.toFixed(1) + ' Hz' : null);
+    updatePhaseVal('ve-ac-eff', inv.efficiency_pct != null ? 'Efficiency: ' + inv.efficiency_pct.toFixed(1) + '%' : null);
+    var dcs = data.dc_channels || [];
+    for (var di = 0; di < dcs.length; di++) {
+        updatePhaseVal('ve-dc' + di + '-voltage', dcs[di].voltage_v != null ? dcs[di].voltage_v.toFixed(1) + ' V' : null);
+        updatePhaseVal('ve-dc' + di + '-current', dcs[di].current_a != null ? dcs[di].current_a.toFixed(2) + ' A' : null);
+        updatePhaseVal('ve-dc' + di + '-power', dcs[di].power_w != null ? formatW(dcs[di].power_w) : null);
+        updatePhaseVal('ve-dc' + di + '-yield', dcs[di].yield_day_wh != null ? dcs[di].yield_day_wh + ' Wh' : null);
+    }
 
     // Update OpenDTU status from cached snapshot data (instant, no extra fetch)
     var dtuS = data.opendtu_status;

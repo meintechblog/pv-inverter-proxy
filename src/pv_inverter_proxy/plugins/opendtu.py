@@ -53,6 +53,7 @@ class OpenDTUPlugin(InverterPlugin):
         self._limit_pending: bool = False
         # Cached OpenDTU status (updated every poll)
         self.opendtu_status: dict = {}
+        self.dc_channels: list[dict] = []
 
     async def connect(self) -> None:
         """Create aiohttp.ClientSession with Basic Auth for the gateway."""
@@ -115,27 +116,41 @@ class OpenDTUPlugin(InverterPlugin):
         ac_current_a = ac.get("Current", {}).get("v", 0.0)
         ac_freq_hz = ac.get("Frequency", {}).get("v", 0.0)
 
-        # Sum DC channels
-        dc_channels = inv.get("DC", {})
+        # Sum DC channels + cache per-string data
+        dc_channels_raw = inv.get("DC", {})
         dc_power_w = 0.0
         dc_current_a = 0.0
         dc_voltage_sum = 0.0
         dc_power_sum = 0.0
         total_yield_kwh = 0.0
         total_yield_day_kwh = 0.0
+        cached_dc = []
 
-        for ch_key in sorted(dc_channels.keys()):
-            ch = dc_channels[ch_key]
+        for ch_key in sorted(dc_channels_raw.keys()):
+            ch = dc_channels_raw[ch_key]
             ch_power = ch.get("Power", {}).get("v", 0.0)
             ch_voltage = ch.get("Voltage", {}).get("v", 0.0)
             ch_current = ch.get("Current", {}).get("v", 0.0)
+            ch_yield_day = ch.get("YieldDay", {}).get("v", 0.0)
+            ch_yield_total = ch.get("YieldTotal", {}).get("v", 0.0)
 
             dc_power_w += ch_power
             dc_current_a += ch_current
-            dc_voltage_sum += ch_voltage * ch_power  # For power-weighted average
+            dc_voltage_sum += ch_voltage * ch_power
             dc_power_sum += ch_power
-            total_yield_kwh += ch.get("YieldTotal", {}).get("v", 0.0)
-            total_yield_day_kwh += ch.get("YieldDay", {}).get("v", 0.0)
+            total_yield_kwh += ch_yield_total
+            total_yield_day_kwh += ch_yield_day
+
+            cached_dc.append({
+                "name": ch.get("name", {}).get("u", "") if isinstance(ch.get("name"), dict) else (ch.get("name") or f"String {int(ch_key) + 1}"),
+                "voltage_v": round(ch_voltage, 1),
+                "current_a": round(ch_current, 2),
+                "power_w": round(ch_power, 1),
+                "yield_day_wh": round(ch_yield_day * 1000) if ch_yield_day < 100 else round(ch_yield_day),
+                "yield_total_kwh": round(ch_yield_total, 1),
+            })
+
+        self.dc_channels = cached_dc
 
         # Power-weighted average voltage
         dc_voltage_v = dc_voltage_sum / dc_power_sum if dc_power_sum > 0 else 0.0

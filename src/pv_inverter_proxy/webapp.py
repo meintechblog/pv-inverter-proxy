@@ -706,11 +706,14 @@ async def broadcast_device_snapshot(app: web.Application, device_id: str, snapsh
         dmin, dmax = bc_ctx.control_state.get_device_clamp(device_id)
         snapshot["control"]["clamp_min_pct"] = dmin
         snapshot["control"]["clamp_max_pct"] = dmax
-    # Inject cached OpenDTU status for instant display
+    # Inject cached OpenDTU data for instant display
     if bc_ctx:
         ds = bc_ctx.devices.get(device_id)
-        if ds and ds.plugin and hasattr(ds.plugin, "opendtu_status") and ds.plugin.opendtu_status:
-            snapshot["opendtu_status"] = ds.plugin.opendtu_status
+        if ds and ds.plugin and hasattr(ds.plugin, "opendtu_status"):
+            if ds.plugin.opendtu_status:
+                snapshot["opendtu_status"] = ds.plugin.opendtu_status
+            if hasattr(ds.plugin, "dc_channels") and ds.plugin.dc_channels:
+                snapshot["dc_channels"] = ds.plugin.dc_channels
     payload = json.dumps({"type": "device_snapshot", "device_id": device_id, "data": snapshot})
     for ws in set(clients):
         try:
