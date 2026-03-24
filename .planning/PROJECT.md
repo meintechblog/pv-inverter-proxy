@@ -64,9 +64,9 @@ Venus OS muss alle PV-Inverter (egal welche Marke/Protokoll) als einen einzigen 
 
 ### Active
 
-- [ ] Shelly Plugin: Shelly Smart Devices als Inverter-Plugin mit Profil-System (Gen1/Gen2/Gen3)
-- [ ] Auto-Detection der Shelly-Generation beim Hinzufuegen
-- [ ] Shelly Polling: Leistung, Spannung, Strom, Energie, Temperatur via REST API
+- ✓ Shelly Plugin: Shelly Smart Devices als Inverter-Plugin mit Profil-System (Gen1/Gen2/Gen3) — Validated in Phase 28: Plugin Core & Profiles
+- ✓ Auto-Detection der Shelly-Generation beim Hinzufuegen — Validated in Phase 28: Plugin Core & Profiles
+- ✓ Shelly Polling: Leistung, Spannung, Strom, Energie, Temperatur via REST API — Validated in Phase 28: Plugin Core & Profiles
 - [ ] Shelly Switch-Steuerung: On/Off per Webapp (kein Power-Limiting)
 - [ ] Shelly Device-Dashboard: Gauge, AC-Werte, Connection-Card mit On/Off Toggle
 - [ ] Shelly Aggregation: Daten fliessen in virtuellen PV-Inverter ein
