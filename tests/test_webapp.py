@@ -815,3 +815,110 @@ async def test_distributor_get_device_limits():
     )
     limits = dist.get_device_limits()
     assert limits == {"dev1": 75.0, "dev2": 100.0}
+
+
+# --- Shelly Switch Route Tests (Phase 29) ---
+
+class TestShellySwitchRoute:
+    """CTRL-01: POST /api/devices/{id}/shelly/switch endpoint."""
+
+    async def test_switch_on_success(self, client):
+        """POST with {"on": true} on a Shelly device returns {"success": true}."""
+        from pv_inverter_proxy.plugins.shelly import ShellyPlugin
+
+        # Add a Shelly device to the app context
+        plugin = MagicMock(spec=ShellyPlugin)
+        plugin.switch = AsyncMock(return_value=True)
+        ds = DeviceState(conn_mgr=MagicMock(), poll_counter={"success": 0, "total": 0}, last_poll_data={})
+        ds.plugin = plugin
+        client.app["app_ctx"].devices["shelly1"] = ds
+
+        resp = await client.post("/api/devices/shelly1/shelly/switch", json={"on": True})
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["success"] is True
+        plugin.switch.assert_called_once_with(True)
+
+    async def test_switch_off_success(self, client):
+        """POST with {"on": false} on a Shelly device returns {"success": true}."""
+        from pv_inverter_proxy.plugins.shelly import ShellyPlugin
+
+        plugin = MagicMock(spec=ShellyPlugin)
+        plugin.switch = AsyncMock(return_value=True)
+        ds = DeviceState(conn_mgr=MagicMock(), poll_counter={"success": 0, "total": 0}, last_poll_data={})
+        ds.plugin = plugin
+        client.app["app_ctx"].devices["shelly1"] = ds
+
+        resp = await client.post("/api/devices/shelly1/shelly/switch", json={"on": False})
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["success"] is True
+        plugin.switch.assert_called_once_with(False)
+
+    async def test_switch_non_shelly_device(self, client):
+        """POST on a non-Shelly device returns 400."""
+        resp = await client.post("/api/devices/default/shelly/switch", json={"on": True})
+        assert resp.status == 400
+        data = await resp.json()
+        assert data["success"] is False
+
+    async def test_switch_unknown_device(self, client):
+        """POST on unknown device returns 404."""
+        resp = await client.post("/api/devices/nonexistent/shelly/switch", json={"on": True})
+        assert resp.status == 404
+        data = await resp.json()
+        assert data["success"] is False
+
+    async def test_switch_invalid_body(self, client):
+        """POST with invalid JSON returns 400."""
+        from pv_inverter_proxy.plugins.shelly import ShellyPlugin
+
+        plugin = MagicMock(spec=ShellyPlugin)
+        ds = DeviceState(conn_mgr=MagicMock(), poll_counter={"success": 0, "total": 0}, last_poll_data={})
+        ds.plugin = plugin
+        client.app["app_ctx"].devices["shelly1"] = ds
+
+        resp = await client.post("/api/devices/shelly1/shelly/switch", data=b"not json")
+        assert resp.status == 400
+
+    async def test_switch_missing_on_field(self, client):
+        """POST with missing 'on' field returns 400."""
+        from pv_inverter_proxy.plugins.shelly import ShellyPlugin
+
+        plugin = MagicMock(spec=ShellyPlugin)
+        ds = DeviceState(conn_mgr=MagicMock(), poll_counter={"success": 0, "total": 0}, last_poll_data={})
+        ds.plugin = plugin
+        client.app["app_ctx"].devices["shelly1"] = ds
+
+        resp = await client.post("/api/devices/shelly1/shelly/switch", json={"action": "toggle"})
+        assert resp.status == 400
+        data = await resp.json()
+        assert "'on'" in data["error"]
+
+
+class TestShellyThrottleDefault:
+    """CTRL-03: Adding Shelly device defaults throttle_enabled to False."""
+
+    async def test_shelly_defaults_throttle_disabled(self, client):
+        """Adding device with type=shelly defaults throttle_enabled to False."""
+        resp = await client.post("/api/inverters", json={
+            "host": "192.168.1.50",
+            "port": 80,
+            "unit_id": 1,
+            "type": "shelly",
+        })
+        assert resp.status == 201
+        data = await resp.json()
+        assert data["throttle_enabled"] is False
+
+    async def test_solaredge_keeps_throttle_enabled(self, client):
+        """Adding device with type=solaredge keeps throttle_enabled as True."""
+        resp = await client.post("/api/inverters", json={
+            "host": "192.168.1.51",
+            "port": 1502,
+            "unit_id": 1,
+            "type": "solaredge",
+        })
+        assert resp.status == 201
+        data = await resp.json()
+        assert data["throttle_enabled"] is True
