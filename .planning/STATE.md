@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Shelly Plugin
 status: Ready to plan
-stopped_at: Completed 29-01-PLAN.md
-last_updated: "2026-03-24T00:55:46.175Z"
+stopped_at: "Checkpoint: 30-02 Task 3 human-verify"
+last_updated: "2026-03-24T08:44:49.505Z"
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 3
+  total_plans: 4
+  completed_plans: 4
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Venus OS muss alle PV-Inverter als einen virtuellen Fronius-Inverter erkennen und steuern koennen
-**Current focus:** Phase 29 — switch-control-config-wiring
+**Current focus:** Phase 30 — add-device-flow-discovery
 
 ## Current Position
 
-Phase: 30
+Phase: 31
 Plan: Not started
 
 ## Performance Metrics
@@ -53,6 +53,10 @@ Plan: Not started
 - [Phase 28]: Zero new deps for Shelly -- reuse aiohttp, energy offset tracking for counter resets
 - [Phase 29]: ShellyPlugin.switch() wraps profile.switch() with session injection and error handling
 - [Phase 29]: Shelly devices default throttle_enabled=False (on/off only, no percentage limiting)
+- [Phase 30]: Reused mDNS discovery pattern from mdns_discovery.py for Shelly devices
+- [Phase 30]: Gen2+ devices map to generation=gen2 with gen_display showing actual gen number
+- [Phase 30]: Probe-on-Add: single click probes Shelly, shows generation, then auto-saves
+- [Phase 30]: Type-filtered discovery: Discover button routes to mDNS for Shelly vs Modbus scan for SolarEdge
 
 ### Pending Todos
 
@@ -64,6 +68,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-24T00:50:30.340Z
-Stopped at: Completed 29-01-PLAN.md
+Last session: 2026-03-24T01:50:35.434Z
+Stopped at: Checkpoint: 30-02 Task 3 human-verify
 Resume point: Plan phase 28 (Plugin Core & Profiles)
