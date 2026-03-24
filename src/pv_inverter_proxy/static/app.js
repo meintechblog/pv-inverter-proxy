@@ -757,8 +757,8 @@ function buildDCChannelCard(data) {
             '<h2 class="ve-card-title" style="margin-top:16px">DC Strings</h2>' +
             '<table class="ve-phase-table"><thead><tr><th>String</th><th>Voltage</th><th>Current</th><th>Power</th><th>Today</th></tr></thead>' +
             '<tbody>' + dcRows + '</tbody></table>';
-    } else {
-        // Fallback: single DC from inverter data
+    } else if (inv.dc_voltage_v || inv.dc_current_a || inv.dc_power_w) {
+        // Fallback: single DC from inverter data (only if DC data exists)
         card.innerHTML +=
             '<h2 class="ve-card-title" style="margin-top:16px">DC Input</h2>' +
             '<table class="ve-phase-table"><thead><tr><th>Voltage</th><th>Current</th><th>Power</th></tr></thead>' +
