@@ -2027,7 +2027,9 @@ function showAddForm(formArea, actions, type, modal) {
                     if (probeHint) {
                         probeHint.style.display = 'block';
                         probeHint.className = 've-hint-card ve-hint-card--success ve-add-probe-hint';
-                        probeHint.innerHTML = '<div class="ve-hint-header">Detected ' + esc(result.gen_display) + ' — ' + esc(result.model) + '</div>';
+                        var probeTitle = 'Detected ' + esc(result.gen_display) + ' — ' + esc(result.model);
+                        if (result.switch_name) probeTitle += ' (' + esc(result.switch_name) + ')';
+                        probeHint.innerHTML = '<div class="ve-hint-header">' + probeTitle + '</div>';
                     }
                     payload.shelly_gen = result.generation;
                     if (ratedPower && ratedPower.value) payload.rated_power = parseInt(ratedPower.value) || 0;
@@ -2124,9 +2126,11 @@ function triggerShellyDiscover(formArea) {
         var html = '';
         data.devices.forEach(function(dev) {
             var genLabel = dev.generation === 'gen2' ? 'Gen2' : (dev.generation === 'gen3' ? 'Gen3' : 'Gen1');
+            var displayName = dev.switch_name || dev.name || dev.model || 'Shelly';
+            var subtitle = dev.switch_name ? (dev.model || dev.name) : '';
             html += '<div class="ve-scan-result">' +
-                '<span class="ve-scan-result-check"><input type="checkbox" class="ve-scan-result-cb" data-host="' + esc(dev.host) + '" data-name="' + esc(dev.name || dev.model || 'Shelly') + '" data-gen="' + esc(dev.generation) + '"></span>' +
-                '<span class="ve-scan-result-identity">' + esc(dev.name || dev.model || 'Shelly') + '</span>' +
+                '<span class="ve-scan-result-check"><input type="checkbox" class="ve-scan-result-cb" data-host="' + esc(dev.host) + '" data-name="' + esc(displayName) + '" data-gen="' + esc(dev.generation) + '"></span>' +
+                '<span class="ve-scan-result-identity">' + esc(displayName) + (subtitle ? ' <span style="color:var(--ve-text-dim);font-size:0.8rem">(' + esc(subtitle) + ')</span>' : '') + '</span>' +
                 '<span class="ve-scan-result-host">' + esc(dev.host) + '</span>' +
                 '<span class="ve-scan-result-unit">' + genLabel + '</span>' +
                 '</div>';

@@ -74,7 +74,22 @@ async def discover_shelly_devices(
                 "generation": f"gen{gen}",
                 "model": app,
                 "firmware": ver,
+                "switch_name": None,
             })
+
+        # Enrich with switch names via HTTP probe (Gen2+ only)
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=3.0)
+        ) as session:
+            for dev in results:
+                gen_num = int(dev["generation"].replace("gen", ""))
+                if gen_num >= 2:
+                    try:
+                        async with session.get(f"http://{dev['host']}/rpc/Switch.GetConfig?id=0") as resp:
+                            sw_data = await resp.json()
+                            dev["switch_name"] = sw_data.get("name") or None
+                    except Exception:
+                        pass
 
         log.info("shelly_mdns_scan_complete", devices_found=len(results), timeout=timeout)
         return results
@@ -115,12 +130,26 @@ async def probe_shelly_device(host: str, timeout: float = 5.0) -> dict:
         model = data.get("app", data.get("type", "Unknown"))
         mac = data.get("mac", "")
 
+        # Try to fetch user-configured switch name (Gen2+)
+        switch_name = None
+        if gen_value >= 2:
+            try:
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=timeout)
+                ) as session:
+                    async with session.get(f"http://{host}/rpc/Switch.GetConfig?id=0") as sw_resp:
+                        sw_data = await sw_resp.json()
+                        switch_name = sw_data.get("name") or None
+            except Exception:
+                pass  # Switch name is optional
+
         return {
             "success": True,
             "generation": generation,
             "model": model,
             "mac": mac,
             "gen_display": gen_display,
+            "switch_name": switch_name,
         }
     except Exception as e:
         return {"success": False, "error": f"Could not reach Shelly at {host}: {e}"}
