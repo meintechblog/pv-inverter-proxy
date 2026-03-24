@@ -103,8 +103,8 @@ Full details: `.planning/milestones/v5.0-ROADMAP.md`
 - [x] **Phase 28: Plugin Core & Profiles** - ShellyPlugin with Gen1/Gen2 profiles, auto-detection, polling, SunSpec encoding, graceful degradation (completed 2026-03-24)
 - [x] **Phase 29: Switch Control & Config Wiring** - On/Off relay control, switch status display, power-limit no-op, plugin_factory integration (completed 2026-03-24)
 - [x] **Phase 30: Add-Device Flow & Discovery** - Shelly as third option in add-device dialog, auto-detection UI, LAN discovery, config page (completed 2026-03-24)
-- [ ] **Phase 31: Device Dashboard & Connection Card** - Gauge, AC values, Shelly-specific connection card with on/off toggle
-- [ ] **Phase 32: Aggregation Integration** - Shelly data flows into virtual PV inverter, DC-averaging skip
+- [x] **Phase 31: Device Dashboard & Connection Card** - Gauge, AC values, Shelly-specific connection card with on/off toggle (completed 2026-03-24)
+- [x] **Phase 32: Aggregation Integration** - Shelly data flows into virtual PV inverter, DC-averaging skip (completed 2026-03-24)
 
 ## Phase Details
 
@@ -178,5 +178,5 @@ Phases execute in numeric order: 28 -> 29 -> 30 -> 31 -> 32
 | 28. Plugin Core & Profiles | 0/1 | Complete    | 2026-03-24 |
 | 29. Switch Control & Config Wiring | 0/1 | Complete    | 2026-03-24 |
 | 30. Add-Device Flow & Discovery | 0/2 | Complete    | 2026-03-24 |
-| 31. Device Dashboard & Connection Card | 0/? | Not started | - |
-| 32. Aggregation Integration | 0/? | Not started | - |
+| 31. Device Dashboard & Connection Card | 0/? | Complete    | 2026-03-24 |
+| 32. Aggregation Integration | 0/? | Complete    | 2026-03-24 |
