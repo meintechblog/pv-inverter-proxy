@@ -463,9 +463,9 @@ function buildInverterDashboard(container, data, deviceType) {
     var offset = arcLength * (1 - pct);
     var gc = gaugeColor(pct);
 
-    // Power limit dropdowns for all inverter types
+    // Power limit dropdowns (not for Shelly — no power limiting support)
     var clampHtml = '';
-    if (ratedW > 0) {
+    if (ratedW > 0 && deviceType !== 'shelly') {
         var ctrl = data.control || {};
         var curMinPct = ctrl.clamp_min_pct || 0;
         var curMaxPct = ctrl.clamp_max_pct != null ? ctrl.clamp_max_pct : 100;
