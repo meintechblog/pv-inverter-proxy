@@ -42,6 +42,7 @@ class InverterEntry:
     gateway_host: str = ""        # OpenDTU gateway IP (opendtu type only)
     gateway_user: str = ""        # OpenDTU Basic Auth username (empty = default "admin")
     gateway_password: str = ""    # OpenDTU Basic Auth password (empty = default "openDTU42")
+    shelly_gen: str = ""              # Shelly generation: "gen1" or "gen2" (auto-detected, persisted)
     rated_power: int = 0           # Rated power in watts (0 = unknown)
     throttle_order: int = 1           # TO 1 = first to throttle
     throttle_enabled: bool = True     # False = monitoring-only (no limit commands)

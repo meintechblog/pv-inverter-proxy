@@ -33,6 +33,7 @@ from pv_inverter_proxy.config import (
 )
 from pv_inverter_proxy.control import validate_wmaxlimpct
 from pv_inverter_proxy.mdns_discovery import discover_mqtt_brokers
+from pv_inverter_proxy.shelly_discovery import discover_shelly_devices, probe_shelly_device
 from pv_inverter_proxy.mqtt_publisher import mqtt_publish_loop
 from pv_inverter_proxy.plugins.opendtu import OpenDTUPlugin
 from pv_inverter_proxy.scanner import ScanConfig, scan_subnet
@@ -1391,6 +1392,32 @@ async def mqtt_discover_handler(request: web.Request) -> web.Response:
         )
 
 
+async def shelly_probe_handler(request: web.Request) -> web.Response:
+    """POST /api/shelly/probe -- probe a Shelly device at given host."""
+    try:
+        body = await request.json()
+        host = body["host"]
+    except (KeyError, ValueError, TypeError) as e:
+        return web.json_response({"error": f"Invalid request: {e}"}, status=400)
+    result = await probe_shelly_device(host)
+    return web.json_response(result)
+
+
+async def shelly_discover_handler(request: web.Request) -> web.Response:
+    """POST /api/shelly/discover -- scan LAN for Shelly devices via mDNS."""
+    try:
+        config: Config = request.app["config"]
+        existing_ips = {inv.host for inv in config.inverters if inv.type == "shelly"}
+        devices = await discover_shelly_devices(timeout=3.0, skip_ips=existing_ips)
+        return web.json_response({"success": True, "devices": devices})
+    except Exception as e:
+        log.error("shelly_discover_failed", error=str(e))
+        return web.json_response(
+            {"success": False, "error": f"Shelly discovery failed: {e}"},
+            status=500,
+        )
+
+
 async def _reconfigure_active(app: web.Application, config: Config, device_id: str = "", action: str = "") -> None:
     """Reconfigure devices via DeviceRegistry.
 
@@ -1553,6 +1580,8 @@ async def inverters_add_handler(request: web.Request) -> web.Response:
         gateway_host=body.get("gateway_host", host if dev_type == "opendtu" else ""),
         gateway_user=body.get("gateway_user", ""),
         gateway_password=body.get("gateway_password", ""),
+        shelly_gen=body.get("shelly_gen", ""),
+        rated_power=body.get("rated_power", 0),
     )
     config: Config = request.app["config"]
     config.inverters.append(entry)
@@ -1815,6 +1844,8 @@ async def create_webapp(
     app.router.add_put("/api/scanner/config", scanner_config_save_handler)
     app.router.add_post("/api/scanner/discover", scanner_discover_handler)
     app.router.add_post("/api/mqtt/discover", mqtt_discover_handler)
+    app.router.add_post("/api/shelly/probe", shelly_probe_handler)
+    app.router.add_post("/api/shelly/discover", shelly_discover_handler)
     app.router.add_post("/api/opendtu/test-auth", opendtu_test_auth_handler)
     app.router.add_get("/api/devices/{id}/opendtu/status", opendtu_status_handler)
     app.router.add_post("/api/devices/{id}/opendtu/power", opendtu_power_handler)
