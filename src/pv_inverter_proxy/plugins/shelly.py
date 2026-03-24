@@ -72,7 +72,12 @@ class ShellyPlugin(InverterPlugin):
                     data = await resp.json()
 
                 gen = data.get("gen", 0)
-                self._generation = "gen2" if gen >= 2 else "gen1"
+                if gen >= 3:
+                    self._generation = "gen3"
+                elif gen >= 2:
+                    self._generation = "gen2"
+                else:
+                    self._generation = "gen1"
                 self._device_info = data
             except Exception as e:
                 log.warning(
@@ -83,7 +88,7 @@ class ShellyPlugin(InverterPlugin):
                 )
                 self._generation = "gen1"
 
-        self._profile = Gen2Profile() if self._generation == "gen2" else Gen1Profile()
+        self._profile = Gen2Profile() if self._generation in ("gen2", "gen3") else Gen1Profile()
 
         log.info(
             "shelly_plugin_connected",

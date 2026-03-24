@@ -191,7 +191,7 @@ class TestProbeHandler:
 
     @pytest.mark.asyncio
     async def test_probe_gen3_device(self):
-        """Gen3 device returns gen2 generation string (gen2+ family)."""
+        """Gen3 device returns gen3 generation string."""
         mock_resp = AsyncMock()
         mock_resp.json = AsyncMock(return_value={
             "gen": 3,
@@ -210,7 +210,7 @@ class TestProbeHandler:
             result = await probe_shelly_device("192.168.1.52")
 
         assert result["success"] is True
-        assert result["generation"] == "gen2"
+        assert result["generation"] == "gen3"
         assert result["model"] == "Mini1PMG3"
         assert result["gen_display"] == "Gen3"
 

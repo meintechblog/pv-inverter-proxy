@@ -101,9 +101,12 @@ async def probe_shelly_device(host: str, timeout: float = 5.0) -> dict:
                 data = await resp.json()
 
         gen_value = data.get("gen", 0)
-        if gen_value >= 2:
+        if gen_value >= 3:
+            generation = "gen3"
+            gen_display = "Gen3"
+        elif gen_value >= 2:
             generation = "gen2"
-            gen_display = f"Gen{gen_value}"
+            gen_display = "Gen2"
         else:
             generation = "gen1"
             gen_display = "Gen1"
