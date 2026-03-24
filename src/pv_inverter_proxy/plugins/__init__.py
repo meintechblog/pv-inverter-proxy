@@ -11,7 +11,7 @@ def plugin_factory(
     """Create the appropriate InverterPlugin for an InverterEntry.
 
     Args:
-        entry: InverterEntry with type field ("solaredge" or "opendtu").
+        entry: InverterEntry with type field ("solaredge", "opendtu", or "shelly").
         gateway_config: Optional GatewayConfig for opendtu entries.
             If None for opendtu, a default is created from entry.gateway_host.
 
@@ -37,5 +37,13 @@ def plugin_factory(
             serial=entry.serial,
             name=entry.name,
         )
+    elif entry.type == "shelly":
+        from pv_inverter_proxy.plugins.shelly import ShellyPlugin
+        return ShellyPlugin(
+            host=entry.host,
+            generation=entry.shelly_gen,
+            name=entry.name,
+            rated_power=entry.rated_power,
+        )
     else:
-        raise ValueError(f"Unknown inverter type: {entry.type}")
+        raise ValueError(f"Unknown inverter type: {entry.type} (valid: solaredge, opendtu, shelly)")
