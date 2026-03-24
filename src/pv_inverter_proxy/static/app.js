@@ -701,13 +701,16 @@ function buildPhaseCard(data) {
         '<table class="ve-phase-table"><thead><tr><th></th><th>Voltage</th><th>Current</th><th>Power</th></tr></thead>' +
         '<tbody>' +
         '<tr><td class="ve-phase-label">L1</td><td class="ve-live-value ve-l1-voltage">' + fmtV(l1v) + '</td><td class="ve-live-value ve-l1-current">' + fmtA(l1a) + '</td><td class="ve-live-value ve-l1-power">' + fmtW(l1v, l1a) + '</td></tr>' +
+        ((!l2v && !l2a && !l3v && !l3a) ? '' :
         '<tr><td class="ve-phase-label">L2</td><td class="ve-live-value ve-l2-voltage">' + fmtV(l2v) + '</td><td class="ve-live-value ve-l2-current">' + fmtA(l2a) + '</td><td class="ve-live-value ve-l2-power">' + fmtW(l2v, l2a) + '</td></tr>' +
-        '<tr><td class="ve-phase-label">L3</td><td class="ve-live-value ve-l3-voltage">' + fmtV(l3v) + '</td><td class="ve-live-value ve-l3-current">' + fmtA(l3a) + '</td><td class="ve-live-value ve-l3-power">' + fmtW(l3v, l3a) + '</td></tr>' +
+        '<tr><td class="ve-phase-label">L3</td><td class="ve-live-value ve-l3-voltage">' + fmtV(l3v) + '</td><td class="ve-live-value ve-l3-current">' + fmtA(l3a) + '</td><td class="ve-live-value ve-l3-power">' + fmtW(l3v, l3a) + '</td></tr>') +
         '</tbody></table>' +
+        ((dcV || dcA || dcW) ?
         '<h2 class="ve-card-title" style="margin-top:12px">DC Input' +
         '  <span class="ve-card-subtitle"><span class="ve-se-dc-v">' + (dcV != null ? dcV.toFixed(0) + 'V' : '--') + '</span>' +
             ' · <span class="ve-se-dc-a">' + (dcA != null ? dcA.toFixed(1) + 'A' : '--') + '</span>' +
-            ' · <span class="ve-se-dc-w">' + (dcW != null ? formatW(dcW) : '--') + '</span></span></h2>';
+            ' · <span class="ve-se-dc-w">' + (dcW != null ? formatW(dcW) : '--') + '</span></span></h2>'
+        : '');
 
     return card;
 }
