@@ -130,7 +130,9 @@ Plans:
   1. The proxy can send on/off switch commands to a Shelly device via the correct Gen1 or Gen2 relay endpoint
   2. The current switch state (on/off) is visible in the device data returned by the plugin
   3. When Venus OS sends a power-limit command, write_power_limit() succeeds as a no-op and the device is excluded from throttling by default
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 29-01-PLAN.md -- Switch control API route, ShellyPlugin.switch() method, throttle_enabled default
 
 ### Phase 30: Add-Device Flow & Discovery
 **Goal**: Users can add Shelly devices through the webapp with automatic generation detection, and discover Shelly devices on the LAN
@@ -171,7 +173,7 @@ Phases execute in numeric order: 28 -> 29 -> 30 -> 31 -> 32
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 28. Plugin Core & Profiles | 0/1 | Complete    | 2026-03-24 |
-| 29. Switch Control & Config Wiring | 0/? | Not started | - |
+| 29. Switch Control & Config Wiring | 0/1 | Not started | - |
 | 30. Add-Device Flow & Discovery | 0/? | Not started | - |
 | 31. Device Dashboard & Connection Card | 0/? | Not started | - |
 | 32. Aggregation Integration | 0/? | Not started | - |
