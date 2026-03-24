@@ -118,7 +118,9 @@ Full details: `.planning/milestones/v5.0-ROADMAP.md`
   3. The plugin polls power (W), voltage (V), current (A), frequency (Hz), energy (Wh), and temperature (C) from the Shelly device at the configured interval
   4. Polled data is encoded into SunSpec Model 103 registers identical to how OpenDTU encodes its data
   5. Missing fields (e.g., no temperature on some Gen1 models) result in zero/default values instead of errors
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 28-01-PLAN.md -- ShellyPlugin with Gen1/Gen2 profiles, tests, and factory wiring
 
 ### Phase 29: Switch Control & Config Wiring
 **Goal**: Users can turn Shelly relays on/off from the proxy, and Shelly devices are recognized by the plugin factory
@@ -168,7 +170,7 @@ Phases execute in numeric order: 28 -> 29 -> 30 -> 31 -> 32
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 28. Plugin Core & Profiles | 0/? | Not started | - |
+| 28. Plugin Core & Profiles | 0/1 | Not started | - |
 | 29. Switch Control & Config Wiring | 0/? | Not started | - |
 | 30. Add-Device Flow & Discovery | 0/? | Not started | - |
 | 31. Device Dashboard & Connection Card | 0/? | Not started | - |
