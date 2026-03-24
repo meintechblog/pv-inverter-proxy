@@ -1,4 +1,4 @@
-# Project: PV Inverter Proxy
+# Project: PV-Inverter-Master
 
 ## Design System
 

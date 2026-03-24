@@ -1,7 +1,7 @@
 [project]
-name = "pv-inverter-proxy"
-version = "0.1.0"
-description = "Modbus TCP proxy making SolarEdge inverters appear as Fronius to Venus OS"
+name = "pv-inverter-master"
+version = "6.0.0"
+description = "Multi-inverter proxy aggregating SolarEdge, OpenDTU, and Shelly devices into a single Fronius-compatible SunSpec endpoint for Venus OS"
 requires-python = ">=3.11"
 dependencies = [
     "pymodbus>=3.6,<4.0",
