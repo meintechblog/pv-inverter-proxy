@@ -849,11 +849,16 @@ def _build_device_list(app_ctx: Any, config: Config) -> list[dict]:
             "unit_id": inv.unit_id,
             "connection_state": conn_state,
             "power_w": power_w,
+            "rated_power": inv.rated_power,
+            "throttle_order": inv.throttle_order,
+            "throttle_enabled": inv.throttle_enabled,
         }
         if inv.type == "opendtu":
             dev_entry["gateway_host"] = inv.gateway_host
             dev_entry["gateway_user"] = inv.gateway_user
             dev_entry["gateway_password"] = inv.gateway_password
+        if inv.type == "shelly":
+            dev_entry["shelly_gen"] = inv.shelly_gen
         devices.append(dev_entry)
 
     venus_conn = "connected" if app_ctx.venus_mqtt_connected else "disconnected"
