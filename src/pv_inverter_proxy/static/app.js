@@ -970,8 +970,14 @@ function buildInverterConfigForm(container, device) {
         '</div>' +
         '<div class="ve-form-group"><label>Display Name</label><input type="text" class="ve-input ve-cfg-name" value="' + esc(device.name || '') + '" placeholder="e.g. SE30K"></div>' +
         '<div class="ve-form-group"><label>Host</label><input type="text" class="ve-input ve-cfg-host" value="' + esc(device.host || '') + '" placeholder="192.168.1.100"></div>' +
-        '<div class="ve-form-group"><label>Port</label><input type="number" class="ve-input ve-cfg-port" value="' + (device.port || 1502) + '" min="1" max="65535"></div>' +
-        '<div class="ve-form-group"><label>Unit ID</label><input type="number" class="ve-input ve-cfg-unit" value="' + (device.unit_id || 1) + '" min="1" max="247"></div>' +
+        (device.type !== 'shelly' ?
+            '<div class="ve-form-group"><label>Port</label><input type="number" class="ve-input ve-cfg-port" value="' + (device.port || 1502) + '" min="1" max="65535"></div>' +
+            '<div class="ve-form-group"><label>Unit ID</label><input type="number" class="ve-input ve-cfg-unit" value="' + (device.unit_id || 1) + '" min="1" max="247"></div>'
+        : '') +
+        (device.type === 'shelly' ?
+            '<div class="ve-form-group"><label>Generation</label><span class="ve-gen-badge">' + esc(device.shelly_gen === 'gen2' ? 'Gen2' : (device.shelly_gen === 'gen3' ? 'Gen3' : 'Gen1')) + '</span></div>' +
+            '<div class="ve-form-group"><label>Rated Power (W)</label><input type="number" class="ve-input ve-cfg-rated-power" value="' + (device.rated_power || 0) + '" min="0"></div>'
+        : '') +
         (device.type === 'opendtu' ?
             '<div class="ve-form-group"><label>Gateway User</label><input type="text" class="ve-input ve-cfg-gw-user" value="' + esc(device.gateway_user || '') + '" placeholder="admin (default)"></div>' +
             '<div class="ve-form-group"><label>Gateway Password</label><input type="password" class="ve-input ve-cfg-gw-pass" value="' + esc(device.gateway_password || '') + '" placeholder="openDTU42 (default)"></div>'
@@ -999,7 +1005,8 @@ function buildInverterConfigForm(container, device) {
         throttle_enabled: device.throttle_enabled !== false,
         enabled: device.enabled !== false,
         gateway_user: device.gateway_user || '',
-        gateway_password: device.gateway_password || ''
+        gateway_password: device.gateway_password || '',
+        rated_power: String(device.rated_power || 0)
     };
 
     var nameInput = panel.querySelector('.ve-cfg-name');
@@ -1008,6 +1015,7 @@ function buildInverterConfigForm(container, device) {
     var unitInput = panel.querySelector('.ve-cfg-unit');
     var gwUserInput = panel.querySelector('.ve-cfg-gw-user');
     var gwPassInput = panel.querySelector('.ve-cfg-gw-pass');
+    var rpInput = panel.querySelector('.ve-cfg-rated-power');
     var toInput = panel.querySelector('.ve-cfg-throttle-order');
     var teToggle = panel.querySelector('.ve-cfg-throttle-enabled');
     var enabledToggle = panel.querySelector('.ve-cfg-enabled');
@@ -1019,27 +1027,34 @@ function buildInverterConfigForm(container, device) {
     function checkDirty() {
         var dirty = nameInput.value !== originals.name ||
                     hostInput.value !== originals.host ||
-                    portInput.value !== originals.port ||
-                    unitInput.value !== originals.unit_id ||
+                    (portInput && portInput.value !== originals.port) ||
+                    (unitInput && unitInput.value !== originals.unit_id) ||
                     toInput.value !== originals.throttle_order ||
                     teToggle.checked !== originals.throttle_enabled ||
                     (gwUserInput && gwUserInput.value !== originals.gateway_user) ||
-                    (gwPassInput && gwPassInput.value !== originals.gateway_password);
+                    (gwPassInput && gwPassInput.value !== originals.gateway_password) ||
+                    (rpInput && rpInput.value !== originals.rated_power);
         savePair.style.display = dirty ? '' : 'none';
         // Highlight dirty fields
-        var trackFields = [nameInput, hostInput, portInput, unitInput, toInput];
+        var trackFields = [nameInput, hostInput, toInput];
+        if (portInput) trackFields.push(portInput);
+        if (unitInput) trackFields.push(unitInput);
         if (gwUserInput) trackFields.push(gwUserInput);
         if (gwPassInput) trackFields.push(gwPassInput);
+        if (rpInput) trackFields.push(rpInput);
         trackFields.forEach(function(el) {
-            var orig = el === nameInput ? originals.name : el === hostInput ? originals.host : el === portInput ? originals.port : el === unitInput ? originals.unit_id : el === toInput ? originals.throttle_order : el === gwUserInput ? originals.gateway_user : originals.gateway_password;
+            var orig = el === nameInput ? originals.name : el === hostInput ? originals.host : el === portInput ? originals.port : el === unitInput ? originals.unit_id : el === toInput ? originals.throttle_order : el === gwUserInput ? originals.gateway_user : el === gwPassInput ? originals.gateway_password : el === rpInput ? originals.rated_power : '';
             if (el.value !== orig) el.classList.add('ve-input--dirty');
             else el.classList.remove('ve-input--dirty');
         });
     }
 
-    var inputFields = [nameInput, hostInput, portInput, unitInput, toInput];
+    var inputFields = [nameInput, hostInput, toInput];
+    if (portInput) inputFields.push(portInput);
+    if (unitInput) inputFields.push(unitInput);
     if (gwUserInput) inputFields.push(gwUserInput);
     if (gwPassInput) inputFields.push(gwPassInput);
+    if (rpInput) inputFields.push(rpInput);
     inputFields.forEach(function(el) {
         el.addEventListener('input', checkDirty);
     });
@@ -1048,12 +1063,13 @@ function buildInverterConfigForm(container, device) {
     cancelBtn.addEventListener('click', function() {
         nameInput.value = originals.name;
         hostInput.value = originals.host;
-        portInput.value = originals.port;
-        unitInput.value = originals.unit_id;
+        if (portInput) portInput.value = originals.port;
+        if (unitInput) unitInput.value = originals.unit_id;
         toInput.value = originals.throttle_order;
         teToggle.checked = originals.throttle_enabled;
         if (gwUserInput) gwUserInput.value = originals.gateway_user;
         if (gwPassInput) gwPassInput.value = originals.gateway_password;
+        if (rpInput) rpInput.value = originals.rated_power;
         checkDirty();
     });
 
@@ -1061,13 +1077,14 @@ function buildInverterConfigForm(container, device) {
         var payload = {
             name: nameInput.value.trim(),
             host: hostInput.value.trim(),
-            port: parseInt(portInput.value),
-            unit_id: parseInt(unitInput.value),
             throttle_order: parseInt(toInput.value),
             throttle_enabled: teToggle.checked
         };
+        if (portInput) payload.port = parseInt(portInput.value);
+        if (unitInput) payload.unit_id = parseInt(unitInput.value);
         if (gwUserInput) payload.gateway_user = gwUserInput.value.trim();
         if (gwPassInput) payload.gateway_password = gwPassInput.value.trim();
+        if (rpInput) payload.rated_power = parseInt(rpInput.value) || 0;
 
         fetch('/api/devices/' + device.id, {
             method: 'PUT',
@@ -1083,12 +1100,13 @@ function buildInverterConfigForm(container, device) {
             showToast('Device updated', 'success');
             originals.name = payload.name;
             originals.host = payload.host;
-            originals.port = String(payload.port);
-            originals.unit_id = String(payload.unit_id);
+            if (portInput) originals.port = String(payload.port);
+            if (unitInput) originals.unit_id = String(payload.unit_id);
             originals.throttle_order = String(payload.throttle_order);
             originals.throttle_enabled = payload.throttle_enabled;
             if (gwUserInput) originals.gateway_user = payload.gateway_user || '';
             if (gwPassInput) originals.gateway_password = payload.gateway_password || '';
+            if (rpInput) originals.rated_power = String(payload.rated_power || 0);
             checkDirty();
         })
         .catch(function(e) { showToast('Update failed: ' + e.message, 'error'); });
@@ -1843,6 +1861,7 @@ function showAddDeviceModal() {
         '  <div class="ve-add-type-picker">' +
         '    <div class="ve-add-type-card" data-type="solaredge">SolarEdge Inverter</div>' +
         '    <div class="ve-add-type-card" data-type="opendtu">OpenDTU Inverter</div>' +
+        '    <div class="ve-add-type-card" data-type="shelly">Shelly Device</div>' +
         '  </div>' +
         '  <div class="ve-add-form-area"></div>' +
         '  <div class="ve-add-modal-actions">' +
@@ -1895,6 +1914,12 @@ function showAddForm(formArea, actions, type, modal) {
             '<div class="ve-form-group"><label>Username</label><input type="text" class="ve-input ve-add-gw-user" placeholder="admin (default)"></div>' +
             '<div class="ve-form-group"><label>Password</label><input type="password" class="ve-input ve-add-gw-pass" placeholder="openDTU42 (default)"></div>' +
             '<div class="ve-hint-card ve-add-auth-hint" style="display:none"></div>';
+    } else if (type === 'shelly') {
+        formArea.innerHTML =
+            '<div class="ve-form-group"><label>Name (optional)</label><input type="text" class="ve-input ve-add-name" placeholder="e.g. Shelly Plus 1PM"></div>' +
+            '<div class="ve-form-group"><label>Host IP</label><input type="text" class="ve-input ve-add-host" placeholder="192.168.1.50"></div>' +
+            '<div class="ve-form-group"><label>Rated Power (W)</label><input type="number" class="ve-input ve-add-rated-power" value="" min="0" placeholder="0 (optional)"></div>' +
+            '<div class="ve-hint-card ve-add-probe-hint" style="display:none"></div>';
     }
 
     // Discover area
@@ -1986,6 +2011,43 @@ function showAddForm(formArea, actions, type, modal) {
                 addBtn.textContent = 'Add';
                 if (authHint) { authHint.style.display = 'block'; authHint.className = 've-hint-card ve-add-auth-hint'; authHint.innerHTML = '<div class="ve-hint-header">Connection failed: ' + esc(e.message) + '</div>'; }
             });
+        } else if (type === 'shelly') {
+            var probeHint = formArea.querySelector('.ve-add-probe-hint');
+            var ratedPower = formArea.querySelector('.ve-add-rated-power');
+            addBtn.disabled = true;
+            addBtn.textContent = 'Probing...';
+            fetch('/api/shelly/probe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ host: host.value.trim() })
+            }).then(function(r) { return r.json(); }).then(function(result) {
+                addBtn.disabled = false;
+                addBtn.textContent = 'Add';
+                if (result.success) {
+                    if (probeHint) {
+                        probeHint.style.display = 'block';
+                        probeHint.className = 've-hint-card ve-hint-card--success ve-add-probe-hint';
+                        probeHint.innerHTML = '<div class="ve-hint-header">Detected ' + esc(result.gen_display) + ' — ' + esc(result.model) + '</div>';
+                    }
+                    payload.shelly_gen = result.generation;
+                    if (ratedPower && ratedPower.value) payload.rated_power = parseInt(ratedPower.value) || 0;
+                    _doAdd();
+                } else {
+                    if (probeHint) {
+                        probeHint.style.display = 'block';
+                        probeHint.className = 've-hint-card ve-add-probe-hint';
+                        probeHint.innerHTML = '<div class="ve-hint-header">Could not reach device</div><p class="ve-hint-subtext">' + esc(result.error) + '</p>';
+                    }
+                }
+            }).catch(function(e) {
+                addBtn.disabled = false;
+                addBtn.textContent = 'Add';
+                if (probeHint) {
+                    probeHint.style.display = 'block';
+                    probeHint.className = 've-hint-card ve-add-probe-hint';
+                    probeHint.innerHTML = '<div class="ve-hint-header">Connection failed: ' + esc(e.message) + '</div>';
+                }
+            });
         } else {
             _doAdd();
         }
@@ -1993,7 +2055,11 @@ function showAddForm(formArea, actions, type, modal) {
 
     // Discover button handler
     discoverBtn.addEventListener('click', function() {
-        triggerAddModalScan(formArea);
+        if (type === 'shelly') {
+            triggerShellyDiscover(formArea);
+        } else {
+            triggerAddModalScan(formArea);
+        }
     });
 }
 
@@ -2023,6 +2089,69 @@ function triggerAddModalScan(formArea) {
     })
     .catch(function(e) {
         showToast('Scan failed: ' + e.message, 'error');
+    });
+}
+
+function triggerShellyDiscover(formArea) {
+    var scanArea = formArea.querySelector('.ve-add-scan-area');
+    var progress = formArea.querySelector('.ve-scan-progress');
+    var fill = formArea.querySelector('.ve-add-scan-fill');
+    var status = formArea.querySelector('.ve-add-scan-status');
+    var results = formArea.querySelector('.ve-add-scan-results');
+
+    scanArea.style.display = '';
+    progress.style.display = '';
+    fill.style.width = '50%';
+    status.textContent = 'Scanning for Shelly devices via mDNS...';
+    results.innerHTML = '';
+
+    fetch('/api/shelly/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        progress.style.display = 'none';
+        if (!data.success) {
+            results.innerHTML = '<div class="ve-hint-card"><div class="ve-hint-header">' + esc(data.error) + '</div></div>';
+            return;
+        }
+        if (data.devices.length === 0) {
+            results.innerHTML = '<div class="ve-hint-card"><div class="ve-hint-header">No Shelly devices found</div><p class="ve-hint-subtext">Gen1 devices may not support mDNS discovery — enter the IP manually.</p></div>';
+            return;
+        }
+        var html = '';
+        data.devices.forEach(function(dev) {
+            var genLabel = dev.generation === 'gen2' ? 'Gen2' : (dev.generation === 'gen3' ? 'Gen3' : 'Gen1');
+            html += '<label class="ve-scan-result-item">' +
+                '<input type="checkbox" class="ve-scan-result-cb" data-host="' + esc(dev.host) + '" data-name="' + esc(dev.name) + '" data-gen="' + esc(dev.generation) + '">' +
+                '<span class="ve-scan-result-label">' + esc(dev.name || dev.model || 'Shelly') + '</span>' +
+                '<span class="ve-scan-result-meta">' + esc(dev.host) + ' · ' + genLabel + '</span>' +
+                '</label>';
+        });
+        results.innerHTML = html;
+
+        // Selecting a result fills in the form
+        results.querySelectorAll('.ve-scan-result-cb').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                if (cb.checked) {
+                    // Uncheck others
+                    results.querySelectorAll('.ve-scan-result-cb').forEach(function(other) {
+                        if (other !== cb) other.checked = false;
+                    });
+                    // Fill form fields
+                    var hostInput = formArea.querySelector('.ve-add-host');
+                    var nameInput = formArea.querySelector('.ve-add-name');
+                    if (hostInput) hostInput.value = cb.getAttribute('data-host');
+                    if (nameInput && !nameInput.value) nameInput.value = cb.getAttribute('data-name');
+                }
+            });
+        });
+    })
+    .catch(function(e) {
+        progress.style.display = 'none';
+        results.innerHTML = '<div class="ve-hint-card"><div class="ve-hint-header">Discovery failed: ' + esc(e.message) + '</div></div>';
     });
 }
 
