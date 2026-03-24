@@ -576,7 +576,7 @@ function buildInverterDashboard(container, data, deviceType) {
     }
 
     // Type-specific card
-    if (deviceType === 'opendtu') {
+    if (deviceType === 'opendtu' || deviceType === 'shelly') {
         topRow.appendChild(buildDCChannelCard(data));
     } else {
         topRow.appendChild(buildPhaseCard(data));
