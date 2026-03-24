@@ -173,7 +173,7 @@ Phases execute in numeric order: 28 -> 29 -> 30 -> 31 -> 32
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 28. Plugin Core & Profiles | 0/1 | Complete    | 2026-03-24 |
-| 29. Switch Control & Config Wiring | 0/1 | Not started | - |
+| 29. Switch Control & Config Wiring | 0/1 | Planned    |  |
 | 30. Add-Device Flow & Discovery | 0/? | Not started | - |
 | 31. Device Dashboard & Connection Card | 0/? | Not started | - |
 | 32. Aggregation Integration | 0/? | Not started | - |

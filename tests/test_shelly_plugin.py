@@ -533,6 +533,60 @@ class TestCommonRegisters:
         assert regs[4] == 0    # WRtg_SF
 
 
+class TestSwitchControl:
+    """CTRL-01: ShellyPlugin.switch() delegates to profile.switch()."""
+
+    async def test_switch_on_delegates_to_profile(self):
+        """switch(True) delegates to profile.switch(session, host, True) and returns True."""
+        plugin = ShellyPlugin(host="192.168.1.100", generation="gen2")
+        session = _mock_session({})
+        with patch("pv_inverter_proxy.plugins.shelly.aiohttp.ClientSession", return_value=session):
+            await plugin.connect()
+
+        # Mock the profile's switch method
+        plugin._profile.switch = AsyncMock(return_value=True)
+
+        result = await plugin.switch(True)
+
+        assert result is True
+        plugin._profile.switch.assert_called_once_with(session, "192.168.1.100", True)
+
+    async def test_switch_off_delegates_to_profile(self):
+        """switch(False) delegates to profile.switch(session, host, False) and returns True."""
+        plugin = ShellyPlugin(host="192.168.1.100", generation="gen2")
+        session = _mock_session({})
+        with patch("pv_inverter_proxy.plugins.shelly.aiohttp.ClientSession", return_value=session):
+            await plugin.connect()
+
+        plugin._profile.switch = AsyncMock(return_value=True)
+
+        result = await plugin.switch(False)
+
+        assert result is True
+        plugin._profile.switch.assert_called_once_with(session, "192.168.1.100", False)
+
+    async def test_switch_returns_false_when_not_connected(self):
+        """switch() returns False when not connected (session is None)."""
+        plugin = ShellyPlugin(host="192.168.1.100")
+
+        result = await plugin.switch(True)
+
+        assert result is False
+
+    async def test_switch_returns_false_on_exception(self):
+        """switch() returns False and logs warning when profile.switch() raises."""
+        plugin = ShellyPlugin(host="192.168.1.100", generation="gen2")
+        session = _mock_session({})
+        with patch("pv_inverter_proxy.plugins.shelly.aiohttp.ClientSession", return_value=session):
+            await plugin.connect()
+
+        plugin._profile.switch = AsyncMock(side_effect=aiohttp.ClientError("Connection refused"))
+
+        result = await plugin.switch(True)
+
+        assert result is False
+
+
 class TestReconfigure:
     """Reconfigure updates host and resets profile."""
 

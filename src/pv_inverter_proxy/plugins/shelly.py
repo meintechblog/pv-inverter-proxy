@@ -234,6 +234,16 @@ class ShellyPlugin(InverterPlugin):
         """No-op: Shelly cannot do percentage-based power limiting."""
         return WriteResult(success=True)
 
+    async def switch(self, on: bool) -> bool:
+        """Switch relay on/off. Delegates to the generation-specific profile."""
+        if self._session is None or self._profile is None:
+            return False
+        try:
+            return await self._profile.switch(self._session, self._host, on)
+        except Exception as e:
+            log.warning("shelly_switch_failed", host=self._host, on=on, error=str(e))
+            return False
+
     async def reconfigure(self, host: str, port: int, unit_id: int) -> None:
         """Reconfigure connection: close session, update host, reset profile."""
         await self.close()
