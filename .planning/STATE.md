@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Shelly Plugin
-status: ready_to_plan
-stopped_at: Roadmap created, ready to plan phase 28
-last_updated: "2026-03-24"
+status: Ready to plan
+stopped_at: Completed 28-01-PLAN.md
+last_updated: "2026-03-24T00:23:33.474Z"
 progress:
   total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
 ---
 
 # Project State
@@ -19,16 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Venus OS muss alle PV-Inverter als einen virtuellen Fronius-Inverter erkennen und steuern koennen
-**Current focus:** v6.0 Shelly Plugin -- Phase 28 ready to plan
+**Current focus:** Phase 28 — plugin-core-profiles
 
 ## Current Position
 
-Phase: 28 of 32 (Plugin Core & Profiles) -- first of 5 in v6.0
-Plan: --
-Status: Ready to plan
-Last activity: 2026-03-24 -- Roadmap created for v6.0
-
-Progress: [..........] 0%
+Phase: 29
+Plan: Not started
 
 ## Performance Metrics
 
@@ -53,6 +49,8 @@ Progress: [..........] 0%
 - [v6.0]: Profile-based Gen1/Gen2 abstraction (dict, not class hierarchy) -- from research
 - [v6.0]: Zero new deps -- reuse aiohttp for all Shelly HTTP communication
 - [v6.0]: write_power_limit() as no-op -- Shelly only supports on/off switching
+- [Phase 28]: Profile-based Gen1/Gen2 abstraction using ShellyProfile ABC -- swappable API implementations
+- [Phase 28]: Zero new deps for Shelly -- reuse aiohttp, energy offset tracking for counter resets
 
 ### Pending Todos
 
@@ -64,6 +62,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-24
-Stopped at: Roadmap created for v6.0 Shelly Plugin
+Last session: 2026-03-24T00:18:20.560Z
+Stopped at: Completed 28-01-PLAN.md
 Resume point: Plan phase 28 (Plugin Core & Profiles)
