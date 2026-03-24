@@ -312,9 +312,9 @@ class TestRegisterEncoding:
         return await plugin.poll()
 
     async def test_ac_power_register(self):
-        """AC power 342.5W at offset 14, SF=0 -> 343 (rounded)."""
+        """AC power 342.5W at offset 14, SF=0 -> 342 (banker's rounding)."""
         result = await self._poll_gen2()
-        assert result.inverter_registers[14] == 343
+        assert result.inverter_registers[14] == 342
         assert result.inverter_registers[15] == 0  # SF
 
     async def test_ac_current_register(self):
