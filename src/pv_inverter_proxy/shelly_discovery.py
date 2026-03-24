@@ -77,7 +77,7 @@ async def discover_shelly_devices(
                 "switch_name": None,
             })
 
-        # Enrich with switch names via HTTP probe (Gen2+ only)
+        # Enrich with device/switch names via HTTP probe (Gen2+ only)
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=3.0)
         ) as session:
@@ -85,9 +85,19 @@ async def discover_shelly_devices(
                 gen_num = int(dev["generation"].replace("gen", ""))
                 if gen_num >= 2:
                     try:
+                        # Try device name first (/shelly → "name" field)
+                        async with session.get(f"http://{dev['host']}/shelly") as resp:
+                            shelly_data = await resp.json()
+                            device_name = shelly_data.get("name") or None
+
+                        # Then try switch-level name
+                        switch_name = None
                         async with session.get(f"http://{dev['host']}/rpc/Switch.GetConfig?id=0") as resp:
                             sw_data = await resp.json()
-                            dev["switch_name"] = sw_data.get("name") or None
+                            switch_name = sw_data.get("name") or None
+
+                        # Prefer switch name, fall back to device name
+                        dev["switch_name"] = switch_name or device_name
                     except Exception:
                         pass
 
@@ -130,7 +140,8 @@ async def probe_shelly_device(host: str, timeout: float = 5.0) -> dict:
         model = data.get("app", data.get("type", "Unknown"))
         mac = data.get("mac", "")
 
-        # Try to fetch user-configured switch name (Gen2+)
+        # Try to fetch user-configured name (Gen2+): device name, then switch name
+        device_name = data.get("name") or None  # /shelly already has device name
         switch_name = None
         if gen_value >= 2:
             try:
@@ -141,7 +152,9 @@ async def probe_shelly_device(host: str, timeout: float = 5.0) -> dict:
                         sw_data = await sw_resp.json()
                         switch_name = sw_data.get("name") or None
             except Exception:
-                pass  # Switch name is optional
+                pass
+        # Prefer switch name, fall back to device name
+        switch_name = switch_name or device_name
 
         return {
             "success": True,

@@ -1516,6 +1516,17 @@ async def device_snapshot_handler(request: web.Request) -> web.Response:
             "enabled": entry.enabled,
             "connection": conn_info,
             "inverter": {},
+            "host": entry.host,
+            "port": entry.port,
+            "unit_id": entry.unit_id,
+            "type": entry.type,
+            "name": entry.name,
+            "rated_power": entry.rated_power,
+            "shelly_gen": entry.shelly_gen,
+            "gateway_user": entry.gateway_user,
+            "gateway_password": entry.gateway_password,
+            "throttle_order": entry.throttle_order,
+            "throttle_enabled": entry.throttle_enabled,
         })
 
     snapshot = dict(ds.collector.last_snapshot)
@@ -1524,6 +1535,18 @@ async def device_snapshot_handler(request: web.Request) -> web.Response:
     snapshot["display_name"] = display_name
     snapshot["enabled"] = entry.enabled
     snapshot["connection"] = conn_info
+    # Include config fields needed by the config page
+    snapshot["host"] = entry.host
+    snapshot["port"] = entry.port
+    snapshot["unit_id"] = entry.unit_id
+    snapshot["type"] = entry.type
+    snapshot["name"] = entry.name
+    snapshot["rated_power"] = entry.rated_power
+    snapshot["shelly_gen"] = entry.shelly_gen
+    snapshot["gateway_user"] = entry.gateway_user
+    snapshot["gateway_password"] = entry.gateway_password
+    snapshot["throttle_order"] = entry.throttle_order
+    snapshot["throttle_enabled"] = entry.throttle_enabled
     return web.json_response(snapshot)
 
 
