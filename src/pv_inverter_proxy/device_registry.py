@@ -22,6 +22,24 @@ from pv_inverter_proxy.plugins import plugin_factory
 logger = structlog.get_logger()
 
 
+def _extract_ac_power(inverter_registers: list[int]) -> float | None:
+    """Extract AC power (W) from Model 103 inverter registers.
+
+    Model 103 layout: DID(0) + Len(1) + 50 data fields.
+    AC Power at data offset 12 (register index 14), scale factor at data offset 13 (register index 15).
+    Values are unsigned 16-bit. Scale factor is signed 16-bit (two's complement).
+    """
+    if len(inverter_registers) < 16:
+        return None
+    raw_power = inverter_registers[14]
+    raw_sf = inverter_registers[15]
+    if raw_power == 0xFFFF or raw_sf == 0x8000:
+        return None  # Not implemented / invalid
+    # Convert unsigned to signed for scale factor
+    sf = raw_sf if raw_sf < 0x8000 else raw_sf - 0x10000
+    return float(raw_power) * (10.0 ** sf)
+
+
 @dataclass
 class ManagedDevice:
     """A device managed by the registry with its poll task."""
@@ -262,6 +280,13 @@ async def _device_poll_loop(
                         app_ctx=app_ctx,
                         nameplate_registers=nameplate_regs,
                     )
+
+                # Feed convergence tracking for auto-throttle (Phase 35)
+                distributor = getattr(app_ctx, 'distributor', None)
+                if distributor is not None and hasattr(distributor, 'on_poll'):
+                    ac_power_w = _extract_ac_power(result.inverter_registers)
+                    if ac_power_w is not None:
+                        distributor.on_poll(device_id, ac_power_w)
 
                 await on_success(device_id)
                 log.debug("poll_success")
