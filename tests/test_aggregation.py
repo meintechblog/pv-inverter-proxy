@@ -366,3 +366,60 @@ def test_status_worst_case():
     result = decode_model_103_to_physical(agg_regs)
 
     assert result["status_code"] == 5
+
+
+def test_dc_voltage_skips_zero_dc_devices():
+    """Mixed fleet: SolarEdge (real DC) + Shelly (zero DC) -> dc_voltage_v uses only real DC devices."""
+    # SolarEdge: real DC power and voltage
+    regs_solaredge = _make_inverter_regs(dc_power_w=5040, dc_voltage_v=420.0)
+    # Shelly: zero DC (relay device, no DC power)
+    regs_shelly = _make_inverter_regs(dc_power_w=0, dc_voltage_v=0.0)
+
+    app_ctx, cache = _make_app_ctx_with_devices(solaredge=regs_solaredge, shelly=regs_shelly)
+    config = _make_config(inverters=[
+        InverterEntry(id="solaredge", enabled=True),
+        InverterEntry(id="shelly", enabled=True),
+    ])
+    agg = AggregationLayer(app_ctx, cache, config)
+
+    asyncio.get_event_loop().run_until_complete(agg.recalculate("solaredge"))
+
+    agg_regs = cache.datablock.getValues(40070, 52)
+    result = decode_model_103_to_physical(agg_regs)
+
+    # Should be 420.0 (only SolarEdge), NOT 210.0 (average of 420 and 0)
+    assert abs(result["dc_voltage_v"] - 420.0) < 0.2
+
+
+def test_dc_voltage_all_zero_dc():
+    """All devices have dc_power_w=0 -> dc_voltage_v == 0.0 (no division by zero)."""
+    regs1 = _make_inverter_regs(dc_power_w=0, dc_voltage_v=0.0)
+    regs2 = _make_inverter_regs(dc_power_w=0, dc_voltage_v=0.0)
+
+    app_ctx, cache = _make_app_ctx_with_devices(dev1=regs1, dev2=regs2)
+    config = _make_config()
+    agg = AggregationLayer(app_ctx, cache, config)
+
+    asyncio.get_event_loop().run_until_complete(agg.recalculate("dev1"))
+
+    agg_regs = cache.datablock.getValues(40070, 52)
+    result = decode_model_103_to_physical(agg_regs)
+
+    assert result["dc_voltage_v"] == 0.0
+
+
+def test_dc_voltage_two_real_dc_devices():
+    """Two real DC devices (420V and 380V) -> dc_voltage_v == 400.0 (normal average)."""
+    regs1 = _make_inverter_regs(dc_power_w=5040, dc_voltage_v=420.0)
+    regs2 = _make_inverter_regs(dc_power_w=3800, dc_voltage_v=380.0)
+
+    app_ctx, cache = _make_app_ctx_with_devices(dev1=regs1, dev2=regs2)
+    config = _make_config()
+    agg = AggregationLayer(app_ctx, cache, config)
+
+    asyncio.get_event_loop().run_until_complete(agg.recalculate("dev1"))
+
+    agg_regs = cache.datablock.getValues(40070, 52)
+    result = decode_model_103_to_physical(agg_regs)
+
+    assert abs(result["dc_voltage_v"] - 400.0) < 0.2
