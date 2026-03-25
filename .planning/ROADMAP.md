@@ -222,7 +222,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 35-01-PLAN.md -- Auto-throttle config, score-based waterfall, convergence tracking (TDD)
+- [x] 35-01-PLAN.md -- Auto-throttle config, score-based waterfall, convergence tracking (TDD)
 - [ ] 35-02-PLAN.md -- Poll-loop integration and webapp API exposure
 
 ### Phase 36: Auto-Throttle UI & Live Tuning
