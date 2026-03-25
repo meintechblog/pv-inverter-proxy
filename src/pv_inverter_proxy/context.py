@@ -53,6 +53,9 @@ class AppContext:
     # DeviceRegistry reference (set in __main__.py after creation)
     device_registry: object = None
 
+    # PowerLimitDistributor (Phase 35)
+    distributor: object = None
+
     # MQTT Publisher (Phase 25)
     mqtt_pub_task: object = None           # asyncio.Task
     mqtt_pub_connected: bool = False

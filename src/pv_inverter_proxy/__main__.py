@@ -139,6 +139,8 @@ def main():
         # Create PowerLimitDistributor for multi-device power limiting
         distributor = PowerLimitDistributor(registry, config)
         slave_ctx._distributor = distributor
+        app_ctx.distributor = distributor
+        registry._distributor = distributor
         log.info("distributor_created", msg="PowerLimitDistributor ready for multi-device power limiting")
 
         # Start all enabled devices
