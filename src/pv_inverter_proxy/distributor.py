@@ -17,14 +17,7 @@ import structlog
 
 from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS, Config, InverterEntry
 from pv_inverter_proxy.connection import ConnectionState
-from pv_inverter_proxy.plugin import ThrottleCaps, compute_throttle_score
-
-
-# Convergence tracking constants
-CONVERGENCE_TOLERANCE_PCT = 5.0
-CONVERGENCE_MAX_SAMPLES = 10
-CONVERGENCE_NEAR_ZERO_W = 50.0
-TARGET_CHANGE_TOLERANCE_PCT = 2.0
+from pv_inverter_proxy.plugin import ThrottleCaps, compute_throttle_score, get_throttle_caps
 
 
 @dataclass
@@ -36,14 +29,12 @@ class DeviceLimitState:
     plugin: object  # InverterPlugin (typed as object to avoid circular import)
     conn_mgr: object  # ConnectionManager
     current_limit_pct: float = 100.0
-    last_write_ts: float | None = None  # None = never written
+    last_write_ts: float | None = None
     pending_limit_pct: float | None = None
     is_online: bool = True
-    # Binary throttle fields (Phase 34)
-    relay_on: bool = True                # Current relay state (binary devices)
-    last_toggle_ts: float | None = None  # Monotonic timestamp of last relay toggle
-    startup_until_ts: float = 0.0        # Monotonic time when startup grace ends
-    # Convergence tracking fields (Phase 35)
+    relay_on: bool = True
+    last_toggle_ts: float | None = None
+    startup_until_ts: float = 0.0
     target_power_w: float | None = None
     target_set_ts: float | None = None
     measured_response_time_s: float | None = None
@@ -68,8 +59,9 @@ class PowerLimitDistributor:
 
     def _get_convergence_params(self) -> dict[str, float]:
         """Return convergence parameters from the configured preset."""
-        preset_name = getattr(self._config, "auto_throttle_preset", "balanced")
-        return AUTO_THROTTLE_PRESETS.get(preset_name, AUTO_THROTTLE_PRESETS["balanced"])
+        return AUTO_THROTTLE_PRESETS.get(
+            self._config.auto_throttle_preset, AUTO_THROTTLE_PRESETS["balanced"]
+        )
 
     def sync_devices(self) -> None:
         """Sync internal state with DeviceRegistry managed devices."""
@@ -169,10 +161,10 @@ class PowerLimitDistributor:
 
     def _effective_score(self, ds: DeviceLimitState) -> float:
         """Compute effective throttle score, using measured response time if available."""
-        if not hasattr(ds.plugin, 'throttle_capabilities'):
+        caps = get_throttle_caps(ds.plugin)
+        if caps is None:
             return 0.0
-        caps = ds.plugin.throttle_capabilities
-        if getattr(ds, 'measured_response_time_s', None) is not None:
+        if ds.measured_response_time_s is not None:
             measured_caps = ThrottleCaps(
                 mode=caps.mode,
                 response_time_s=ds.measured_response_time_s,
@@ -236,7 +228,7 @@ class PowerLimitDistributor:
         remaining = allowed_watts
 
         # Group by throttle_order
-        for to_num, group_iter in groupby(eligible, key=lambda ds: ds.entry.throttle_order):
+        for _, group_iter in groupby(eligible, key=lambda ds: ds.entry.throttle_order):
             group = list(group_iter)
             group_rated = sum(ds.entry.rated_power for ds in group)
 
@@ -338,6 +330,36 @@ class PowerLimitDistributor:
             for device_id, ds in self._device_states.items()
         }
 
+    def get_device_display_state(self, device_id: str) -> dict | None:
+        """Return display-ready throttle state for a device (public API for webapp)."""
+        ds = self._device_states.get(device_id)
+        if ds is None:
+            return None
+
+        caps = get_throttle_caps(ds.plugin)
+        throttle_mode = caps.mode if caps else "none"
+
+        # Derive throttle_state
+        if not ds.entry.throttle_enabled:
+            state = "disabled"
+        elif self._is_in_startup(ds):
+            state = "startup"
+        elif (throttle_mode == "binary" and ds.last_toggle_ts is not None
+              and caps is not None
+              and (time.monotonic() - ds.last_toggle_ts) < caps.cooldown_s):
+            state = "cooldown"
+        elif ds.current_limit_pct < 100.0 or not ds.relay_on:
+            state = "throttled"
+        else:
+            state = "active"
+
+        return {
+            "throttle_state": state,
+            "relay_on": ds.relay_on,
+            "measured_response_time_s": ds.measured_response_time_s,
+            "current_limit_pct": ds.current_limit_pct,
+        }
+
     async def redistribute(self) -> None:
         """Re-run distribution with last known global limit.
 
@@ -348,9 +370,8 @@ class PowerLimitDistributor:
 
     def _is_binary_device(self, ds: DeviceLimitState) -> bool:
         """Check if device uses binary (relay on/off) throttling."""
-        if hasattr(ds.plugin, 'throttle_capabilities'):
-            return ds.plugin.throttle_capabilities.mode == "binary"
-        return False
+        caps = get_throttle_caps(ds.plugin)
+        return caps is not None and caps.mode == "binary"
 
     def _is_in_startup(self, ds: DeviceLimitState) -> bool:
         """Check if binary device is in startup grace period."""
@@ -395,12 +416,10 @@ class PowerLimitDistributor:
             self._log.error("binary_switch_error", device_id=device_id, error=str(exc))
 
     def _sort_binary_reenable(self, device_ids: list[str]) -> list[str]:
-        """Sort binary devices for re-enable: lowest throttle_score first."""
+        """Sort binary devices for re-enable: lowest effective score first."""
         def score_key(did: str) -> float:
             ds = self._device_states.get(did)
-            if ds and hasattr(ds.plugin, 'throttle_capabilities'):
-                return compute_throttle_score(ds.plugin.throttle_capabilities)
-            return 0.0
+            return self._effective_score(ds) if ds else 0.0
         return sorted(device_ids, key=score_key)
 
     def _is_throttle_eligible(self, ds: DeviceLimitState) -> bool:

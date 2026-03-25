@@ -281,7 +281,6 @@ async def _device_poll_loop(
                         nameplate_registers=nameplate_regs,
                     )
 
-                # Feed convergence tracking for auto-throttle (Phase 35)
                 distributor = getattr(app_ctx, 'distributor', None)
                 if distributor is not None and hasattr(distributor, 'on_poll'):
                     ac_power_w = _extract_ac_power(result.inverter_registers)

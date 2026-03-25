@@ -19,7 +19,6 @@ log = structlog.get_logger()
 
 DEFAULT_CONFIG_PATH = "/etc/pv-inverter-proxy/config.yaml"
 
-# Auto-throttle convergence presets (Phase 36)
 AUTO_THROTTLE_PRESETS: dict[str, dict[str, float]] = {
     "aggressive": {
         "convergence_tolerance_pct": 10.0,

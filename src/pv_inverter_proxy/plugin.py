@@ -51,6 +51,13 @@ def compute_throttle_score(caps: ThrottleCaps) -> float:
     return round(max(0.0, min(10.0, score)), 1)
 
 
+def get_throttle_caps(plugin: object) -> ThrottleCaps | None:
+    """Safely extract ThrottleCaps from a plugin, returning None if unavailable."""
+    if hasattr(plugin, "throttle_capabilities"):
+        return plugin.throttle_capabilities
+    return None
+
+
 class InverterPlugin(ABC):
     """Interface for inverter brand plugins.
 

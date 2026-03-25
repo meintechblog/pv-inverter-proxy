@@ -35,7 +35,7 @@ from pv_inverter_proxy.control import validate_wmaxlimpct
 from pv_inverter_proxy.mdns_discovery import discover_mqtt_brokers
 from pv_inverter_proxy.shelly_discovery import discover_shelly_devices, probe_shelly_device
 from pv_inverter_proxy.mqtt_publisher import mqtt_publish_loop
-from pv_inverter_proxy.plugin import compute_throttle_score
+from pv_inverter_proxy.plugin import compute_throttle_score, get_throttle_caps
 from pv_inverter_proxy.plugins.opendtu import OpenDTUPlugin
 from pv_inverter_proxy.plugins.shelly import ShellyPlugin
 from pv_inverter_proxy.scanner import ScanConfig, scan_subnet
@@ -406,7 +406,6 @@ async def config_save_handler(request: web.Request) -> web.Response:
         if "auto_throttle" in body:
             config.auto_throttle = bool(body["auto_throttle"])
 
-        # Update auto_throttle_preset if provided (Phase 36)
         if "auto_throttle_preset" in body:
             from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS
             preset = body["auto_throttle_preset"]
@@ -839,44 +838,24 @@ def _build_virtual_contributions(
             "current_limit_pct": device_limits.get(inv.id, 100.0),
         }
 
-        # Throttle enrichment (Phase 36)
         plugin = ds.plugin if ds else None
-        throttle_score = 0.0
-        throttle_mode = "none"
-        measured_response_time_s = None
-        relay_on = True
-        throttle_state = "disabled"
+        caps = get_throttle_caps(plugin)
+        throttle_score = compute_throttle_score(caps) if caps else 0.0
+        throttle_mode = caps.mode if caps else "none"
 
-        if plugin and hasattr(plugin, "throttle_capabilities"):
-            caps = plugin.throttle_capabilities
-            throttle_score = compute_throttle_score(caps)
-            throttle_mode = caps.mode
-
-        if distributor is not None and inv.id in distributor._device_states:
-            dev_state = distributor._device_states[inv.id]
-            measured_response_time_s = dev_state.measured_response_time_s
-            relay_on = dev_state.relay_on
-            # Derive throttle_state
-            if not inv.throttle_enabled:
-                throttle_state = "disabled"
-            elif distributor._is_in_startup(dev_state):
-                throttle_state = "startup"
-            elif (throttle_mode == "binary" and dev_state.last_toggle_ts is not None
-                  and hasattr(plugin, "throttle_capabilities")
-                  and (time.monotonic() - dev_state.last_toggle_ts) < plugin.throttle_capabilities.cooldown_s):
-                throttle_state = "cooldown"
-            elif device_limits.get(inv.id, 100.0) < 100.0 or not relay_on:
-                throttle_state = "throttled"
-            else:
-                throttle_state = "active"
-        elif inv.throttle_enabled:
-            throttle_state = "active"
-
-        contrib["throttle_score"] = throttle_score
-        contrib["throttle_mode"] = throttle_mode
-        contrib["measured_response_time_s"] = measured_response_time_s
-        contrib["relay_on"] = relay_on
-        contrib["throttle_state"] = throttle_state
+        display = distributor.get_device_display_state(inv.id) if distributor else None
+        if display:
+            contrib["throttle_score"] = throttle_score
+            contrib["throttle_mode"] = throttle_mode
+            contrib["measured_response_time_s"] = display["measured_response_time_s"]
+            contrib["relay_on"] = display["relay_on"]
+            contrib["throttle_state"] = display["throttle_state"]
+        else:
+            contrib["throttle_score"] = throttle_score
+            contrib["throttle_mode"] = throttle_mode
+            contrib["measured_response_time_s"] = None
+            contrib["relay_on"] = True
+            contrib["throttle_state"] = "active" if inv.throttle_enabled else "disabled"
         contributions.append(contrib)
 
     return total_power_w, total_rated_w, contributions
@@ -915,20 +894,14 @@ def _build_device_list(app_ctx: Any, config: Config) -> list[dict]:
             dev_entry["gateway_password"] = inv.gateway_password
         if inv.type == "shelly":
             dev_entry["shelly_gen"] = inv.shelly_gen
-        # Throttle capabilities scoring
-        if ds and ds.plugin and hasattr(ds.plugin, 'throttle_capabilities'):
-            caps = ds.plugin.throttle_capabilities
-            dev_entry["throttle_mode"] = caps.mode
-            dev_entry["throttle_score"] = compute_throttle_score(caps)
-        else:
-            dev_entry["throttle_mode"] = "none"
-            dev_entry["throttle_score"] = 0.0
-        # Measured response time from convergence tracking (Phase 35)
+        caps = get_throttle_caps(ds.plugin if ds else None)
+        dev_entry["throttle_mode"] = caps.mode if caps else "none"
+        dev_entry["throttle_score"] = compute_throttle_score(caps) if caps else 0.0
         distributor = getattr(app_ctx, 'distributor', None)
         if distributor is not None:
-            dist_ds = distributor._device_states.get(inv.id)
-            if dist_ds is not None and dist_ds.measured_response_time_s is not None:
-                dev_entry["measured_response_time_s"] = round(dist_ds.measured_response_time_s, 2)
+            display = distributor.get_device_display_state(inv.id)
+            if display and display["measured_response_time_s"] is not None:
+                dev_entry["measured_response_time_s"] = round(display["measured_response_time_s"], 2)
         devices.append(dev_entry)
 
     venus_conn = "connected" if app_ctx.venus_mqtt_connected else "disconnected"
@@ -1604,8 +1577,8 @@ async def device_snapshot_handler(request: web.Request) -> web.Response:
             "gateway_password": entry.gateway_password,
             "throttle_order": entry.throttle_order,
             "throttle_enabled": entry.throttle_enabled,
-            "throttle_mode": ds.plugin.throttle_capabilities.mode if ds and ds.plugin and hasattr(ds.plugin, 'throttle_capabilities') else "none",
-            "throttle_score": compute_throttle_score(ds.plugin.throttle_capabilities) if ds and ds.plugin and hasattr(ds.plugin, 'throttle_capabilities') else 0.0,
+            "throttle_mode": c.mode if ds and ds.plugin and (c := get_throttle_caps(ds.plugin)) else "none",
+            "throttle_score": compute_throttle_score(c) if ds and ds.plugin and (c := get_throttle_caps(ds.plugin)) else 0.0,
         })
 
     snapshot = dict(ds.collector.last_snapshot)
@@ -1626,13 +1599,9 @@ async def device_snapshot_handler(request: web.Request) -> web.Response:
     snapshot["gateway_password"] = entry.gateway_password
     snapshot["throttle_order"] = entry.throttle_order
     snapshot["throttle_enabled"] = entry.throttle_enabled
-    if ds and ds.plugin and hasattr(ds.plugin, 'throttle_capabilities'):
-        caps = ds.plugin.throttle_capabilities
-        snapshot["throttle_mode"] = caps.mode
-        snapshot["throttle_score"] = compute_throttle_score(caps)
-    else:
-        snapshot["throttle_mode"] = "none"
-        snapshot["throttle_score"] = 0.0
+    caps = get_throttle_caps(ds.plugin if ds else None)
+    snapshot["throttle_mode"] = caps.mode if caps else "none"
+    snapshot["throttle_score"] = compute_throttle_score(caps) if caps else 0.0
     return web.json_response(snapshot)
 
 
