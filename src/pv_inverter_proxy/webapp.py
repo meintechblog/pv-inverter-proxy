@@ -35,6 +35,7 @@ from pv_inverter_proxy.control import validate_wmaxlimpct
 from pv_inverter_proxy.mdns_discovery import discover_mqtt_brokers
 from pv_inverter_proxy.shelly_discovery import discover_shelly_devices, probe_shelly_device
 from pv_inverter_proxy.mqtt_publisher import mqtt_publish_loop
+from pv_inverter_proxy.plugin import compute_throttle_score
 from pv_inverter_proxy.plugins.opendtu import OpenDTUPlugin
 from pv_inverter_proxy.plugins.shelly import ShellyPlugin
 from pv_inverter_proxy.scanner import ScanConfig, scan_subnet
@@ -859,6 +860,14 @@ def _build_device_list(app_ctx: Any, config: Config) -> list[dict]:
             dev_entry["gateway_password"] = inv.gateway_password
         if inv.type == "shelly":
             dev_entry["shelly_gen"] = inv.shelly_gen
+        # Throttle capabilities scoring
+        if ds and ds.plugin and hasattr(ds.plugin, 'throttle_capabilities'):
+            caps = ds.plugin.throttle_capabilities
+            dev_entry["throttle_mode"] = caps.mode
+            dev_entry["throttle_score"] = compute_throttle_score(caps)
+        else:
+            dev_entry["throttle_mode"] = "none"
+            dev_entry["throttle_score"] = 0.0
         devices.append(dev_entry)
 
     venus_conn = "connected" if app_ctx.venus_mqtt_connected else "disconnected"
@@ -1534,6 +1543,8 @@ async def device_snapshot_handler(request: web.Request) -> web.Response:
             "gateway_password": entry.gateway_password,
             "throttle_order": entry.throttle_order,
             "throttle_enabled": entry.throttle_enabled,
+            "throttle_mode": ds.plugin.throttle_capabilities.mode if ds and ds.plugin and hasattr(ds.plugin, 'throttle_capabilities') else "none",
+            "throttle_score": compute_throttle_score(ds.plugin.throttle_capabilities) if ds and ds.plugin and hasattr(ds.plugin, 'throttle_capabilities') else 0.0,
         })
 
     snapshot = dict(ds.collector.last_snapshot)
@@ -1554,6 +1565,13 @@ async def device_snapshot_handler(request: web.Request) -> web.Response:
     snapshot["gateway_password"] = entry.gateway_password
     snapshot["throttle_order"] = entry.throttle_order
     snapshot["throttle_enabled"] = entry.throttle_enabled
+    if ds and ds.plugin and hasattr(ds.plugin, 'throttle_capabilities'):
+        caps = ds.plugin.throttle_capabilities
+        snapshot["throttle_mode"] = caps.mode
+        snapshot["throttle_score"] = compute_throttle_score(caps)
+    else:
+        snapshot["throttle_mode"] = "none"
+        snapshot["throttle_score"] = 0.0
     return web.json_response(snapshot)
 
 
