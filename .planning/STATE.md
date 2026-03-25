@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Shelly Plugin
 status: Milestone complete
-stopped_at: "Completed 36-02-PLAN.md (checkpoint: awaiting visual verification)"
-last_updated: "2026-03-25T19:46:07.016Z"
+stopped_at: Completed 37-01-PLAN.md
+last_updated: "2026-03-25T21:10:32.398Z"
 progress:
-  total_phases: 9
-  completed_phases: 7
-  total_plans: 11
-  completed_plans: 11
+  total_phases: 10
+  completed_phases: 8
+  total_plans: 12
+  completed_plans: 12
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Venus OS muss alle PV-Inverter als einen virtuellen Fronius-Inverter erkennen und steuern koennen
-**Current focus:** Phase 36 — auto-throttle-ui-live-tuning
+**Current focus:** Phase 37 — distributor-wiring-dc-average-fix
 
 ## Current Position
 
-Phase: 36
+Phase: 37
 Plan: Not started
 
 ## Performance Metrics
@@ -68,6 +68,7 @@ Plan: Not started
 - [Phase 36]: throttle_state derived fresh each broadcast cycle, not cached
 - [Phase 36]: THROTTLE_STATE_COLORS at module level for shared access between build and update functions
 - [Phase 36]: Contribution bar falls back to CONTRIBUTION_COLORS when throttle_state undefined
+- [Phase 37]: DC voltage averaging filters by dc_power_w > 0 to exclude Shelly relay devices
 
 ### Roadmap Evolution
 
@@ -83,6 +84,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-25T19:41:23.772Z
-Stopped at: Completed 36-02-PLAN.md (checkpoint: awaiting visual verification)
+Last session: 2026-03-25T21:07:16.836Z
+Stopped at: Completed 37-01-PLAN.md
 Resume point: Plan phase 28 (Plugin Core & Profiles)

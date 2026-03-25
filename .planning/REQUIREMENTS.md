@@ -31,7 +31,7 @@
 ## Aggregation
 
 - [ ] **AGG-01**: Shelly-Daten fliessen korrekt in den virtuellen PV-Inverter ein (AggregationLayer)
-- [ ] **AGG-02**: DC-Averaging im Aggregator ueberspringt Shelly (kein DC-Data)
+- [x] **AGG-02**: DC-Averaging im Aggregator ueberspringt Shelly (kein DC-Data)
 
 ## Traceability
 
@@ -54,7 +54,7 @@
 | UI-05 | Phase 30 | Pending |
 | UI-06 | Phase 30 | Complete |
 | AGG-01 | Phase 32 | Pending |
-| AGG-02 | Phase 37 | Pending |
+| AGG-02 | Phase 37 | Complete |
 
 ## Future Requirements
 
