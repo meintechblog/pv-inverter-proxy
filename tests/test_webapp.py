@@ -983,25 +983,25 @@ async def test_virtual_snapshot_includes_auto_throttle_preset(client, shared_ctx
 
 async def test_config_save_auto_throttle_preset(client):
     """Config POST with auto_throttle_preset persists it."""
+    config: Config = client.app["config"]
+    inv = config.inverters[0]
     resp = await client.post("/api/config", json={
-        "inverter": {},
+        "inverter": {"host": inv.host, "port": inv.port, "unit_id": inv.unit_id},
         "venus": {},
         "auto_throttle_preset": "aggressive",
     })
     assert resp.status == 200
-
-    # Verify it was saved
-    config: Config = client.app["config"]
     assert config.auto_throttle_preset == "aggressive"
 
 
 async def test_config_save_auto_throttle_preset_invalid(client):
-    """Config POST with invalid auto_throttle_preset is rejected or ignored."""
+    """Config POST with invalid auto_throttle_preset is ignored (stays current)."""
+    config: Config = client.app["config"]
+    inv = config.inverters[0]
     resp = await client.post("/api/config", json={
-        "inverter": {},
+        "inverter": {"host": inv.host, "port": inv.port, "unit_id": inv.unit_id},
         "venus": {},
         "auto_throttle_preset": "invalid_preset",
     })
-    # Should still succeed but preset should remain default
-    config: Config = client.app["config"]
+    assert resp.status == 200
     assert config.auto_throttle_preset in ("aggressive", "balanced", "conservative")

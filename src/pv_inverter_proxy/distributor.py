@@ -15,7 +15,7 @@ from itertools import groupby
 
 import structlog
 
-from pv_inverter_proxy.config import Config, InverterEntry
+from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS, Config, InverterEntry
 from pv_inverter_proxy.connection import ConnectionState
 from pv_inverter_proxy.plugin import ThrottleCaps, compute_throttle_score
 
@@ -65,6 +65,11 @@ class PowerLimitDistributor:
         self._global_limit_pct: float = 100.0
         self._enabled: bool = False
         self._log = structlog.get_logger(component="distributor")
+
+    def _get_convergence_params(self) -> dict[str, float]:
+        """Return convergence parameters from the configured preset."""
+        preset_name = getattr(self._config, "auto_throttle_preset", "balanced")
+        return AUTO_THROTTLE_PRESETS.get(preset_name, AUTO_THROTTLE_PRESETS["balanced"])
 
     def sync_devices(self) -> None:
         """Sync internal state with DeviceRegistry managed devices."""
@@ -410,15 +415,17 @@ class PowerLimitDistributor:
         """Record target power for convergence tracking after a successful send.
 
         Only updates target_set_ts if the new target differs from current by
-        more than TARGET_CHANGE_TOLERANCE_PCT to avoid stale target resets.
+        more than target_change_tolerance_pct to avoid stale target resets.
         """
+        params = self._get_convergence_params()
+        target_change_tolerance = params["target_change_tolerance_pct"]
         new_target_w = (limit_pct / 100.0) * ds.entry.rated_power
         if ds.target_power_w is not None:
             if ds.target_power_w == 0 and new_target_w == 0:
                 return  # No change
             if ds.target_power_w != 0:
                 change_pct = abs(new_target_w - ds.target_power_w) / ds.target_power_w * 100.0
-                if change_pct <= TARGET_CHANGE_TOLERANCE_PCT:
+                if change_pct <= target_change_tolerance:
                     return  # Target unchanged within tolerance
         ds.target_power_w = new_target_w
         ds.target_set_ts = time.monotonic()
@@ -426,8 +433,8 @@ class PowerLimitDistributor:
     def on_poll(self, device_id: str, actual_power_w: float) -> None:
         """Check convergence after receiving polled power data.
 
-        If the actual power is within CONVERGENCE_TOLERANCE_PCT of the target,
-        records the response time and computes a rolling average.
+        If the actual power is within the preset's convergence_tolerance_pct of
+        the target, records the response time and computes a rolling average.
         """
         ds = self._device_states.get(device_id)
         if ds is None:
@@ -438,20 +445,25 @@ class PowerLimitDistributor:
         if self._is_in_startup(ds):
             return
 
+        params = self._get_convergence_params()
+        tolerance_pct = params["convergence_tolerance_pct"]
+        max_samples = int(params["convergence_max_samples"])
+        binary_off_w = params["binary_off_threshold_w"]
+
         # Check convergence
         converged = False
         if ds.target_power_w == 0:
-            converged = actual_power_w < CONVERGENCE_NEAR_ZERO_W
+            converged = actual_power_w < binary_off_w
         else:
             error_pct = abs(actual_power_w - ds.target_power_w) / ds.target_power_w * 100.0
-            converged = error_pct <= CONVERGENCE_TOLERANCE_PCT
+            converged = error_pct <= tolerance_pct
 
         if converged:
             elapsed = time.monotonic() - ds.target_set_ts
             ds._convergence_samples.append(elapsed)
             # Trim to max samples
-            if len(ds._convergence_samples) > CONVERGENCE_MAX_SAMPLES:
-                ds._convergence_samples = ds._convergence_samples[-CONVERGENCE_MAX_SAMPLES:]
+            if len(ds._convergence_samples) > max_samples:
+                ds._convergence_samples = ds._convergence_samples[-max_samples:]
             ds.measured_response_time_s = sum(ds._convergence_samples) / len(ds._convergence_samples)
             # Reset target (convergence detected, wait for next limit command)
             ds.target_power_w = None
