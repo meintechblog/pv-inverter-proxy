@@ -581,6 +581,26 @@ function buildInverterDashboard(container, data, deviceType) {
     } else {
         topRow.appendChild(buildPhaseCard(data));
     }
+
+    // Throttle info card (only for devices with throttle capabilities)
+    if (data.throttle_mode && data.throttle_mode !== 'none') {
+        var throttleInfoCard = document.createElement('div');
+        throttleInfoCard.className = 've-card';
+        var tiScore = (data.throttle_score || 0).toFixed(1);
+        var tiMode = data.throttle_mode.charAt(0).toUpperCase() + data.throttle_mode.slice(1);
+        var tiResp = data.measured_response_time_s != null
+            ? '<span style="font-family:var(--ve-mono)">' + data.measured_response_time_s.toFixed(1) + 's</span>'
+            : 'Measuring...';
+        throttleInfoCard.innerHTML =
+            '<h2 class="ve-card-title">Throttle Info</h2>' +
+            '<div class="ve-throttle-info-grid">' +
+            '  <span class="ve-text-dim">Score</span><span style="font-family:var(--ve-mono)">' + tiScore + '</span>' +
+            '  <span class="ve-text-dim">Mode</span><span>' + tiMode + '</span>' +
+            '  <span class="ve-text-dim">Response</span><span>' + tiResp + '</span>' +
+            '</div>';
+        topRow.appendChild(throttleInfoCard);
+    }
+
     container.appendChild(topRow);
 
     // Row 2: Connection + Performance
