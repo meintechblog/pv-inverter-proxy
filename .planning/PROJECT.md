@@ -74,6 +74,7 @@ Venus OS muss alle PV-Inverter (egal welche Marke/Protokoll) als einen einzigen 
 - ✓ Throttle Capabilities: Jedes Plugin deklariert ThrottleCaps (mode, response_time, cooldown, startup_delay) — Validated in Phase 33
 - ✓ Throttle Score: Berechneter Score (0-10) pro Device im API (SolarEdge 9.7, OpenDTU 7.0, Shelly 2.9) — Validated in Phase 33
 - ✓ Binary Throttle Engine: Distributor steuert Relay-Devices (on/off) mit Cooldown-Hysterese (300s), Startup-Grace (30s) und Reverse-Re-Enable — Validated in Phase 34
+- ✓ Smart Auto-Throttle: Score-basierte Waterfall-Reihenfolge (proportional vor binary), Live-Convergence-Messung mit Effective-Score-Feedback — Validated in Phase 35
 
 ### Out of Scope
 
