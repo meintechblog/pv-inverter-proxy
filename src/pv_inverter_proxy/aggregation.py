@@ -197,11 +197,11 @@ class AggregationLayer:
             "ac_current_l2_a", "ac_current_l3_a", "energy_total_wh",
             "dc_current_a", "dc_power_w",
         ]
-        # Fields to average
+        # Fields to average (dc_voltage_v handled separately below)
         avg_keys = [
             "ac_voltage_ab_v", "ac_voltage_bc_v", "ac_voltage_ca_v",
             "ac_voltage_an_v", "ac_voltage_bn_v", "ac_voltage_cn_v",
-            "ac_frequency_hz", "dc_voltage_v",
+            "ac_frequency_hz",
         ]
 
         totals: dict = {}
@@ -211,6 +211,13 @@ class AggregationLayer:
 
         for key in avg_keys:
             totals[key] = sum(d[key] for d in decoded_list) / n
+
+        # DC voltage: average only devices with actual DC power (skip Shelly/zero-DC)
+        dc_devices = [d for d in decoded_list if d["dc_power_w"] > 0]
+        totals["dc_voltage_v"] = (
+            sum(d["dc_voltage_v"] for d in dc_devices) / len(dc_devices)
+            if dc_devices else 0.0
+        )
 
         # Max temperature
         totals["temperature_c"] = max(d["temperature_c"] for d in decoded_list)
