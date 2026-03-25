@@ -1771,6 +1771,47 @@ function buildVirtualPVPage(container, data) {
     var offset = arcLength * (1 - pct);
     var gc = gaugeColor(pct);
 
+    // Build power limit dropdowns for virtual inverter
+    var clampHtml = '';
+    if (ratedW > 0) {
+        var ctrl = data.control || {};
+        var curMinPct = ctrl.clamp_min_pct || 0;
+        var curMaxPct = ctrl.clamp_max_pct != null ? ctrl.clamp_max_pct : 100;
+        var steps = [];
+        var maxKw = Math.round(ratedW / 1000);
+        for (var kw = maxKw - 1; kw >= 1; kw--) steps.push({w: kw * 1000, label: kw + ' kW'});
+        var w1pct = Math.round(ratedW * 0.01);
+        var label1pct = w1pct >= 1000 ? (w1pct / 1000).toFixed(1) + ' kW' : w1pct + ' W';
+        var curMinW = Math.round(curMinPct * ratedW / 100);
+        var curMaxW = curMaxPct >= 100 ? ratedW : Math.round(curMaxPct * ratedW / 100);
+        function _vClosestStep(watts) {
+            if (watts <= w1pct) return watts === 0 ? '0' : 'min';
+            var best = steps[0]; var bestD = 99999;
+            for (var i = 0; i < steps.length; i++) { var d = Math.abs(steps[i].w - watts); if (d < bestD) { bestD = d; best = steps[i]; } }
+            return String(best.w);
+        }
+        var minOpts = '';
+        for (var si = 0; si < steps.length; si++) {
+            var s = steps[si];
+            minOpts += '<option value="' + s.w + '"' + (_vClosestStep(curMinW) === String(s.w) ? ' selected' : '') + '>' + s.label + '</option>';
+        }
+        minOpts += '<option value="min"' + (curMinPct === 1 ? ' selected' : '') + '>' + label1pct + '</option>';
+        minOpts += '<option value="0"' + (curMinPct === 0 ? ' selected' : '') + '>0 kW</option>';
+        var maxOpts = '<option value="max"' + (curMaxPct >= 100 ? ' selected' : '') + '>Max</option>';
+        for (var si2 = 0; si2 < steps.length; si2++) {
+            var s2 = steps[si2];
+            maxOpts += '<option value="' + s2.w + '"' + (curMaxPct < 100 && curMaxPct > 1 && _vClosestStep(curMaxW) === String(s2.w) ? ' selected' : '') + '>' + s2.label + '</option>';
+        }
+        maxOpts += '<option value="min"' + (curMaxPct === 1 ? ' selected' : '') + '>' + label1pct + '</option>';
+        maxOpts += '<option value="0"' + (curMaxPct === 0 ? ' selected' : '') + '>0 kW</option>';
+        clampHtml =
+            '<div class="ve-gauge-clamp">' +
+            '  <select class="ve-ctrl-dropdown ve-clamp-min" title="Minimum power (floor)">' + minOpts + '</select>' +
+            '  <span class="ve-text-dim ve-clamp-label">Limit</span>' +
+            '  <select class="ve-ctrl-dropdown ve-clamp-max" title="Maximum power (ceiling)">' + maxOpts + '</select>' +
+            '</div>';
+    }
+
     gaugeCard.innerHTML =
         '<h2 class="ve-card-title">Total Power Output</h2>' +
         '<svg viewBox="0 0 200 130" class="ve-gauge-svg">' +
@@ -1779,8 +1820,29 @@ function buildVirtualPVPage(container, data) {
         '  <text x="100" y="76" text-anchor="middle" fill="var(--ve-text)" font-size="32" font-weight="700" class="ve-virtual-gauge-value">' + formatW(totalW) + '</text>' +
         '  <text x="100" y="94" text-anchor="middle" fill="var(--ve-text-dim)" font-size="11">' + formatW(ratedW) + ' max</text>' +
         '  <text x="100" y="122" text-anchor="middle" fill="var(--ve-text-dim)" font-size="11">' + esc(data.virtual_name || 'Virtual PV') + '</text>' +
-        '</svg>';
+        '</svg>' + clampHtml;
     container.appendChild(gaugeCard);
+
+    // Wire up virtual power limit dropdown events
+    var vClampMin = gaugeCard.querySelector('.ve-clamp-min');
+    var vClampMax = gaugeCard.querySelector('.ve-clamp-max');
+    if (vClampMin && vClampMax) {
+        var _vRatedW = ratedW;
+        function _vDdPct(dd) { if (dd.value === 'max') return 100; if (dd.value === 'min') return 1; if (dd.value === '0') return 0; return Math.round(parseInt(dd.value) / _vRatedW * 100); }
+        function _vDdLabel(dd) { if (dd.value === 'max') return 'Max'; return dd.options[dd.selectedIndex].text; }
+        function vSendClamp() {
+            var minPct = _vDdPct(vClampMin); var maxPct = _vDdPct(vClampMax);
+            if (minPct > maxPct) { vClampMin.value = vClampMax.value; minPct = maxPct; }
+            fetch('/api/power-clamp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_id: 'virtual', min_pct: minPct, max_pct: maxPct })
+            }).then(function(r) { return r.json(); }).then(function(d) {
+                if (d.success) showToast('Limit: ' + _vDdLabel(vClampMin) + ' – ' + _vDdLabel(vClampMax), 'success');
+                else showToast(d.error || 'Failed', 'error');
+            }).catch(function(e) { showToast('Error: ' + e.message, 'error'); });
+        }
+        vClampMin.addEventListener('change', function() { if (_vDdPct(vClampMin) > _vDdPct(vClampMax)) vClampMax.value = vClampMin.value; vSendClamp(); });
+        vClampMax.addEventListener('change', function() { if (_vDdPct(vClampMin) > _vDdPct(vClampMax)) vClampMin.value = vClampMax.value; vSendClamp(); });
+    }
 
     // Contribution bar
     var barCard = document.createElement('div');
