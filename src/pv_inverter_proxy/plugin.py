@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Literal
+
+
+ThrottleMode = Literal["proportional", "binary", "none"]
 
 
 @dataclass
@@ -18,6 +22,33 @@ class WriteResult:
     """Result from writing a power limit to the inverter."""
     success: bool
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class ThrottleCaps:
+    """Throttle capabilities declared by an inverter plugin."""
+    mode: ThrottleMode
+    response_time_s: float
+    cooldown_s: float
+    startup_delay_s: float
+
+
+def compute_throttle_score(caps: ThrottleCaps) -> float:
+    """Compute throttle speed score 0-10 from capabilities.
+
+    Higher = faster regulation. Proportional > binary > none.
+    """
+    if caps.mode == "none":
+        return 0.0
+    if caps.mode == "proportional":
+        base = 7.0
+    else:  # binary
+        base = 3.0
+    response_bonus = max(0.0, 3.0 * (1.0 - caps.response_time_s / 10.0))
+    cooldown_penalty = min(2.0, caps.cooldown_s / 150.0)
+    startup_penalty = min(1.0, caps.startup_delay_s / 30.0)
+    score = base + response_bonus - cooldown_penalty - startup_penalty
+    return round(max(0.0, min(10.0, score)), 1)
 
 
 class InverterPlugin(ABC):
@@ -84,3 +115,8 @@ class InverterPlugin(ABC):
     @abstractmethod
     async def close(self) -> None:
         """Clean up connection resources."""
+
+    @property
+    @abstractmethod
+    def throttle_capabilities(self) -> ThrottleCaps:
+        """Declare this device's throttle capabilities."""

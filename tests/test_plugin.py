@@ -40,7 +40,7 @@ class TestInverterPluginABC:
             InverterPlugin()
 
     def test_concrete_subclass_can_instantiate(self):
-        from pv_inverter_proxy.plugin import InverterPlugin, PollResult, WriteResult
+        from pv_inverter_proxy.plugin import InverterPlugin, PollResult, WriteResult, ThrottleCaps
 
         class DummyPlugin(InverterPlugin):
             async def connect(self) -> None:
@@ -63,6 +63,10 @@ class TestInverterPluginABC:
 
             async def close(self) -> None:
                 pass
+
+            @property
+            def throttle_capabilities(self) -> ThrottleCaps:
+                return ThrottleCaps(mode="none", response_time_s=0.0, cooldown_s=0.0, startup_delay_s=0.0)
 
         plugin = DummyPlugin()
         assert plugin is not None
