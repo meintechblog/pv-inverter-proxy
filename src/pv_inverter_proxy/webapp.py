@@ -284,6 +284,7 @@ async def config_get_handler(request: web.Request) -> web.Response:
             "interval_s": config.mqtt_publish.interval_s,
         },
         "auto_throttle": config.auto_throttle,
+        "auto_throttle_preset": config.auto_throttle_preset,
     })
 
 
@@ -404,6 +405,13 @@ async def config_save_handler(request: web.Request) -> web.Response:
         # Update auto_throttle if provided
         if "auto_throttle" in body:
             config.auto_throttle = bool(body["auto_throttle"])
+
+        # Update auto_throttle_preset if provided (Phase 36)
+        if "auto_throttle_preset" in body:
+            from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS
+            preset = body["auto_throttle_preset"]
+            if preset in AUTO_THROTTLE_PRESETS:
+                config.auto_throttle_preset = preset
 
         save_config(request.app["config_path"], config)
         log.info("user_action", action="config_saved", venus_changed=venus_changed, venus_host=venus_host)
@@ -770,6 +778,7 @@ async def broadcast_virtual_snapshot(app: web.Application) -> None:
         "virtual_name": config.virtual_inverter.name,
         "contributions": contributions,
         "auto_throttle": config.auto_throttle,
+        "auto_throttle_preset": config.auto_throttle_preset,
     }})
     for ws in set(clients):
         try:
@@ -821,14 +830,54 @@ def _build_virtual_contributions(
         total_power_w += power_w
         total_rated_w += rated_w
         display_name = inv.name or f"{inv.manufacturer} {inv.model}".strip() or "Inverter"
-        contributions.append({
+        contrib: dict = {
             "device_id": inv.id,
             "name": display_name,
             "power_w": power_w,
             "throttle_order": inv.throttle_order,
             "throttle_enabled": inv.throttle_enabled,
             "current_limit_pct": device_limits.get(inv.id, 100.0),
-        })
+        }
+
+        # Throttle enrichment (Phase 36)
+        plugin = ds.plugin if ds else None
+        throttle_score = 0.0
+        throttle_mode = "none"
+        measured_response_time_s = None
+        relay_on = True
+        throttle_state = "disabled"
+
+        if plugin and hasattr(plugin, "throttle_capabilities"):
+            caps = plugin.throttle_capabilities
+            throttle_score = compute_throttle_score(caps)
+            throttle_mode = caps.mode
+
+        if distributor is not None and inv.id in distributor._device_states:
+            dev_state = distributor._device_states[inv.id]
+            measured_response_time_s = dev_state.measured_response_time_s
+            relay_on = dev_state.relay_on
+            # Derive throttle_state
+            if not inv.throttle_enabled:
+                throttle_state = "disabled"
+            elif distributor._is_in_startup(dev_state):
+                throttle_state = "startup"
+            elif (throttle_mode == "binary" and dev_state.last_toggle_ts is not None
+                  and hasattr(plugin, "throttle_capabilities")
+                  and (time.monotonic() - dev_state.last_toggle_ts) < plugin.throttle_capabilities.cooldown_s):
+                throttle_state = "cooldown"
+            elif device_limits.get(inv.id, 100.0) < 100.0 or not relay_on:
+                throttle_state = "throttled"
+            else:
+                throttle_state = "active"
+        elif inv.throttle_enabled:
+            throttle_state = "active"
+
+        contrib["throttle_score"] = throttle_score
+        contrib["throttle_mode"] = throttle_mode
+        contrib["measured_response_time_s"] = measured_response_time_s
+        contrib["relay_on"] = relay_on
+        contrib["throttle_state"] = throttle_state
+        contributions.append(contrib)
 
     return total_power_w, total_rated_w, contributions
 
@@ -1609,6 +1658,7 @@ async def virtual_snapshot_handler(request: web.Request) -> web.Response:
         "contributions": contributions,
         "control": control,
         "auto_throttle": config.auto_throttle,
+        "auto_throttle_preset": config.auto_throttle_preset,
     })
 
 

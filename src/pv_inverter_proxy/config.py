@@ -19,6 +19,28 @@ log = structlog.get_logger()
 
 DEFAULT_CONFIG_PATH = "/etc/pv-inverter-proxy/config.yaml"
 
+# Auto-throttle convergence presets (Phase 36)
+AUTO_THROTTLE_PRESETS: dict[str, dict[str, float]] = {
+    "aggressive": {
+        "convergence_tolerance_pct": 10.0,
+        "convergence_max_samples": 5,
+        "target_change_tolerance_pct": 5.0,
+        "binary_off_threshold_w": 100.0,
+    },
+    "balanced": {
+        "convergence_tolerance_pct": 5.0,
+        "convergence_max_samples": 10,
+        "target_change_tolerance_pct": 2.0,
+        "binary_off_threshold_w": 50.0,
+    },
+    "conservative": {
+        "convergence_tolerance_pct": 3.0,
+        "convergence_max_samples": 20,
+        "target_change_tolerance_pct": 1.0,
+        "binary_off_threshold_w": 25.0,
+    },
+}
+
 
 def _generate_id() -> str:
     """Generate a 12-character hex identifier for an inverter entry."""
@@ -119,6 +141,7 @@ class Config:
     mqtt_publish: MqttPublishConfig = field(default_factory=MqttPublishConfig)
     virtual_inverter: VirtualInverterConfig = field(default_factory=VirtualInverterConfig)
     auto_throttle: bool = False
+    auto_throttle_preset: str = "balanced"
     log_level: str = "INFO"
 
     @property
@@ -199,6 +222,7 @@ def load_config(path: str | None = None) -> Config:
             if k in VirtualInverterConfig.__dataclass_fields__
         }),
         auto_throttle=data.get("auto_throttle", False),
+        auto_throttle_preset=data.get("auto_throttle_preset", "balanced") if data.get("auto_throttle_preset", "balanced") in AUTO_THROTTLE_PRESETS else "balanced",
         log_level=data.get("log_level", "INFO"),
     )
 

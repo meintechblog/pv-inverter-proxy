@@ -962,3 +962,70 @@ async def test_effective_score_uses_measured():
     assert measured_score != preset_score
     # Faster response -> higher score
     assert measured_score > preset_score
+
+
+# ---------------------------------------------------------------------------
+# Phase 36: Preset config and config-driven convergence params
+# ---------------------------------------------------------------------------
+
+def test_auto_throttle_presets_exist():
+    """AUTO_THROTTLE_PRESETS has 3 presets with 4 parameter keys each."""
+    from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS
+
+    assert set(AUTO_THROTTLE_PRESETS.keys()) == {"aggressive", "balanced", "conservative"}
+    expected_keys = {"convergence_tolerance_pct", "convergence_max_samples",
+                     "target_change_tolerance_pct", "binary_off_threshold_w"}
+    for name, preset in AUTO_THROTTLE_PRESETS.items():
+        assert set(preset.keys()) == expected_keys, f"Preset '{name}' missing keys"
+
+
+def test_auto_throttle_preset_default_balanced():
+    """Config().auto_throttle_preset defaults to 'balanced'."""
+    assert Config().auto_throttle_preset == "balanced"
+
+
+@pytest.mark.asyncio
+async def test_get_convergence_params_balanced_default():
+    """_get_convergence_params() returns balanced values by default."""
+    from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS
+
+    dist, _ = _build_distributor([
+        ("dev1", 30000, 1, True, 0.0),
+    ])
+    params = dist._get_convergence_params()
+    assert params == AUTO_THROTTLE_PRESETS["balanced"]
+
+
+@pytest.mark.asyncio
+async def test_get_convergence_params_aggressive():
+    """_get_convergence_params() returns aggressive values when configured."""
+    from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS
+
+    dist, _ = _build_distributor([
+        ("dev1", 30000, 1, True, 0.0),
+    ])
+    dist._config.auto_throttle_preset = "aggressive"
+    params = dist._get_convergence_params()
+    assert params == AUTO_THROTTLE_PRESETS["aggressive"]
+
+
+@pytest.mark.asyncio
+async def test_convergence_uses_config_driven_params():
+    """on_poll uses config-driven convergence_tolerance_pct from preset."""
+    from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS
+
+    dist, plugins = _build_distributor([
+        ("dev1", 10000, 1, True, 0.0),
+    ])
+    dist._config.auto_throttle_preset = "aggressive"
+    dist.sync_devices()
+    ds = dist._device_states["dev1"]
+
+    # Set a target of 5000W
+    ds.target_power_w = 5000.0
+    ds.target_set_ts = time.monotonic() - 2.0
+
+    # aggressive tolerance is 10% -> 500W tolerance
+    # 5400W is within 10% of 5000W (8% error) -> should converge
+    dist.on_poll("dev1", 5400.0)
+    assert ds.measured_response_time_s is not None, "Should have converged with aggressive tolerance"
