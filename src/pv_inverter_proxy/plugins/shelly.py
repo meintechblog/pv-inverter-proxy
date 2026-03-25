@@ -13,7 +13,7 @@ from __future__ import annotations
 import aiohttp
 import structlog
 
-from pv_inverter_proxy.plugin import InverterPlugin, PollResult, WriteResult
+from pv_inverter_proxy.plugin import InverterPlugin, PollResult, ThrottleCaps, WriteResult
 from pv_inverter_proxy.plugins.shelly_profiles import (
     Gen1Profile,
     Gen2Profile,
@@ -261,6 +261,10 @@ class ShellyPlugin(InverterPlugin):
         self._host = host
         self._profile = None
         self._generation = ""  # Re-detect on next connect
+
+    @property
+    def throttle_capabilities(self) -> ThrottleCaps:
+        return ThrottleCaps(mode="binary", response_time_s=0.5, cooldown_s=300.0, startup_delay_s=30.0)
 
     async def close(self) -> None:
         """Clean up aiohttp session."""

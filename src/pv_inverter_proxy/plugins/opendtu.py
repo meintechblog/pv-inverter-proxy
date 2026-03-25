@@ -13,7 +13,7 @@ import aiohttp
 import structlog
 
 from pv_inverter_proxy.config import GatewayConfig
-from pv_inverter_proxy.plugin import InverterPlugin, PollResult, WriteResult
+from pv_inverter_proxy.plugin import InverterPlugin, PollResult, ThrottleCaps, WriteResult
 from pv_inverter_proxy.sunspec_models import (
     encode_string,
     _int16_as_uint16,
@@ -429,6 +429,10 @@ class OpenDTUPlugin(InverterPlugin):
         except Exception as e:
             log.warning("opendtu_power_command_failed", serial=self.serial, action=action, error=str(e))
             return WriteResult(success=False, error=str(e))
+
+    @property
+    def throttle_capabilities(self) -> ThrottleCaps:
+        return ThrottleCaps(mode="proportional", response_time_s=10.0, cooldown_s=0.0, startup_delay_s=0.0)
 
     async def close(self) -> None:
         """Close the aiohttp session."""

@@ -10,7 +10,7 @@ import struct
 
 from pymodbus.client import AsyncModbusTcpClient
 
-from pv_inverter_proxy.plugin import InverterPlugin, PollResult, WriteResult
+from pv_inverter_proxy.plugin import InverterPlugin, PollResult, ThrottleCaps, WriteResult
 from pv_inverter_proxy.sunspec_models import (
     encode_string,
     _int16_as_uint16,
@@ -185,6 +185,10 @@ class SolarEdgePlugin(InverterPlugin):
         self.port = port
         self.unit_id = unit_id
         logger.info("Reconfigured SolarEdge to %s:%d unit=%d", host, port, unit_id)
+
+    @property
+    def throttle_capabilities(self) -> ThrottleCaps:
+        return ThrottleCaps(mode="proportional", response_time_s=1.0, cooldown_s=0.0, startup_delay_s=0.0)
 
     async def close(self) -> None:
         if self._client is not None:
