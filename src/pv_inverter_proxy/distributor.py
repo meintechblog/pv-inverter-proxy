@@ -17,6 +17,7 @@ import structlog
 
 from pv_inverter_proxy.config import Config, InverterEntry
 from pv_inverter_proxy.connection import ConnectionState
+from pv_inverter_proxy.plugin import compute_throttle_score
 
 
 @dataclass
@@ -31,6 +32,10 @@ class DeviceLimitState:
     last_write_ts: float | None = None  # None = never written
     pending_limit_pct: float | None = None
     is_online: bool = True
+    # Binary throttle fields (Phase 34)
+    relay_on: bool = True                # Current relay state (binary devices)
+    last_toggle_ts: float | None = None  # Monotonic timestamp of last relay toggle
+    startup_until_ts: float = 0.0        # Monotonic time when startup grace ends
 
 
 class PowerLimitDistributor:
@@ -93,18 +98,23 @@ class PowerLimitDistributor:
         self._enabled = enable
 
         if not enable:
-            # Disable: send 100% to all eligible
+            # Disable: send 100% to proportional, switch(True) to binary
             for ds in self._device_states.values():
                 if self._is_throttle_eligible(ds):
-                    await self._send_limit(ds.device_id, 100.0, enable=False)
+                    if self._is_binary_device(ds):
+                        await self._send_binary_command(ds.device_id, turn_on=True)
+                    else:
+                        await self._send_limit(ds.device_id, 100.0, enable=False)
             return
 
         # Calculate total rated power of ALL enabled devices with rated_power > 0
         # (including monitoring-only, per user decision "Leistung zaehlt mit")
+        # Exclude binary devices in startup grace period (not yet producing)
         total_rated = sum(
             ds.entry.rated_power
             for ds in self._device_states.values()
             if ds.entry.enabled and ds.entry.rated_power > 0
+            and not self._is_in_startup(ds)
         )
         if total_rated <= 0:
             return
@@ -120,8 +130,25 @@ class PowerLimitDistributor:
             targets={k: round(v, 2) for k, v in targets.items()},
         )
 
+        binary_on: list[str] = []
+        binary_off: list[str] = []
         for device_id, target_pct in targets.items():
-            await self._send_limit(device_id, target_pct, enable=True)
+            ds = self._device_states[device_id]
+            if self._is_binary_device(ds):
+                if target_pct > 0:
+                    binary_on.append(device_id)
+                else:
+                    binary_off.append(device_id)
+            else:
+                await self._send_limit(device_id, target_pct, enable=True)
+
+        # Binary OFF: send immediately (throttle)
+        for device_id in binary_off:
+            await self._send_binary_command(device_id, turn_on=False)
+
+        # Binary ON: reverse order (slowest first for re-enable)
+        for device_id in self._sort_binary_reenable(binary_on):
+            await self._send_binary_command(device_id, turn_on=True)
 
     def _waterfall(self, allowed_watts: float) -> dict[str, float]:
         """Pure function: waterfall distribution by Throttling Order.
@@ -129,9 +156,11 @@ class PowerLimitDistributor:
         Returns {device_id: limit_pct} for all throttle-eligible devices.
         """
         # Collect throttle-eligible: throttle_enabled=True, online, rated_power > 0
+        # Exclude binary devices in startup grace period
         eligible = sorted(
             [ds for ds in self._device_states.values()
-             if ds.entry.throttle_enabled and ds.is_online and ds.entry.rated_power > 0],
+             if ds.entry.throttle_enabled and ds.is_online and ds.entry.rated_power > 0
+             and not self._is_in_startup(ds)],
             key=lambda ds: ds.entry.throttle_order,
         )
 
@@ -250,6 +279,62 @@ class PowerLimitDistributor:
         """
         if self._enabled:
             await self.distribute(self._global_limit_pct, True)
+
+    def _is_binary_device(self, ds: DeviceLimitState) -> bool:
+        """Check if device uses binary (relay on/off) throttling."""
+        if hasattr(ds.plugin, 'throttle_capabilities'):
+            return ds.plugin.throttle_capabilities.mode == "binary"
+        return False
+
+    def _is_in_startup(self, ds: DeviceLimitState) -> bool:
+        """Check if binary device is in startup grace period."""
+        if not self._is_binary_device(ds):
+            return False
+        return time.monotonic() < ds.startup_until_ts
+
+    async def _send_binary_command(self, device_id: str, turn_on: bool) -> None:
+        """Send relay on/off to a binary device, respecting cooldown."""
+        ds = self._device_states.get(device_id)
+        if ds is None:
+            return
+        # No change needed
+        if ds.relay_on == turn_on:
+            return
+        # Cooldown check
+        now = time.monotonic()
+        caps = ds.plugin.throttle_capabilities
+        if ds.last_toggle_ts is not None:
+            elapsed = now - ds.last_toggle_ts
+            if elapsed < caps.cooldown_s:
+                self._log.debug(
+                    "binary_cooldown_active",
+                    device_id=device_id,
+                    want=turn_on,
+                    cooldown_remaining=round(caps.cooldown_s - elapsed, 1),
+                )
+                return
+        # Execute switch
+        try:
+            success = await ds.plugin.switch(turn_on)
+            if success:
+                ds.relay_on = turn_on
+                ds.last_toggle_ts = now
+                if turn_on:
+                    ds.startup_until_ts = now + caps.startup_delay_s
+                self._log.info("binary_switch", device_id=device_id, relay_on=turn_on)
+            else:
+                self._log.warning("binary_switch_failed", device_id=device_id, on=turn_on)
+        except Exception as exc:
+            self._log.error("binary_switch_error", device_id=device_id, error=str(exc))
+
+    def _sort_binary_reenable(self, device_ids: list[str]) -> list[str]:
+        """Sort binary devices for re-enable: lowest throttle_score first."""
+        def score_key(did: str) -> float:
+            ds = self._device_states.get(did)
+            if ds and hasattr(ds.plugin, 'throttle_capabilities'):
+                return compute_throttle_score(ds.plugin.throttle_capabilities)
+            return 0.0
+        return sorted(device_ids, key=score_key)
 
     def _is_throttle_eligible(self, ds: DeviceLimitState) -> bool:
         """Check if a device is eligible for throttle commands."""
