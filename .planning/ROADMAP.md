@@ -205,10 +205,10 @@ Plans:
   2. A hysteresis timer prevents relay toggling more than once per cooldown period (default 300s)
   3. After relay on, the distributor waits startup_delay_s before expecting power from that device
   4. Re-enable happens in reverse order (slowest devices come back online first, fastest stay throttled longest for fine-tuning)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 34 to break down)
+- [ ] 34-01-PLAN.md -- Binary dispatch, cooldown hysteresis, startup grace, reverse re-enable (TDD)
 
 ### Phase 35: Smart Auto-Throttle Algorithm
 **Goal**: An "Auto" mode in the distributor that automatically selects the optimal throttle order based on device speed scores — fastest devices regulate first, binary devices are last resort
