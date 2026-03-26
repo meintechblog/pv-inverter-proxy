@@ -129,13 +129,28 @@ class PowerLimitDistributor:
             return
 
         allowed_watts = (limit_pct / 100.0) * total_rated
-        targets = self._waterfall(allowed_watts)
+
+        # Subtract non-throttle-eligible devices' rated power from the
+        # waterfall budget. These devices produce at ~100% and can't be
+        # controlled, so their output must be deducted from the fleet
+        # budget before distributing to controllable devices.
+        non_throttle_rated = sum(
+            ds.entry.rated_power
+            for ds in self._device_states.values()
+            if ds.entry.enabled and ds.entry.rated_power > 0
+            and not ds.entry.throttle_enabled
+            and not self._is_in_startup(ds)
+        )
+        waterfall_budget = max(0.0, allowed_watts - non_throttle_rated)
+        targets = self._waterfall(waterfall_budget)
 
         self._log.info(
             "distribute",
             limit_pct=limit_pct,
             total_rated=total_rated,
             allowed_watts=round(allowed_watts, 1),
+            non_throttle_rated=non_throttle_rated,
+            waterfall_budget=round(waterfall_budget, 1),
             targets={k: round(v, 2) for k, v in targets.items()},
         )
 

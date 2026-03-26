@@ -197,6 +197,31 @@ async def test_monitoring_only_excluded():
 
 
 @pytest.mark.asyncio
+async def test_monitoring_only_budget_deduction():
+    """Monitoring-only devices' rated power is deducted from waterfall budget.
+
+    Fleet: SE30K (30kW, throttle) + Monitor (5kW, monitoring-only) = 35kW total.
+    50% limit -> allowed = 17500W.
+    Monitor produces ~5000W (uncontrolled) -> waterfall budget = 17500 - 5000 = 12500W.
+    SE30K should get 12500/30000 = 41.7%, NOT 17500/30000 = 58.3%.
+    """
+    dist, plugins = _build_distributor([
+        ("se30k", 30000, 1, True, 0.0),
+        ("monitor", 5000, 2, False, 0.0),  # monitoring-only
+    ])
+
+    await dist.distribute(50.0, enable=True)
+
+    # Monitor device: no call
+    plugins["monitor"].write_power_limit.assert_not_called()
+
+    # SE30K should be at ~41.7% (12500W / 30000W), not ~58.3%
+    se_args = plugins["se30k"].write_power_limit.call_args[0]
+    assert se_args[0] is True  # enable
+    assert abs(se_args[1] - 41.7) < 0.5, f"Expected ~41.7%, got {se_args[1]}%"
+
+
+@pytest.mark.asyncio
 async def test_dead_time_buffering():
     """Second call within dead-time buffers (not sent immediately)."""
     dist, plugins = _build_distributor([

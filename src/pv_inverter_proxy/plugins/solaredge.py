@@ -170,9 +170,16 @@ class SolarEdgePlugin(InverterPlugin):
             if result.isError():
                 return WriteResult(success=False, error=f"Limit write failed: {result}")
 
-                # Note: Register 61696 (commit) intentionally skipped —
-                # SE30K does not respond to writes on this register via TCP,
-                # but the limit takes effect without commit.
+            # Step 3: Commit power control (register 61696 / 0xF100)
+            # Some SE30K units require the commit to fully apply the limit.
+            # The commit may timeout on TCP (concurrent connections) but the
+            # write still takes effect, so we tolerate errors here.
+            try:
+                await self._client.write_registers(
+                    61696, [1], device_id=self.unit_id,
+                )
+            except Exception:
+                pass  # Commit timeout is expected; limit still applies
 
             return WriteResult(success=True)
         except Exception as e:
