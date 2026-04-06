@@ -1489,6 +1489,40 @@ async def shelly_discover_handler(request: web.Request) -> web.Response:
         )
 
 
+async def sungrow_probe_handler(request: web.Request) -> web.Response:
+    """POST /api/sungrow/probe -- probe a Sungrow inverter via Modbus TCP."""
+    try:
+        body = await request.json()
+        host = body["host"]
+        port = int(body.get("port", 502))
+        unit_id = int(body.get("unit_id", 1))
+    except (KeyError, ValueError, TypeError) as e:
+        return web.json_response({"error": f"Invalid request: {e}"}, status=400)
+    try:
+        from pymodbus.client import AsyncModbusTcpClient
+        client = AsyncModbusTcpClient(host, port=port)
+        await client.connect()
+        if not client.connected:
+            return web.json_response({"success": False, "error": "Connection refused"})
+        # Read device type register at wire address 5000 (doc 5001) — 2 registers
+        resp = await client.read_input_registers(5000, count=2, slave=unit_id)
+        model = "Sungrow Inverter"
+        if not resp.isError() and hasattr(resp, "registers"):
+            device_code = resp.registers[0]
+            model = f"Sungrow (code {device_code:#06x})"
+        client.close()
+        return web.json_response({
+            "success": True,
+            "manufacturer": "Sungrow",
+            "model": model,
+            "host": host,
+            "port": port,
+            "unit_id": unit_id,
+        })
+    except Exception as e:
+        return web.json_response({"success": False, "error": str(e)})
+
+
 async def _reconfigure_active(app: web.Application, config: Config, device_id: str = "", action: str = "") -> None:
     """Reconfigure devices via DeviceRegistry.
 
@@ -1690,7 +1724,7 @@ async def inverters_add_handler(request: web.Request) -> web.Response:
         gateway_password=body.get("gateway_password", ""),
         shelly_gen=body.get("shelly_gen", ""),
         rated_power=body.get("rated_power", 0),
-        throttle_enabled=body.get("throttle_enabled", dev_type != "shelly"),
+        throttle_enabled=body.get("throttle_enabled", dev_type not in ("shelly", "sungrow")),
     )
     config: Config = request.app["config"]
     config.inverters.append(entry)
@@ -1983,6 +2017,7 @@ async def create_webapp(
     app.router.add_post("/api/mqtt/discover", mqtt_discover_handler)
     app.router.add_post("/api/shelly/probe", shelly_probe_handler)
     app.router.add_post("/api/shelly/discover", shelly_discover_handler)
+    app.router.add_post("/api/sungrow/probe", sungrow_probe_handler)
     app.router.add_post("/api/opendtu/test-auth", opendtu_test_auth_handler)
     app.router.add_get("/api/devices/{id}/opendtu/status", opendtu_status_handler)
     app.router.add_post("/api/devices/{id}/opendtu/power", opendtu_power_handler)

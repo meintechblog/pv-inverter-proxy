@@ -2082,6 +2082,7 @@ function showAddDeviceModal() {
         '    <div class="ve-add-type-card" data-type="solaredge">SolarEdge Inverter</div>' +
         '    <div class="ve-add-type-card" data-type="opendtu">OpenDTU Inverter</div>' +
         '    <div class="ve-add-type-card" data-type="shelly">Shelly Device</div>' +
+        '    <div class="ve-add-type-card" data-type="sungrow">Sungrow Inverter</div>' +
         '  </div>' +
         '  <div class="ve-add-form-area"></div>' +
         '  <div class="ve-add-modal-actions">' +
@@ -2139,6 +2140,14 @@ function showAddForm(formArea, actions, type, modal) {
             '<div class="ve-form-group"><label>Name (optional)</label><input type="text" class="ve-input ve-add-name" placeholder="e.g. Shelly Plus 1PM"></div>' +
             '<div class="ve-form-group"><label>Host IP</label><input type="text" class="ve-input ve-add-host" placeholder="192.168.1.50"></div>' +
             '<div class="ve-form-group"><label>Rated Power (W)</label><input type="number" class="ve-input ve-add-rated-power" value="" min="0" placeholder="0 (optional)"></div>' +
+            '<div class="ve-hint-card ve-add-probe-hint" style="display:none"></div>';
+    } else if (type === 'sungrow') {
+        formArea.innerHTML =
+            '<div class="ve-form-group"><label>Name (optional)</label><input type="text" class="ve-input ve-add-name" placeholder="e.g. Sungrow SG-RT"></div>' +
+            '<div class="ve-form-group"><label>Host IP</label><input type="text" class="ve-input ve-add-host" placeholder="192.168.2.151"></div>' +
+            '<div class="ve-form-group"><label>Port</label><input type="number" class="ve-input ve-add-port" value="502" min="1" max="65535"></div>' +
+            '<div class="ve-form-group"><label>Unit ID</label><input type="number" class="ve-input ve-add-unit" value="1" min="1" max="247"></div>' +
+            '<div class="ve-form-group"><label>Rated Power (W)</label><input type="number" class="ve-input ve-add-rated-power" value="8000" min="0"></div>' +
             '<div class="ve-hint-card ve-add-probe-hint" style="display:none"></div>';
     }
 
@@ -2268,6 +2277,46 @@ function showAddForm(formArea, actions, type, modal) {
                     probeHint.style.display = 'block';
                     probeHint.className = 've-hint-card ve-add-probe-hint';
                     probeHint.innerHTML = '<div class="ve-hint-header">Connection failed: ' + esc(e.message) + '</div>';
+                }
+            });
+        } else if (type === 'sungrow') {
+            var sgProbeHint = formArea.querySelector('.ve-add-probe-hint');
+            var sgRatedPower = formArea.querySelector('.ve-add-rated-power');
+            addBtn.disabled = true;
+            addBtn.textContent = 'Probing...';
+            payload.port = parseInt(port.value) || 502;
+            payload.unit_id = parseInt(unit.value) || 1;
+            if (sgRatedPower && sgRatedPower.value) payload.rated_power = parseInt(sgRatedPower.value) || 0;
+            fetch('/api/sungrow/probe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ host: host.value.trim(), port: payload.port, unit_id: payload.unit_id })
+            }).then(function(r) { return r.json(); }).then(function(result) {
+                addBtn.disabled = false;
+                addBtn.textContent = 'Add';
+                if (result.success) {
+                    if (sgProbeHint) {
+                        sgProbeHint.style.display = 'block';
+                        sgProbeHint.className = 've-hint-card ve-hint-card--success ve-add-probe-hint';
+                        sgProbeHint.innerHTML = '<div class="ve-hint-header">Connected — ' + esc(result.model) + '</div>';
+                    }
+                    payload.manufacturer = result.manufacturer;
+                    payload.model = result.model;
+                    _doAdd();
+                } else {
+                    if (sgProbeHint) {
+                        sgProbeHint.style.display = 'block';
+                        sgProbeHint.className = 've-hint-card ve-add-probe-hint';
+                        sgProbeHint.innerHTML = '<div class="ve-hint-header">Could not reach inverter</div><p class="ve-hint-subtext">' + esc(result.error) + '</p>';
+                    }
+                }
+            }).catch(function(e) {
+                addBtn.disabled = false;
+                addBtn.textContent = 'Add';
+                if (sgProbeHint) {
+                    sgProbeHint.style.display = 'block';
+                    sgProbeHint.className = 've-hint-card ve-add-probe-hint';
+                    sgProbeHint.innerHTML = '<div class="ve-hint-header">Connection failed: ' + esc(e.message) + '</div>';
                 }
             });
         } else {
