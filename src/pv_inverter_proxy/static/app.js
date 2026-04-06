@@ -476,10 +476,10 @@ function buildInverterDashboard(container, data, deviceType) {
         var minOpts, maxOpts;
 
         if (isBinary) {
-            // Binary: only 0 and max (on/off)
-            minOpts = '<option value="max"' + (curMinPct >= 100 ? ' selected' : '') + '>' + maxLabel + '</option>' +
+            // Binary: only 0 and Max (on/off)
+            minOpts = '<option value="max"' + (curMinPct >= 100 ? ' selected' : '') + '>Max</option>' +
                 '<option value="0"' + (curMinPct === 0 ? ' selected' : '') + '>' + zeroLabel + '</option>';
-            maxOpts = '<option value="max"' + (curMaxPct >= 100 ? ' selected' : '') + '>' + maxLabel + '</option>' +
+            maxOpts = '<option value="max"' + (curMaxPct >= 100 ? ' selected' : '') + '>Max</option>' +
                 '<option value="0"' + (curMaxPct === 0 ? ' selected' : '') + '>' + zeroLabel + '</option>';
         } else {
             // Proportional: full step list

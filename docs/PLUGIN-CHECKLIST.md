@@ -42,6 +42,57 @@ When adding a new device type (like Shelly, OpenDTU, etc.), every item below mus
 - [ ] **`device_snapshot_handler()`** — Include config fields in both the normal and "no data yet" response branches
 - [ ] **Register viewer headers** — Dynamic column labels per device type in `buildRegisterViewer()` (not hardcoded "SE30K Source")
 
+## Throttle Integration
+
+Every plugin must declare its throttle capabilities so the waterfall distributor can score and prioritize it correctly.
+
+- [ ] **`throttle_capabilities` property** — Return a `ThrottleCaps(mode, response_time_s, cooldown_s, startup_delay_s)` on the plugin class
+
+### Mode Selection
+
+| Device behavior | `mode` | Example |
+|---|---|---|
+| Can set any power % (0-100%) via API | `"proportional"` | SolarEdge, OpenDTU, Fronius |
+| Can only switch relay on/off | `"binary"` | Shelly, Relay-controlled devices |
+| Monitoring only, no control | `"none"` | Read-only energy meters |
+
+### Parameter Reference
+
+| Parameter | What to measure | How to determine |
+|---|---|---|
+| `response_time_s` | Time from API command to actual power change | Send limit command, poll until power stabilizes. Typical: 0.5-1s (local Modbus), 5-10s (cloud API) |
+| `cooldown_s` | Minimum time between toggles (binary only) | Check manufacturer spec or relay rating. Set to 0 for proportional devices |
+| `startup_delay_s` | Grace period after switching ON before device produces stable power (binary only) | Measure time from relay-on to first stable power reading. Set to 0 for proportional devices |
+
+### Score Formula (0-10, higher = faster response = higher priority)
+
+```
+Score = Base + Reaktionsbonus − Cooldown-Abzug − Startup-Abzug
+
+Base:             7.0 (proportional) | 3.0 (binary)
+Reaktionsbonus:   3.0 × (1 − response_time_s / 10)     → 0 to 3.0
+Cooldown-Abzug:   min(2.0, cooldown_s / 150)            → 0 to 2.0
+Startup-Abzug:    min(1.0, startup_delay_s / 30)         → 0 to 1.0
+```
+
+### Reference Scores (current plugins)
+
+| Plugin | Mode | Response | Cooldown | Startup | Score |
+|---|---|---|---|---|---|
+| SolarEdge (Modbus TCP) | proportional | 1.0s | 0s | 0s | **9.7** |
+| OpenDTU (HTTP API) | proportional | 10.0s | 0s | 0s | **7.0** |
+| Shelly (HTTP relay) | binary | 0.5s | 300s | 30s | **2.8** |
+
+### UI Consistency Rules
+
+- [ ] **Power gauge clamp dropdowns** — All device types get min/max dropdowns under the gauge
+  - Proportional: full watt steps (1kW for ≥2kW devices, 50W for <2kW) + 1% + 0
+  - Binary: only "Max" and "0 W" (two options)
+  - Max option always labeled **"Max"** (never the watt value) — must be identical across all types
+  - Zero option: "0 kW" for ≥2kW, "0 W" for <2kW
+- [ ] **Throttle table** — Score, Modus, Reaktion, Limit, Status columns. Click row to expand score breakdown
+- [ ] **`power-clamp` API** — For binary devices: max_pct=0 → `switch(false)`, max_pct>0 → `switch(true)`
+
 ## Tests
 
 - [ ] **Plugin unit tests** — ABC compliance, profile polling, SunSpec encoding, energy tracking, missing field handling
