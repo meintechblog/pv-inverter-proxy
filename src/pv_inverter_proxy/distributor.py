@@ -105,11 +105,11 @@ class PowerLimitDistributor:
         self._enabled = enable
 
         if not enable:
-            # Disable: send 100% to proportional, switch(True) to binary
+            # Disable: send 100% to proportional, force-switch(True) binary
             for ds in self._device_states.values():
                 if self._is_throttle_eligible(ds):
                     if self._is_binary_device(ds):
-                        await self._send_binary_command(ds.device_id, turn_on=True)
+                        await self._send_binary_command(ds.device_id, turn_on=True, force=True)
                     else:
                         await self._send_limit(ds.device_id, 100.0, enable=False)
             return
@@ -356,21 +356,27 @@ class PowerLimitDistributor:
             return False
         return time.monotonic() < ds.startup_until_ts
 
-    async def _send_binary_command(self, device_id: str, turn_on: bool) -> None:
-        """Send relay on/off to a binary device, respecting cooldown."""
+    async def _send_binary_command(
+        self, device_id: str, turn_on: bool, *, force: bool = False,
+    ) -> None:
+        """Send relay on/off to a binary device, respecting cooldown.
+
+        Args:
+            force: Skip cooldown check (used when disabling all limiting).
+        """
         ds = self._device_states.get(device_id)
         if ds is None:
             return
         # No change needed
         if ds.relay_on == turn_on:
             return
-        # Cooldown check
+        # Cooldown check (skipped when force=True, e.g. disable all)
         now = time.monotonic()
         caps = get_throttle_caps(ds.plugin)
         if caps is None:
             self._log.warning("binary_no_caps", device_id=device_id)
             return
-        if ds.last_toggle_ts is not None:
+        if not force and ds.last_toggle_ts is not None:
             elapsed = now - ds.last_toggle_ts
             if elapsed < caps.cooldown_s:
                 self._log.debug(
