@@ -466,57 +466,64 @@ function buildInverterDashboard(container, data, deviceType) {
     // Power limit dropdowns
     var clampHtml = '';
     if (ratedW > 0) {
+        var isBinary = deviceType === 'shelly';
         var ctrl = data.control || {};
         var curMinPct = ctrl.clamp_min_pct || 0;
         var curMaxPct = ctrl.clamp_max_pct != null ? ctrl.clamp_max_pct : 100;
 
-        // Build step list based on rated power
-        // ≥ 2kW: 1kW steps, < 2kW: 50W steps
-        var steps = []; // [{value: W, label: "..."}]
-        if (ratedW >= 2000) {
-            var maxKw = Math.round(ratedW / 1000);
-            for (var kw = maxKw - 1; kw >= 1; kw--) steps.push({w: kw * 1000, label: kw + ' kW'});
-        } else {
-            var stepW = 50;
-            for (var w = ratedW - stepW; w >= stepW; w -= stepW) steps.push({w: w, label: w + ' W'});
-        }
-        // 1% minimum (e.g. 0.3 kW for 30kW, 4 W for 400W)
-        var w1pct = Math.round(ratedW * 0.01);
-        var label1pct = w1pct >= 1000 ? (w1pct / 1000).toFixed(1) + ' kW' : w1pct + ' W';
-        var pct1 = {w: w1pct, label: label1pct, pctVal: 1};
-
-        // Resolve current selection to watts for matching
-        var curMinW = Math.round(curMinPct * ratedW / 100);
-        var curMaxW = curMaxPct >= 100 ? ratedW : Math.round(curMaxPct * ratedW / 100);
-
-        function _closestStep(watts) {
-            if (watts <= w1pct) return watts === 0 ? '0' : 'min';
-            var best = steps[0]; var bestD = 99999;
-            for (var i = 0; i < steps.length; i++) {
-                var d = Math.abs(steps[i].w - watts);
-                if (d < bestD) { bestD = d; best = steps[i]; }
-            }
-            return String(best.w);
-        }
-
-        // Min dropdown: descending steps → 1% → 0
-        var minOpts = '';
-        for (var i = 0; i < steps.length; i++) {
-            var s = steps[i];
-            minOpts += '<option value="' + s.w + '"' + (_closestStep(curMinW) === String(s.w) ? ' selected' : '') + '>' + s.label + '</option>';
-        }
-        minOpts += '<option value="min"' + (curMinPct === 1 ? ' selected' : '') + '>' + label1pct + '</option>';
         var zeroLabel = ratedW >= 2000 ? '0 kW' : '0 W';
-        minOpts += '<option value="0"' + (curMinPct === 0 ? ' selected' : '') + '>' + zeroLabel + '</option>';
+        var maxLabel = ratedW >= 2000 ? (ratedW / 1000) + ' kW' : ratedW + ' W';
+        var minOpts, maxOpts;
 
-        // Max dropdown: Max → descending steps → 1% → 0
-        var maxOpts = '<option value="max"' + (curMaxPct >= 100 ? ' selected' : '') + '>Max</option>';
-        for (var i = 0; i < steps.length; i++) {
-            var s = steps[i];
-            maxOpts += '<option value="' + s.w + '"' + (curMaxPct < 100 && curMaxPct > 1 && _closestStep(curMaxW) === String(s.w) ? ' selected' : '') + '>' + s.label + '</option>';
+        if (isBinary) {
+            // Binary: only 0 and max (on/off)
+            minOpts = '<option value="max"' + (curMinPct >= 100 ? ' selected' : '') + '>' + maxLabel + '</option>' +
+                '<option value="0"' + (curMinPct === 0 ? ' selected' : '') + '>' + zeroLabel + '</option>';
+            maxOpts = '<option value="max"' + (curMaxPct >= 100 ? ' selected' : '') + '>' + maxLabel + '</option>' +
+                '<option value="0"' + (curMaxPct === 0 ? ' selected' : '') + '>' + zeroLabel + '</option>';
+        } else {
+            // Proportional: full step list
+            // ≥ 2kW: 1kW steps, < 2kW: 50W steps
+            var steps = [];
+            if (ratedW >= 2000) {
+                var maxKw = Math.round(ratedW / 1000);
+                for (var kw = maxKw - 1; kw >= 1; kw--) steps.push({w: kw * 1000, label: kw + ' kW'});
+            } else {
+                var stepW = 50;
+                for (var w = ratedW - stepW; w >= stepW; w -= stepW) steps.push({w: w, label: w + ' W'});
+            }
+            var w1pct = Math.round(ratedW * 0.01);
+            var label1pct = w1pct >= 1000 ? (w1pct / 1000).toFixed(1) + ' kW' : w1pct + ' W';
+
+            var curMinW = Math.round(curMinPct * ratedW / 100);
+            var curMaxW = curMaxPct >= 100 ? ratedW : Math.round(curMaxPct * ratedW / 100);
+
+            function _closestStep(watts) {
+                if (watts <= w1pct) return watts === 0 ? '0' : 'min';
+                var best = steps[0]; var bestD = 99999;
+                for (var i = 0; i < steps.length; i++) {
+                    var d = Math.abs(steps[i].w - watts);
+                    if (d < bestD) { bestD = d; best = steps[i]; }
+                }
+                return String(best.w);
+            }
+
+            minOpts = '';
+            for (var i = 0; i < steps.length; i++) {
+                var s = steps[i];
+                minOpts += '<option value="' + s.w + '"' + (_closestStep(curMinW) === String(s.w) ? ' selected' : '') + '>' + s.label + '</option>';
+            }
+            minOpts += '<option value="min"' + (curMinPct === 1 ? ' selected' : '') + '>' + label1pct + '</option>';
+            minOpts += '<option value="0"' + (curMinPct === 0 ? ' selected' : '') + '>' + zeroLabel + '</option>';
+
+            maxOpts = '<option value="max"' + (curMaxPct >= 100 ? ' selected' : '') + '>Max</option>';
+            for (var i = 0; i < steps.length; i++) {
+                var s = steps[i];
+                maxOpts += '<option value="' + s.w + '"' + (curMaxPct < 100 && curMaxPct > 1 && _closestStep(curMaxW) === String(s.w) ? ' selected' : '') + '>' + s.label + '</option>';
+            }
+            maxOpts += '<option value="min"' + (curMaxPct === 1 ? ' selected' : '') + '>' + label1pct + '</option>';
+            maxOpts += '<option value="0"' + (curMaxPct === 0 ? ' selected' : '') + '>' + zeroLabel + '</option>';
         }
-        maxOpts += '<option value="min"' + (curMaxPct === 1 ? ' selected' : '') + '>' + label1pct + '</option>';
-        maxOpts += '<option value="0"' + (curMaxPct === 0 ? ' selected' : '') + '>' + zeroLabel + '</option>';
 
         clampHtml =
             '<div class="ve-gauge-clamp">' +
