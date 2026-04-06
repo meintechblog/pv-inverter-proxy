@@ -287,7 +287,7 @@ function renderInverterPage(content, deviceId, deviceType, tab) {
     if (tab === 'dashboard') {
         renderInverterDashboard(tabContent, deviceId, deviceType);
     } else if (tab === 'registers') {
-        renderInverterRegisters(tabContent, deviceId);
+        renderInverterRegisters(tabContent, deviceId, deviceType);
     } else if (tab === 'config') {
         renderInverterConfig(tabContent, deviceId);
     }
@@ -925,8 +925,21 @@ function updateActiveDeviceDashboard(data) {
 
 // ===== Inverter Registers Renderer =====
 
-function renderInverterRegisters(container, deviceId) {
+function renderInverterRegisters(container, deviceId, deviceType) {
     container.innerHTML = '';
+
+    // Doc links per device type
+    var docLinks = {
+        solaredge:
+            '<a href="https://knowledge-center.solaredge.com/sites/kc/files/sunspec-implementation-technical-note.pdf" target="_blank" rel="noopener" class="ve-doc-link" title="SolarEdge SunSpec Register Map (PDF)">SE</a>',
+        opendtu:
+            '<a href="https://www.opendtu.solar/" target="_blank" rel="noopener" class="ve-doc-link" title="OpenDTU Documentation">DTU</a>',
+        shelly:
+            '<a href="https://shelly-api-docs.shelly.cloud/" target="_blank" rel="noopener" class="ve-doc-link" title="Shelly API Documentation">Shelly</a>',
+        sungrow:
+            '<a href="https://github.com/mkanet/sungrow-modbus" target="_blank" rel="noopener" class="ve-doc-link" title="Sungrow Modbus Register Map">SG</a>'
+    };
+    var typeLink = docLinks[deviceType] || '';
 
     // Toolbar
     var toolbar = document.createElement('div');
@@ -934,7 +947,7 @@ function renderInverterRegisters(container, deviceId) {
     toolbar.innerHTML =
         '<div class="ve-reg-toolbar">' +
         '  <h2>Register Viewer' +
-        '    <a href="https://knowledge-center.solaredge.com/sites/kc/files/sunspec-implementation-technical-note.pdf" target="_blank" rel="noopener" class="ve-doc-link" title="SolarEdge SunSpec Register Map (PDF)">SE</a>' +
+        '    ' + typeLink +
         '    <a href="https://github.com/victronenergy/dbus-fronius" target="_blank" rel="noopener" class="ve-doc-link" title="Victron dbus-fronius">VE</a>' +
         '    <a href="https://files.sma.de/downloads/SunSpecModbus-TI-en-11.pdf" target="_blank" rel="noopener" class="ve-doc-link" title="SunSpec Modbus Register Reference (PDF)">SunSpec</a>' +
         '  </h2>' +

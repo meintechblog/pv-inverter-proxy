@@ -41,6 +41,7 @@ When adding a new device type (like Shelly, OpenDTU, etc.), every item below mus
 - [ ] **`_build_device_list()`** — Include ALL config fields needed by config page: `rated_power`, `throttle_order`, `throttle_enabled`, plus device-specific fields (`shelly_gen`, `gateway_*`)
 - [ ] **`device_snapshot_handler()`** — Include config fields in both the normal and "no data yet" response branches
 - [ ] **Register viewer headers** — Dynamic column labels per device type in `buildRegisterViewer()` (not hardcoded "SE30K Source")
+- [ ] **Register viewer doc links** — Add device-specific doc link in `docLinks` map inside `renderInverterRegisters()` in `app.js` (e.g. manufacturer register map PDF)
 
 ## Throttle Integration
 
