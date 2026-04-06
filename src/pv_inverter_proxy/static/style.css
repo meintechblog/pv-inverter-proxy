@@ -2311,14 +2311,8 @@ body {
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: space-between;
     gap: 16px;
     flex-wrap: wrap;
-}
-.ve-preset-group {
-    display: flex;
-    flex-direction: row;
-    gap: 8px;
 }
 .ve-throttle-info-grid {
     display: grid;
@@ -2333,62 +2327,53 @@ body {
     border-radius: 50%;
     vertical-align: middle;
 }
-.ve-preset-info-section {
-    margin-top: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.ve-preset-details {
+.ve-auto-throttle-info {
+    margin-top: 8px;
     border: 1px solid var(--ve-border);
     border-radius: var(--ve-radius-sm);
     overflow: hidden;
     transition: border-color var(--ve-duration-fast) var(--ve-easing-default);
 }
-.ve-preset-details[open] {
+.ve-auto-throttle-info[open] {
     border-color: var(--ve-blue);
 }
-.ve-preset-summary {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+.ve-auto-throttle-info > summary {
     padding: 8px 12px;
     cursor: pointer;
     font-size: 0.85rem;
-    color: var(--ve-text);
+    color: var(--ve-text-dim);
     list-style: none;
     user-select: none;
 }
-.ve-preset-summary::-webkit-details-marker { display: none; }
-.ve-preset-summary::before {
+.ve-auto-throttle-info > summary::-webkit-details-marker { display: none; }
+.ve-auto-throttle-info > summary::before {
     content: '\25B6';
     font-size: 0.7rem;
     color: var(--ve-text-dim);
+    margin-right: 8px;
+    display: inline-block;
     transition: transform var(--ve-duration-fast) var(--ve-easing-default);
-    flex-shrink: 0;
 }
-.ve-preset-details[open] > .ve-preset-summary::before {
+.ve-auto-throttle-info[open] > summary::before {
     transform: rotate(90deg);
 }
-.ve-preset-summary-title {
-    font-weight: 600;
-    color: var(--ve-text);
-    min-width: 100px;
-}
-.ve-preset-summary-text {
-    color: var(--ve-text-dim);
-}
-.ve-preset-detail-list {
-    margin: 0;
-    padding: 4px 12px 10px 32px;
+.ve-auto-throttle-info-body {
+    padding: 4px 12px 12px 12px;
     font-size: 0.8rem;
     color: var(--ve-text-secondary);
     line-height: 1.6;
 }
-.ve-preset-detail-list li {
-    margin-bottom: 2px;
+.ve-auto-throttle-info-body p {
+    margin: 0 0 8px 0;
 }
-.ve-preset-detail-list li::marker {
+.ve-auto-throttle-info-body ul {
+    margin: 0;
+    padding-left: 20px;
+}
+.ve-auto-throttle-info-body li {
+    margin-bottom: 4px;
+}
+.ve-auto-throttle-info-body li::marker {
     color: var(--ve-text-dim);
 }
 

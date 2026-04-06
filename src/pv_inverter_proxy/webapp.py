@@ -284,7 +284,6 @@ async def config_get_handler(request: web.Request) -> web.Response:
             "interval_s": config.mqtt_publish.interval_s,
         },
         "auto_throttle": config.auto_throttle,
-        "auto_throttle_preset": config.auto_throttle_preset,
     })
 
 
@@ -405,12 +404,6 @@ async def config_save_handler(request: web.Request) -> web.Response:
         # Update auto_throttle if provided
         if "auto_throttle" in body:
             config.auto_throttle = bool(body["auto_throttle"])
-
-        if "auto_throttle_preset" in body:
-            from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS
-            preset = body["auto_throttle_preset"]
-            if preset in AUTO_THROTTLE_PRESETS:
-                config.auto_throttle_preset = preset
 
         save_config(request.app["config_path"], config)
         log.info("user_action", action="config_saved", venus_changed=venus_changed, venus_host=venus_host)
@@ -777,7 +770,6 @@ async def broadcast_virtual_snapshot(app: web.Application) -> None:
         "virtual_name": config.virtual_inverter.name,
         "contributions": contributions,
         "auto_throttle": config.auto_throttle,
-        "auto_throttle_preset": config.auto_throttle_preset,
     }})
     for ws in set(clients):
         try:
@@ -1627,7 +1619,6 @@ async def virtual_snapshot_handler(request: web.Request) -> web.Response:
         "contributions": contributions,
         "control": control,
         "auto_throttle": config.auto_throttle,
-        "auto_throttle_preset": config.auto_throttle_preset,
     })
 
 

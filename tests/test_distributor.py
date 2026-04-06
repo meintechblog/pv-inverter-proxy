@@ -990,59 +990,36 @@ async def test_effective_score_uses_measured():
 
 
 # ---------------------------------------------------------------------------
-# Phase 36: Preset config and config-driven convergence params
+# Convergence params
 # ---------------------------------------------------------------------------
 
-def test_auto_throttle_presets_exist():
-    """AUTO_THROTTLE_PRESETS has 3 presets with 4 parameter keys each."""
-    from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS
+def test_convergence_params_exist():
+    """CONVERGENCE_PARAMS has all 4 required parameter keys."""
+    from pv_inverter_proxy.config import CONVERGENCE_PARAMS
 
-    assert set(AUTO_THROTTLE_PRESETS.keys()) == {"aggressive", "balanced", "conservative"}
     expected_keys = {"convergence_tolerance_pct", "convergence_max_samples",
                      "target_change_tolerance_pct", "binary_off_threshold_w"}
-    for name, preset in AUTO_THROTTLE_PRESETS.items():
-        assert set(preset.keys()) == expected_keys, f"Preset '{name}' missing keys"
-
-
-def test_auto_throttle_preset_default_balanced():
-    """Config().auto_throttle_preset defaults to 'balanced'."""
-    assert Config().auto_throttle_preset == "balanced"
+    assert set(CONVERGENCE_PARAMS.keys()) == expected_keys
 
 
 @pytest.mark.asyncio
-async def test_get_convergence_params_balanced_default():
-    """_get_convergence_params() returns balanced values by default."""
-    from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS
+async def test_get_convergence_params_returns_fixed():
+    """_get_convergence_params() returns the fixed convergence parameters."""
+    from pv_inverter_proxy.config import CONVERGENCE_PARAMS
 
     dist, _ = _build_distributor([
         ("dev1", 30000, 1, True, 0.0),
     ])
     params = dist._get_convergence_params()
-    assert params == AUTO_THROTTLE_PRESETS["balanced"]
+    assert params == CONVERGENCE_PARAMS
 
 
 @pytest.mark.asyncio
-async def test_get_convergence_params_aggressive():
-    """_get_convergence_params() returns aggressive values when configured."""
-    from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS
-
-    dist, _ = _build_distributor([
-        ("dev1", 30000, 1, True, 0.0),
-    ])
-    dist._config.auto_throttle_preset = "aggressive"
-    params = dist._get_convergence_params()
-    assert params == AUTO_THROTTLE_PRESETS["aggressive"]
-
-
-@pytest.mark.asyncio
-async def test_convergence_uses_config_driven_params():
-    """on_poll uses config-driven convergence_tolerance_pct from preset."""
-    from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS
-
+async def test_convergence_uses_tolerance_from_params():
+    """on_poll uses convergence_tolerance_pct (5%) to detect convergence."""
     dist, plugins = _build_distributor([
         ("dev1", 10000, 1, True, 0.0),
     ])
-    dist._config.auto_throttle_preset = "aggressive"
     dist.sync_devices()
     ds = dist._device_states["dev1"]
 
@@ -1050,7 +1027,24 @@ async def test_convergence_uses_config_driven_params():
     ds.target_power_w = 5000.0
     ds.target_set_ts = time.monotonic() - 2.0
 
-    # aggressive tolerance is 10% -> 500W tolerance
-    # 5400W is within 10% of 5000W (8% error) -> should converge
+    # 5% tolerance -> 250W tolerance around 5000W
+    # 5200W is within 5% (4% error) -> should converge
+    dist.on_poll("dev1", 5200.0)
+    assert ds.measured_response_time_s is not None, "Should have converged within 5% tolerance"
+
+
+@pytest.mark.asyncio
+async def test_convergence_rejects_outside_tolerance():
+    """on_poll does NOT converge when error exceeds 5% tolerance."""
+    dist, plugins = _build_distributor([
+        ("dev1", 10000, 1, True, 0.0),
+    ])
+    dist.sync_devices()
+    ds = dist._device_states["dev1"]
+
+    ds.target_power_w = 5000.0
+    ds.target_set_ts = time.monotonic() - 2.0
+
+    # 5400W is 8% error -> exceeds 5% tolerance -> should NOT converge
     dist.on_poll("dev1", 5400.0)
-    assert ds.measured_response_time_s is not None, "Should have converged with aggressive tolerance"
+    assert ds.measured_response_time_s is None, "Should NOT converge outside 5% tolerance"

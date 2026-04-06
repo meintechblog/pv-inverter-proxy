@@ -15,7 +15,7 @@ from itertools import groupby
 
 import structlog
 
-from pv_inverter_proxy.config import AUTO_THROTTLE_PRESETS, Config, InverterEntry
+from pv_inverter_proxy.config import CONVERGENCE_PARAMS, Config, InverterEntry
 from pv_inverter_proxy.connection import ConnectionState
 from pv_inverter_proxy.plugin import ThrottleCaps, compute_throttle_score, get_throttle_caps
 
@@ -58,10 +58,8 @@ class PowerLimitDistributor:
         self._log = structlog.get_logger(component="distributor")
 
     def _get_convergence_params(self) -> dict[str, float]:
-        """Return convergence parameters from the configured preset."""
-        return AUTO_THROTTLE_PRESETS.get(
-            self._config.auto_throttle_preset, AUTO_THROTTLE_PRESETS["balanced"]
-        )
+        """Return convergence parameters."""
+        return CONVERGENCE_PARAMS
 
     def sync_devices(self) -> None:
         """Sync internal state with DeviceRegistry managed devices."""

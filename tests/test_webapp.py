@@ -962,8 +962,8 @@ async def test_virtual_snapshot_includes_throttle_metadata(client, shared_ctx):
     assert "measured_response_time_s" in contrib
 
 
-async def test_virtual_snapshot_includes_auto_throttle_preset(client, shared_ctx):
-    """Virtual snapshot response includes auto_throttle_preset field."""
+async def test_virtual_snapshot_no_preset_field(client, shared_ctx):
+    """Virtual snapshot response does not include auto_throttle_preset."""
     config: Config = client.app["config"]
     inv_id = config.inverters[0].id
     mock_collector = MagicMock()
@@ -977,31 +977,5 @@ async def test_virtual_snapshot_includes_auto_throttle_preset(client, shared_ctx
     resp = await client.get("/api/devices/virtual/snapshot")
     assert resp.status == 200
     data = await resp.json()
-    assert "auto_throttle_preset" in data
-    assert data["auto_throttle_preset"] == "balanced"
-
-
-async def test_config_save_auto_throttle_preset(client):
-    """Config POST with auto_throttle_preset persists it."""
-    config: Config = client.app["config"]
-    inv = config.inverters[0]
-    resp = await client.post("/api/config", json={
-        "inverter": {"host": inv.host, "port": inv.port, "unit_id": inv.unit_id},
-        "venus": {},
-        "auto_throttle_preset": "aggressive",
-    })
-    assert resp.status == 200
-    assert config.auto_throttle_preset == "aggressive"
-
-
-async def test_config_save_auto_throttle_preset_invalid(client):
-    """Config POST with invalid auto_throttle_preset is ignored (stays current)."""
-    config: Config = client.app["config"]
-    inv = config.inverters[0]
-    resp = await client.post("/api/config", json={
-        "inverter": {"host": inv.host, "port": inv.port, "unit_id": inv.unit_id},
-        "venus": {},
-        "auto_throttle_preset": "invalid_preset",
-    })
-    assert resp.status == 200
-    assert config.auto_throttle_preset in ("aggressive", "balanced", "conservative")
+    assert "auto_throttle" in data
+    assert "auto_throttle_preset" not in data
