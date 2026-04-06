@@ -1873,6 +1873,15 @@ function buildVirtualPVPage(container, data) {
         '      <li><strong>Selbstlernend:</strong> Das System misst die tats\u00e4chliche Reaktionszeit jedes Inverters und optimiert die Reihenfolge automatisch</li>' +
         '      <li><strong>Cooldown-Schutz:</strong> Binary-Ger\u00e4te werden nicht zu schnell hintereinander geschaltet</li>' +
         '    </ul>' +
+        '    <p style="margin-top:12px"><strong>Score-Formel (0\u201310):</strong></p>' +
+        '    <p style="font-family:var(--ve-mono);font-size:0.8rem;color:var(--ve-text-secondary);margin:4px 0">Score = Basis + Reaktionsbonus \u2212 Cooldown-Abzug \u2212 Startup-Abzug</p>' +
+        '    <ul>' +
+        '      <li><strong>Basis:</strong> 7.0 (proportional) oder 3.0 (binary)</li>' +
+        '      <li><strong>Reaktionsbonus:</strong> 0\u20133.0 \u2014 je schneller der Inverter reagiert, desto h\u00f6her (3.0 \u00d7 (1 \u2212 Reaktionszeit / 10s))</li>' +
+        '      <li><strong>Cooldown-Abzug:</strong> 0\u20132.0 \u2014 l\u00e4ngerer Cooldown = gr\u00f6\u00dferer Abzug (nur binary)</li>' +
+        '      <li><strong>Startup-Abzug:</strong> 0\u20131.0 \u2014 l\u00e4ngere Startverz\u00f6gerung = gr\u00f6\u00dferer Abzug (nur binary)</li>' +
+        '    </ul>' +
+        '    <p style="color:var(--ve-text-dim);margin-top:4px;font-size:0.8rem">Klicke auf eine Zeile in der Throttle-Tabelle um den Score-Breakdown zu sehen.</p>' +
         '    <p style="color:var(--ve-text-dim);margin-top:8px">Ohne Auto-Throttle wird die manuelle Throttle-Reihenfolge (TO) aus der Ger\u00e4tekonfiguration verwendet.</p>' +
         '  </div>' +
         '</details>';
@@ -1976,9 +1985,30 @@ function buildVirtualPVPage(container, data) {
                 '<td>' + limitVal + '</td>' +
                 '<td>' + stateDot + '</td>' +
                 '</tr>';
+            // Score breakdown row (collapsed by default)
+            var sb = ct.score_breakdown;
+            if (sb) {
+                var formula = '<span class="ve-mono">' + sb.base.toFixed(1) + '</span> Basis (' + ct.throttle_mode + ')';
+                if (sb.response_bonus > 0) formula += ' + <span class="ve-mono">' + sb.response_bonus.toFixed(1) + '</span> Reaktionsbonus (' + sb.response_time_s.toFixed(1) + 's)';
+                if (sb.cooldown_penalty > 0) formula += ' \u2212 <span class="ve-mono">' + sb.cooldown_penalty.toFixed(1) + '</span> Cooldown (' + sb.cooldown_s + 's)';
+                if (sb.startup_penalty > 0) formula += ' \u2212 <span class="ve-mono">' + sb.startup_penalty.toFixed(1) + '</span> Startup (' + sb.startup_delay_s + 's)';
+                formula += ' = <strong>' + ct.throttle_score.toFixed(1) + '</strong>';
+                tbody += '<tr class="ve-score-breakdown-row"><td colspan="6">' + formula + '</td></tr>';
+            }
         }
         tbody += '</tbody>';
         table.innerHTML = thead + tbody;
+
+        // Toggle breakdown rows on score cell click
+        table.addEventListener('click', function(e) {
+            var row = e.target.closest('tr');
+            if (!row || row.classList.contains('ve-score-breakdown-row')) return;
+            var next = row.nextElementSibling;
+            if (next && next.classList.contains('ve-score-breakdown-row')) {
+                next.classList.toggle('ve-score-breakdown-row--open');
+            }
+        });
+
         throttleCard.appendChild(table);
         container.appendChild(throttleCard);
     }

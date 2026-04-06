@@ -2327,6 +2327,21 @@ body {
     border-radius: 50%;
     vertical-align: middle;
 }
+.ve-throttle-table tbody tr { cursor: pointer; }
+.ve-score-breakdown-row {
+    display: none;
+    cursor: default !important;
+}
+.ve-score-breakdown-row--open {
+    display: table-row;
+}
+.ve-score-breakdown-row td {
+    padding: 4px 12px 8px 12px;
+    font-size: 0.8rem;
+    color: var(--ve-text-dim);
+    border-top: none;
+    background: var(--ve-bg);
+}
 .ve-auto-throttle-info {
     margin-top: 8px;
     border: 1px solid var(--ve-border);

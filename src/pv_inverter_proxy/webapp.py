@@ -835,16 +835,36 @@ def _build_virtual_contributions(
         throttle_score = compute_throttle_score(caps) if caps else 0.0
         throttle_mode = caps.mode if caps else "none"
 
+        # Build score breakdown for UI transparency
+        if caps and caps.mode != "none":
+            base = 7.0 if caps.mode == "proportional" else 3.0
+            response_bonus = round(max(0.0, 3.0 * (1.0 - caps.response_time_s / 10.0)), 2)
+            cooldown_penalty = round(min(2.0, caps.cooldown_s / 150.0), 2)
+            startup_penalty = round(min(1.0, caps.startup_delay_s / 30.0), 2)
+            score_breakdown = {
+                "base": base,
+                "response_time_s": caps.response_time_s,
+                "response_bonus": response_bonus,
+                "cooldown_s": caps.cooldown_s,
+                "cooldown_penalty": cooldown_penalty,
+                "startup_delay_s": caps.startup_delay_s,
+                "startup_penalty": startup_penalty,
+            }
+        else:
+            score_breakdown = None
+
         display = distributor.get_device_display_state(inv.id) if distributor else None
         if display:
             contrib["throttle_score"] = throttle_score
             contrib["throttle_mode"] = throttle_mode
+            contrib["score_breakdown"] = score_breakdown
             contrib["measured_response_time_s"] = display["measured_response_time_s"]
             contrib["relay_on"] = display["relay_on"]
             contrib["throttle_state"] = display["throttle_state"]
         else:
             contrib["throttle_score"] = throttle_score
             contrib["throttle_mode"] = throttle_mode
+            contrib["score_breakdown"] = score_breakdown
             contrib["measured_response_time_s"] = None
             contrib["relay_on"] = True
             contrib["throttle_state"] = "active" if inv.throttle_enabled else "disabled"
