@@ -125,7 +125,6 @@ class Config:
     scanner: ScannerConfig = field(default_factory=ScannerConfig)
     mqtt_publish: MqttPublishConfig = field(default_factory=MqttPublishConfig)
     virtual_inverter: VirtualInverterConfig = field(default_factory=VirtualInverterConfig)
-    auto_throttle: bool = False
     log_level: str = "INFO"
 
     @property
@@ -205,7 +204,6 @@ def load_config(path: str | None = None) -> Config:
             k: v for k, v in data.get("virtual_inverter", {}).items()
             if k in VirtualInverterConfig.__dataclass_fields__
         }),
-        auto_throttle=data.get("auto_throttle", False),
         log_level=data.get("log_level", "INFO"),
     )
 

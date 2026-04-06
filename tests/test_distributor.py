@@ -37,11 +37,16 @@ def _make_entry(
     )
 
 
-def _make_plugin() -> AsyncMock:
-    """Create a mock InverterPlugin with write_power_limit."""
+def _make_plugin(mode="proportional", response_time_s=1.0, cooldown_s=0.0, startup_delay_s=0.0) -> AsyncMock:
+    """Create a mock InverterPlugin with write_power_limit and throttle_capabilities."""
+    from pv_inverter_proxy.plugin import ThrottleCaps
     plugin = AsyncMock()
     plugin.write_power_limit = AsyncMock(
         return_value=MagicMock(success=True, error=None)
+    )
+    plugin.throttle_capabilities = ThrottleCaps(
+        mode=mode, response_time_s=response_time_s,
+        cooldown_s=cooldown_s, startup_delay_s=startup_delay_s,
     )
     return plugin
 
@@ -64,13 +69,16 @@ def _make_device_state(plugin=None, conn_mgr=None):
 def _build_distributor(
     entries: list[tuple[str, int, int, bool, float]],
     conn_states: dict[str, ConnectionState] | None = None,
+    plugin_overrides: dict[str, dict] | None = None,
 ) -> tuple[PowerLimitDistributor, dict[str, AsyncMock]]:
     """Build a distributor with given devices.
 
     entries: list of (device_id, rated_power, throttle_order, throttle_enabled, dead_time_s)
+    plugin_overrides: {device_id: {mode, response_time_s, ...}} for _make_plugin kwargs
     Returns (distributor, {device_id: plugin_mock})
     """
     conn_states = conn_states or {}
+    plugin_overrides = plugin_overrides or {}
     inverter_entries = []
     plugins = {}
 
@@ -83,7 +91,7 @@ def _build_distributor(
             throttle_dead_time_s=dt,
         )
         inverter_entries.append(entry)
-        plugins[dev_id] = _make_plugin()
+        plugins[dev_id] = _make_plugin(**plugin_overrides.get(dev_id, {}))
 
     config = Config(inverters=inverter_entries)
 
@@ -119,45 +127,42 @@ def _build_distributor(
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_waterfall_to_ordering():
-    """TO1 throttled first; TO2 stays at 100% when budget consumed by TO1."""
-    # SE30K (TO1, 30kW) + HM800 (TO2, 800W) = 30800W total
+async def test_waterfall_score_ordering():
+    """Higher score = throttled first. SE30K (score 9.7) throttled before HM800 (score 7.0)."""
+    # SE30K (30kW, fast 1s) + HM800 (800W, slow 10s) = 30800W total
     # 50% limit = 15400W allowed
-    # TO1: min(30000, 15400) = 15400W -> 51.33%. Remaining = 0.
-    # TO2: remaining = 0 -> 0%
+    # Sort ascending by score: hm800 (7.0) first, se30k (9.7) last
+    # hm800: min(800, 15400) = 800W -> 100%. Remaining = 14600.
+    # se30k: min(30000, 14600) = 14600W -> 48.7%
     dist, plugins = _build_distributor([
         ("se30k", 30000, 1, True, 0.0),
         ("hm800", 800, 2, True, 0.0),
-    ])
+    ], plugin_overrides={
+        "se30k": {"response_time_s": 1.0},   # score 9.7
+        "hm800": {"response_time_s": 10.0},  # score 7.0
+    })
 
     await dist.distribute(50.0, enable=True)
 
-    # SE30K should be throttled (around 51.33%)
-    se_call = plugins["se30k"].write_power_limit
-    se_call.assert_called_once()
-    _, call_kwargs = se_call.call_args
-    if not call_kwargs:
-        call_args = se_call.call_args[0]
-        assert call_args[0] is True  # enable
-        assert abs(call_args[1] - 51.33) < 0.5  # ~51.33%
-    else:
-        assert abs(call_kwargs.get("limit_pct", se_call.call_args[0][1]) - 51.33) < 0.5
+    # SE30K should be throttled (high score = throttled first)
+    se_args = plugins["se30k"].write_power_limit.call_args[0]
+    assert se_args[0] is True
+    assert abs(se_args[1] - 48.7) < 0.5
 
-    # HM800 should get 0%
-    hm_call = plugins["hm800"].write_power_limit
-    hm_call.assert_called_once()
-    hm_args = hm_call.call_args[0]
+    # HM800 should be at 100% (low score = protected)
+    hm_args = plugins["hm800"].write_power_limit.call_args[0]
     assert hm_args[0] is True
-    assert abs(hm_args[1] - 0.0) < 0.01
+    assert abs(hm_args[1] - 100.0) < 0.01
 
 
 @pytest.mark.asyncio
-async def test_same_to_equal_split():
-    """Two devices with same TO split remaining budget equally."""
-    # SE30K (TO1, 30kW) + HM-A (TO2, 800W) + HM-B (TO2, 800W) = 31600W
-    # 97% limit = 30652W
-    # TO1: min(30000, 30652) = 30000 -> 100%. Remaining = 652.
-    # TO2: 652W / 2 devices = 326W each -> 326/800 = 40.75%
+async def test_same_score_tiebreak_by_id():
+    """Devices with same score get budget in device_id alphabetical order."""
+    # All same score (9.7) → sorted by device_id: hm_a, hm_b, se30k
+    # 97% of 31600W = 30652W
+    # hm_a (800W): full → remaining 29852W
+    # hm_b (800W): full → remaining 29052W
+    # se30k (30000W): min(30000, 29052) → 96.8%
     dist, plugins = _build_distributor([
         ("se30k", 30000, 1, True, 0.0),
         ("hm_a", 800, 2, True, 0.0),
@@ -166,15 +171,15 @@ async def test_same_to_equal_split():
 
     await dist.distribute(97.0, enable=True)
 
-    # SE30K at 100%
-    se_args = plugins["se30k"].write_power_limit.call_args[0]
-    assert abs(se_args[1] - 100.0) < 0.01
-
-    # Both HM at ~40.75%
+    # Both HM at 100% (lower device_id = gets budget first with same score)
     hm_a_args = plugins["hm_a"].write_power_limit.call_args[0]
     hm_b_args = plugins["hm_b"].write_power_limit.call_args[0]
-    assert abs(hm_a_args[1] - 40.75) < 0.5
-    assert abs(hm_b_args[1] - 40.75) < 0.5
+    assert abs(hm_a_args[1] - 100.0) < 0.01
+    assert abs(hm_b_args[1] - 100.0) < 0.01
+
+    # SE30K throttled (last alphabetically)
+    se_args = plugins["se30k"].write_power_limit.call_args[0]
+    assert abs(se_args[1] - 96.8) < 0.5
 
 
 @pytest.mark.asyncio
@@ -312,15 +317,22 @@ async def test_disable_sends_100():
 
 @pytest.mark.asyncio
 async def test_pct_watt_conversion():
-    """50% of total rated -> correct per-device percentages."""
-    # 3 devices all TO1: 10kW + 20kW + 10kW = 40kW
-    # 50% = 20000W. All same TO -> split equally: 20000/3 = 6666.67W each
-    # dev_a: 6666.67/10000 = 66.67%, dev_b: 6666.67/20000 = 33.33%, dev_c: 6666.67/10000 = 66.67%
+    """50% of total rated -> correct per-device percentages via waterfall."""
+    # 3 devices with distinct scores: dev_a (7.0), dev_b (8.5), dev_c (9.7)
+    # Ascending order: dev_a -> dev_b -> dev_c
+    # Total = 40kW, 50% = 20000W
+    # dev_a (10kW, score 7.0): gets 10000W -> 100%. Remaining = 10000W.
+    # dev_b (20kW, score 8.5): gets min(20000, 10000) = 10000W -> 50%. Remaining = 0.
+    # dev_c (10kW, score 9.7): gets 0W -> 0%.
     dist, plugins = _build_distributor([
         ("dev_a", 10000, 1, True, 0.0),
         ("dev_b", 20000, 1, True, 0.0),
         ("dev_c", 10000, 1, True, 0.0),
-    ])
+    ], plugin_overrides={
+        "dev_a": {"response_time_s": 10.0},  # score 7.0 (lowest)
+        "dev_b": {"response_time_s": 5.0},   # score 8.5
+        "dev_c": {"response_time_s": 1.0},   # score 9.7 (highest)
+    })
 
     await dist.distribute(50.0, enable=True)
 
@@ -328,9 +340,9 @@ async def test_pct_watt_conversion():
     db_args = plugins["dev_b"].write_power_limit.call_args[0]
     dc_args = plugins["dev_c"].write_power_limit.call_args[0]
 
-    assert abs(da_args[1] - 66.67) < 0.5
-    assert abs(db_args[1] - 33.33) < 0.5
-    assert abs(dc_args[1] - 66.67) < 0.5
+    assert abs(da_args[1] - 100.0) < 0.5
+    assert abs(db_args[1] - 50.0) < 0.5
+    assert abs(dc_args[1] - 0.0) < 0.5
 
 
 @pytest.mark.asyncio
@@ -456,16 +468,19 @@ def _build_distributor_with_binary(
 @pytest.mark.asyncio
 async def test_binary_device_gets_switch_off_on_throttle():
     """Binary device with waterfall 0% receives plugin.switch(False), NOT write_power_limit."""
-    # SE30K (TO1, 30kW, proportional) + shelly (TO2, 800W, binary) = 30800W
-    # 50% limit = 15400W allowed
-    # TO1: min(30000, 15400) = 15400W -> 51.33%. Remaining = 0.
-    # TO2 (shelly): remaining = 0 -> 0% -> switch(False)
+    # SE30K (30kW, proportional, score 9.7) + monitor (30kW, monitoring-only) + shelly (800W, binary, score 2.85)
+    # Total rated = 60800W, 50% = 30400W allowed.
+    # Monitor produces ~30000W uncontrolled -> waterfall_budget = 30400 - 30000 = 400W
+    # Ascending: shelly (2.85) first, se30k (9.7) last.
+    # shelly (800W): min(800, 400) = 400W -> 50% -> still ON (>0%).
+    #
+    # Simpler: use only binary devices with 0% limit to test switch(False).
+    # shelly (800W, binary) = 800W total, 0% = 0W budget -> switch(False)
     dist, plugins = _build_distributor_with_binary([
-        ("se30k", 30000, 1, True, 0.0, "proportional"),
-        ("shelly", 800, 2, True, 0.0, "binary"),
+        ("shelly", 800, 1, True, 0.0, "binary"),
     ])
 
-    await dist.distribute(50.0, enable=True)
+    await dist.distribute(0.0, enable=True)
 
     # Shelly should receive switch(False) -- relay OFF
     plugins["shelly"].switch.assert_called_once_with(False)
@@ -496,12 +511,11 @@ async def test_binary_device_gets_switch_on_when_budget_available():
 async def test_binary_cooldown_prevents_flapping():
     """After toggle, second toggle within cooldown_s (300s) is blocked."""
     dist, plugins = _build_distributor_with_binary([
-        ("se30k", 30000, 1, True, 0.0, "proportional"),
-        ("shelly", 800, 2, True, 0.0, "binary"),
+        ("shelly", 800, 1, True, 0.0, "binary"),
     ])
 
-    # First: throttle -> shelly OFF (switch count = 1)
-    await dist.distribute(50.0, enable=True)
+    # First: throttle -> shelly OFF via 0% budget (switch count = 1)
+    await dist.distribute(0.0, enable=True)
     assert plugins["shelly"].switch.call_count == 1
 
     # Second: release -> shelly should come back ON, but cooldown (300s) blocks it
@@ -513,12 +527,11 @@ async def test_binary_cooldown_prevents_flapping():
 async def test_binary_cooldown_allows_toggle_after_expiry():
     """After cooldown_s elapses, toggle is permitted."""
     dist, plugins = _build_distributor_with_binary([
-        ("se30k", 30000, 1, True, 0.0, "proportional"),
-        ("shelly", 800, 2, True, 0.0, "binary"),
+        ("shelly", 800, 1, True, 0.0, "binary"),
     ])
 
-    # First: throttle -> shelly OFF
-    await dist.distribute(50.0, enable=True)
+    # First: throttle -> shelly OFF via 0% budget
+    await dist.distribute(0.0, enable=True)
     assert plugins["shelly"].switch.call_count == 1
 
     # Manipulate last_toggle_ts backward by 301 seconds to simulate cooldown expiry
@@ -557,10 +570,9 @@ async def test_startup_grace_excludes_from_waterfall():
 @pytest.mark.asyncio
 async def test_binary_reenable_reverse_order():
     """When re-enabling multiple binary devices, lowest throttle_score comes first."""
-    # shelly_a: cooldown=300, startup=30 -> lower score
+    # shelly_a: cooldown=300, startup=30 -> lower score (~2.85)
     # shelly_b: cooldown=60, startup=5 -> higher score
     dist, plugins = _build_distributor_with_binary([
-        ("se30k", 30000, 1, True, 0.0, "proportional"),
         ("shelly_a", 800, 2, True, 0.0, "binary"),
         ("shelly_b", 400, 3, True, 0.0, "binary"),
     ])
@@ -569,8 +581,8 @@ async def test_binary_reenable_reverse_order():
     caps_b = ThrottleCaps(mode="binary", response_time_s=0.5, cooldown_s=60.0, startup_delay_s=5.0)
     type(plugins["shelly_b"]).throttle_capabilities = PropertyMock(return_value=caps_b)
 
-    # First: throttle both binary devices OFF
-    await dist.distribute(40.0, enable=True)
+    # First: throttle both binary devices OFF via 0% budget
+    await dist.distribute(0.0, enable=True)
 
     # Both should be OFF
     plugins["shelly_a"].switch.assert_called_with(False)
@@ -600,8 +612,8 @@ async def test_disable_turns_binary_relay_on():
         ("shelly", 800, 2, True, 0.0, "binary"),
     ])
 
-    # First: throttle shelly OFF
-    await dist.distribute(50.0, enable=True)
+    # First: throttle shelly OFF via 0% budget
+    await dist.distribute(0.0, enable=True)
     assert plugins["shelly"].switch.call_count == 1
 
     # Expire cooldown
@@ -696,7 +708,7 @@ def _build_distributor_with_caps(
             startup_delay_s=startup,
         )
 
-    config = Config(inverters=inverter_entries, auto_throttle=True)
+    config = Config(inverters=inverter_entries)
 
     from pv_inverter_proxy.context import AppContext
     app_ctx = AppContext()
@@ -723,98 +735,61 @@ def _build_distributor_with_caps(
     return distributor, plugins
 
 
-from dataclasses import asdict
-
-
-def test_auto_throttle_config_default_false():
-    """Config().auto_throttle defaults to False."""
-    assert Config().auto_throttle is False
-
-
-def test_auto_throttle_config_round_trip():
-    """Config(auto_throttle=True) persists through asdict."""
-    assert asdict(Config(auto_throttle=True))["auto_throttle"] is True
-
-
 @pytest.mark.asyncio
-async def test_auto_throttle_score_ordering():
-    """With auto_throttle=True, devices are sorted by throttle score descending."""
-    # shelly (binary, score ~2.9), se30k (proportional, score ~9.7), opendtu (proportional, score ~7.0)
-    # Auto order: se30k (9.7) first -> gets all budget
+async def test_score_ordering_ascending():
+    """Devices sorted by score ascending: low score gets budget first, high score throttled first."""
+    # shelly (binary, score ~2.85), opendtu (proportional 10s, score ~7.0), se30k (proportional 1s, score ~9.7)
+    # Ascending order: shelly (2.85) -> opendtu (7.0) -> se30k (9.7)
+    # total_rated = 31600W, 50% = 15800W
+    # shelly (800W): gets 800W -> ON. Remaining = 15000W.
+    # opendtu (800W): gets 800W -> 100%. Remaining = 14200W.
+    # se30k (30000W): gets min(30000, 14200) = 14200W -> 47.3%
     dist, plugins = _build_distributor_with_caps([
         # (id, rated, TO, throttle_en, dead_time, mode, response_s, cooldown_s, startup_s)
-        ("shelly", 800, 3, True, 0.0, "binary", 0.5, 300.0, 30.0),      # score ~2.9
+        ("shelly", 800, 3, True, 0.0, "binary", 0.5, 300.0, 30.0),      # score ~2.85
         ("se30k", 30000, 2, True, 0.0, "proportional", 1.0, 0.0, 0.0),  # score ~9.7
-        ("opendtu", 800, 1, True, 0.0, "proportional", 1.0, 0.0, 0.0),  # score ~7.0 (same caps)
+        ("opendtu", 800, 1, True, 0.0, "proportional", 10.0, 0.0, 0.0), # score ~7.0
     ])
 
     await dist.distribute(50.0, enable=True)
 
-    # se30k should be processed first (highest score ~9.7)
-    # total_rated = 31600W, allowed = 15800W
-    # se30k rated 30000W: gets min(30000, 15800) = 15800W -> 15800/30000 = 52.67%
-    se_args = plugins["se30k"].write_power_limit.call_args[0]
-    assert 50.0 <= se_args[1] <= 55.0, f"se30k got {se_args[1]}%, expected ~52.7%"
+    # shelly (lowest score) gets budget first -> relay stays ON (default)
+    plugins["shelly"].switch.assert_not_called()
 
-    # opendtu gets 0% (remaining = 0 after se30k)
-    opendtu_args = plugins["opendtu"].write_power_limit.call_args[0]
-    assert abs(opendtu_args[1] - 0.0) < 0.01
-
-    # shelly gets switch(False)
-    plugins["shelly"].switch.assert_called_once_with(False)
-
-
-@pytest.mark.asyncio
-async def test_auto_proportional_before_binary():
-    """Proportional devices always appear before binary in auto mode."""
-    # binary (TO=1, higher manual priority) vs proportional (TO=2, lower manual priority)
-    # auto_throttle=True -> proportional (score 7+) before binary (score 3+)
-    dist, plugins = _build_distributor_with_caps([
-        ("binary_dev", 800, 1, True, 0.0, "binary", 0.5, 300.0, 30.0),        # score ~2.9
-        ("proportional_dev", 800, 2, True, 0.0, "proportional", 1.0, 0.0, 0.0),  # score ~9.7
-    ])
-
-    # 50% limit: total=1600W, allowed=800W
-    # Auto order: proportional (score 9.7) first -> gets all 800W -> 100%
-    # Binary: remaining=0 -> switch(False)
-    await dist.distribute(50.0, enable=True)
-
-    proportional_args = plugins["proportional_dev"].write_power_limit.call_args[0]
-    assert abs(proportional_args[1] - 100.0) < 0.5
-
-    plugins["binary_dev"].switch.assert_called_once_with(False)
-
-
-@pytest.mark.asyncio
-async def test_auto_throttle_off_uses_manual_order():
-    """With auto_throttle=False, waterfall uses throttle_order (no regression)."""
-    dist, plugins = _build_distributor_with_caps([
-        ("shelly", 800, 3, True, 0.0, "binary", 0.5, 300.0, 30.0),
-        ("se30k", 30000, 2, True, 0.0, "proportional", 1.0, 0.0, 0.0),
-        ("opendtu", 800, 1, True, 0.0, "proportional", 1.0, 0.0, 0.0),
-    ])
-    # Override to manual mode
-    dist._config.auto_throttle = False
-
-    # Manual order: opendtu (TO=1), se30k (TO=2), shelly (TO=3)
-    # total_rated = 31600W, 50% = 15800W
-    # TO=1 (opendtu, 800W): gets 800W -> 100%. remaining = 15000W
-    # TO=2 (se30k, 30000W): gets min(30000, 15000) -> 15000/30000 = 50%
-    # TO=3 (shelly, 800W): remaining=0 -> switch(False)
-    await dist.distribute(50.0, enable=True)
-
+    # opendtu (mid score) gets full budget -> 100%
     opendtu_args = plugins["opendtu"].write_power_limit.call_args[0]
     assert abs(opendtu_args[1] - 100.0) < 0.5
 
+    # se30k (highest score) throttled first -> ~47.3%
     se_args = plugins["se30k"].write_power_limit.call_args[0]
-    assert abs(se_args[1] - 50.0) < 0.5
-
-    plugins["shelly"].switch.assert_called_once_with(False)
+    assert 45.0 <= se_args[1] <= 50.0, f"se30k got {se_args[1]}%, expected ~47.3%"
 
 
 @pytest.mark.asyncio
-async def test_auto_throttle_tiebreak_by_device_id():
-    """Two devices with identical scores sort by device_id for deterministic ordering."""
+async def test_binary_gets_budget_before_proportional():
+    """Binary (low score ~2.85) gets budget first; proportional (high score ~9.7) throttled first."""
+    # Ascending sort: binary_dev (2.85) -> proportional_dev (9.7)
+    # 50% limit: total=1600W, allowed=800W
+    # binary_dev (800W): gets 800W -> ON (relay_on default). Remaining=0.
+    # proportional_dev (800W): gets 0W -> 0%
+    dist, plugins = _build_distributor_with_caps([
+        ("binary_dev", 800, 1, True, 0.0, "binary", 0.5, 300.0, 30.0),        # score ~2.85
+        ("proportional_dev", 800, 2, True, 0.0, "proportional", 1.0, 0.0, 0.0),  # score ~9.7
+    ])
+
+    await dist.distribute(50.0, enable=True)
+
+    # Binary (low score) gets budget first -> stays ON (no toggle needed)
+    plugins["binary_dev"].switch.assert_not_called()
+
+    # Proportional (high score) throttled first -> 0%
+    proportional_args = plugins["proportional_dev"].write_power_limit.call_args[0]
+    assert abs(proportional_args[1] - 0.0) < 0.5
+
+
+@pytest.mark.asyncio
+async def test_tiebreak_by_device_id_ascending():
+    """Two devices with identical scores sort by device_id ascending for deterministic ordering."""
     # Two proportional devices with identical caps -> identical score
     dist, plugins = _build_distributor_with_caps([
         ("alpha", 5000, 1, True, 0.0, "proportional", 1.0, 0.0, 0.0),
@@ -822,16 +797,16 @@ async def test_auto_throttle_tiebreak_by_device_id():
     ])
 
     # 50% limit: total=10000W, allowed=5000W
-    # Both have same score. Sorted descending by (score, device_id).
-    # "beta" > "alpha" alphabetically -> beta first in reverse sort.
-    # beta gets 5000W -> 100%, alpha gets 0%.
+    # Both have same score. Sorted ascending by (score, device_id).
+    # "alpha" < "beta" alphabetically -> alpha first.
+    # alpha gets 5000W -> 100%, beta gets 0%.
     await dist.distribute(50.0, enable=True)
 
-    beta_args = plugins["beta"].write_power_limit.call_args[0]
-    assert abs(beta_args[1] - 100.0) < 0.5
-
     alpha_args = plugins["alpha"].write_power_limit.call_args[0]
-    assert abs(alpha_args[1] - 0.0) < 0.5
+    assert abs(alpha_args[1] - 100.0) < 0.5
+
+    beta_args = plugins["beta"].write_power_limit.call_args[0]
+    assert abs(beta_args[1] - 0.0) < 0.5
 
 
 # ---------------------------------------------------------------------------

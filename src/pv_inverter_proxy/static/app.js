@@ -1053,7 +1053,6 @@ function buildInverterConfigForm(container, device) {
         : '') +
         '<div class="ve-form-group"><label>Type</label><input type="text" class="ve-input" value="' + (device.type || '') + '" readonly style="opacity:0.6"></div>' +
         (identity ? '<div class="ve-form-group"><label>Identity</label><input type="text" class="ve-input" value="' + esc(identity) + '" readonly style="opacity:0.6"></div>' : '') +
-        '<div class="ve-form-group"><label>Throttle Order</label><input type="number" class="ve-input ve-cfg-throttle-order" value="' + (device.throttle_order || 1) + '" min="1" max="99"></div>' +
         '<div class="ve-ess-row" style="margin-top:10px">' +
         '  <label>Throttle Enabled</label>' +
         '  <label class="ve-toggle"><input type="checkbox" class="ve-cfg-throttle-enabled" ' + (device.throttle_enabled !== false ? 'checked' : '') + '><span class="ve-toggle-track"></span></label>' +
@@ -1070,7 +1069,6 @@ function buildInverterConfigForm(container, device) {
         host: device.host || '',
         port: String(device.port || 1502),
         unit_id: String(device.unit_id || 1),
-        throttle_order: String(device.throttle_order || 1),
         throttle_enabled: device.throttle_enabled !== false,
         enabled: device.enabled !== false,
         gateway_user: device.gateway_user || '',
@@ -1085,7 +1083,6 @@ function buildInverterConfigForm(container, device) {
     var gwUserInput = panel.querySelector('.ve-cfg-gw-user');
     var gwPassInput = panel.querySelector('.ve-cfg-gw-pass');
     var rpInput = panel.querySelector('.ve-cfg-rated-power');
-    var toInput = panel.querySelector('.ve-cfg-throttle-order');
     var teToggle = panel.querySelector('.ve-cfg-throttle-enabled');
     var enabledToggle = panel.querySelector('.ve-cfg-enabled');
     var savePair = panel.querySelector('.ve-cfg-save-pair');
@@ -1098,27 +1095,26 @@ function buildInverterConfigForm(container, device) {
                     hostInput.value !== originals.host ||
                     (portInput && portInput.value !== originals.port) ||
                     (unitInput && unitInput.value !== originals.unit_id) ||
-                    toInput.value !== originals.throttle_order ||
                     teToggle.checked !== originals.throttle_enabled ||
                     (gwUserInput && gwUserInput.value !== originals.gateway_user) ||
                     (gwPassInput && gwPassInput.value !== originals.gateway_password) ||
                     (rpInput && rpInput.value !== originals.rated_power);
         savePair.style.display = dirty ? '' : 'none';
         // Highlight dirty fields
-        var trackFields = [nameInput, hostInput, toInput];
+        var trackFields = [nameInput, hostInput];
         if (portInput) trackFields.push(portInput);
         if (unitInput) trackFields.push(unitInput);
         if (gwUserInput) trackFields.push(gwUserInput);
         if (gwPassInput) trackFields.push(gwPassInput);
         if (rpInput) trackFields.push(rpInput);
         trackFields.forEach(function(el) {
-            var orig = el === nameInput ? originals.name : el === hostInput ? originals.host : el === portInput ? originals.port : el === unitInput ? originals.unit_id : el === toInput ? originals.throttle_order : el === gwUserInput ? originals.gateway_user : el === gwPassInput ? originals.gateway_password : el === rpInput ? originals.rated_power : '';
+            var orig = el === nameInput ? originals.name : el === hostInput ? originals.host : el === portInput ? originals.port : el === unitInput ? originals.unit_id : el === gwUserInput ? originals.gateway_user : el === gwPassInput ? originals.gateway_password : el === rpInput ? originals.rated_power : '';
             if (el.value !== orig) el.classList.add('ve-input--dirty');
             else el.classList.remove('ve-input--dirty');
         });
     }
 
-    var inputFields = [nameInput, hostInput, toInput];
+    var inputFields = [nameInput, hostInput];
     if (portInput) inputFields.push(portInput);
     if (unitInput) inputFields.push(unitInput);
     if (gwUserInput) inputFields.push(gwUserInput);
@@ -1134,7 +1130,6 @@ function buildInverterConfigForm(container, device) {
         hostInput.value = originals.host;
         if (portInput) portInput.value = originals.port;
         if (unitInput) unitInput.value = originals.unit_id;
-        toInput.value = originals.throttle_order;
         teToggle.checked = originals.throttle_enabled;
         if (gwUserInput) gwUserInput.value = originals.gateway_user;
         if (gwPassInput) gwPassInput.value = originals.gateway_password;
@@ -1146,7 +1141,6 @@ function buildInverterConfigForm(container, device) {
         var payload = {
             name: nameInput.value.trim(),
             host: hostInput.value.trim(),
-            throttle_order: parseInt(toInput.value),
             throttle_enabled: teToggle.checked
         };
         if (portInput) payload.port = parseInt(portInput.value);
@@ -1171,7 +1165,6 @@ function buildInverterConfigForm(container, device) {
             originals.host = payload.host;
             if (portInput) originals.port = String(payload.port);
             if (unitInput) originals.unit_id = String(payload.unit_id);
-            originals.throttle_order = String(payload.throttle_order);
             originals.throttle_enabled = payload.throttle_enabled;
             if (gwUserInput) originals.gateway_user = payload.gateway_user || '';
             if (gwPassInput) originals.gateway_password = payload.gateway_password || '';
@@ -1857,25 +1850,16 @@ function buildVirtualPVPage(container, data) {
         '</svg>' + clampHtml;
     container.appendChild(gaugeCard);
 
-    // Auto-Throttle control card
+    // Throttle info card (collapsible)
     var atCard = document.createElement('div');
     atCard.className = 've-card';
-    var atChecked = data.auto_throttle ? ' checked' : '';
     atCard.innerHTML =
-        '<h2 class="ve-card-title">Auto-Throttle</h2>' +
-        '<div class="ve-auto-throttle-card">' +
-        '  <label class="ve-toggle-label">' +
-        '    <span>Enable</span>' +
-        '    <input type="checkbox" class="ve-auto-throttle-toggle"' + atChecked + '>' +
-        '    <span class="ve-switch"><span class="ve-switch-knob"></span></span>' +
-        '  </label>' +
-        '</div>' +
         '<details class="ve-auto-throttle-info">' +
-        '  <summary>Wie funktioniert Auto-Throttle?</summary>' +
+        '  <summary>Wie funktioniert die Leistungsverteilung?</summary>' +
         '  <div class="ve-auto-throttle-info-body">' +
-        '    <p>Auto-Throttle verteilt das Venus OS Leistungslimit automatisch auf alle Inverter \u2014 basierend auf deren gemessener Reaktionsgeschwindigkeit.</p>' +
+        '    <p>Das System verteilt das Leistungslimit automatisch auf alle Inverter \u2014 basierend auf deren Throttle-Score. H\u00f6herer Score = wird zuerst gedrosselt (reagiert am schnellsten).</p>' +
         '    <ul>' +
-        '      <li><strong>Schnelle Inverter zuerst:</strong> Ger\u00e4te mit kurzer Antwortzeit bekommen Priorit\u00e4t im Waterfall</li>' +
+        '      <li><strong>Schnelle Inverter zuerst drosseln:</strong> Ger\u00e4te mit hohem Score reagieren am schnellsten und werden daher priorisiert gedrosselt</li>' +
         '      <li><strong>Proportional vs. Binary:</strong> Proportionale Inverter (z.B. SolarEdge) k\u00f6nnen stufenlos gedrosselt werden. Binary-Ger\u00e4te (z.B. Shelly) werden nur ein-/ausgeschaltet</li>' +
         '      <li><strong>Selbstlernend:</strong> Das System misst die tats\u00e4chliche Reaktionszeit jedes Inverters und optimiert die Reihenfolge automatisch</li>' +
         '      <li><strong>Cooldown-Schutz:</strong> Binary-Ger\u00e4te werden nicht zu schnell hintereinander geschaltet</li>' +
@@ -1889,24 +1873,9 @@ function buildVirtualPVPage(container, data) {
         '      <li><strong>Startup-Abzug:</strong> 0\u20131.0 \u2014 l\u00e4ngere Startverz\u00f6gerung = gr\u00f6\u00dferer Abzug (nur binary)</li>' +
         '    </ul>' +
         '    <p style="color:var(--ve-text-dim);margin-top:4px;font-size:0.8rem">Klicke auf eine Zeile in der Throttle-Tabelle um den Score-Breakdown zu sehen.</p>' +
-        '    <p style="color:var(--ve-text-dim);margin-top:8px">Ohne Auto-Throttle wird die manuelle Throttle-Reihenfolge (TO) aus der Ger\u00e4tekonfiguration verwendet.</p>' +
         '  </div>' +
         '</details>';
     container.appendChild(atCard);
-
-    // Auto-throttle toggle handler
-    var atToggle = atCard.querySelector('.ve-auto-throttle-toggle');
-    if (atToggle) {
-        atToggle.addEventListener('change', function() {
-            fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ auto_throttle: atToggle.checked })
-            }).then(function(r) { return r.json(); }).then(function(d) {
-                showToast('Auto-Throttle ' + (atToggle.checked ? 'enabled' : 'disabled'), 'success');
-            }).catch(function(e) { showToast('Error: ' + e.message, 'error'); });
-        });
-    }
 
     // Wire up virtual power limit dropdown events
     var vClampMin = gaugeCard.querySelector('.ve-clamp-min');
@@ -2039,12 +2008,6 @@ function updateVirtualPVPage(data) {
         gaugeFill.style.stroke = gaugeColor(pct);
     }
     if (gaugeVal) gaugeVal.textContent = formatW(totalW);
-
-    // Sync auto-throttle toggle (guard with !== to avoid flicker)
-    var atToggle = el.querySelector('.ve-auto-throttle-toggle');
-    if (atToggle && atToggle.checked !== !!data.auto_throttle) {
-        atToggle.checked = !!data.auto_throttle;
-    }
 
     // Check if contribution count changed -- rebuild if so
     var segments = el.querySelectorAll('.ve-contribution-segment');

@@ -1,8 +1,8 @@
-"""PowerLimitDistributor: waterfall distribution of Venus OS power limits.
+"""PowerLimitDistributor: score-based waterfall distribution of power limits.
 
-Distributes a global WMaxLimPct from Venus OS across N inverter plugins
-using Throttling Order (TO) priority. TO 1 is throttled first, then TO 2,
-and so on. Same-TO devices split remaining budget equally.
+Distributes a global WMaxLimPct across N inverter plugins using throttle
+score priority. Higher score = throttled first (fastest responders handle
+throttling). Low-score devices are protected (get budget first).
 
 Supports monitoring-only exclusion, per-device dead-time buffering,
 offline failover, and disable handling.
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from itertools import groupby
 
 import structlog
 
@@ -189,35 +188,29 @@ class PowerLimitDistributor:
         return compute_throttle_score(caps)
 
     def _waterfall(self, allowed_watts: float) -> dict[str, float]:
-        """Pure function: waterfall distribution by Throttling Order or score.
+        """Score-based waterfall: higher score = throttled first.
 
-        When auto_throttle is True, sorts by effective score descending (each
-        device is its own tier). When False, uses manual throttle_order groups.
+        Sorts by effective score ascending — low-score devices get budget
+        first (protected), high-score devices get remaining (throttled first)
+        because they respond fastest.
 
         Returns {device_id: limit_pct} for all throttle-eligible devices.
         """
         # Collect throttle-eligible: throttle_enabled=True, online, rated_power > 0
         # Exclude binary devices in startup grace period
-        eligible_list = [
+        eligible = [
             ds for ds in self._device_states.values()
             if ds.entry.throttle_enabled and ds.is_online and ds.entry.rated_power > 0
             and not self._is_in_startup(ds)
         ]
 
-        if not eligible_list:
+        if not eligible:
             return {}
 
-        if self._config.auto_throttle:
-            return self._waterfall_auto(eligible_list, allowed_watts)
-        else:
-            return self._waterfall_manual(eligible_list, allowed_watts)
-
-    def _waterfall_auto(self, eligible: list[DeviceLimitState], allowed_watts: float) -> dict[str, float]:
-        """Score-based waterfall: each device is its own tier, sorted by score descending."""
+        # Sort ascending: low score gets budget first, high score throttled first
         sorted_eligible = sorted(
             eligible,
             key=lambda ds: (self._effective_score(ds), ds.device_id),
-            reverse=True,
         )
 
         result: dict[str, float] = {}
@@ -233,39 +226,6 @@ class PowerLimitDistributor:
             remaining -= budget
 
         return result
-
-    def _waterfall_manual(self, eligible: list[DeviceLimitState], allowed_watts: float) -> dict[str, float]:
-        """Manual waterfall: group by throttle_order, split within group."""
-        eligible = sorted(eligible, key=lambda ds: ds.entry.throttle_order)
-
-        result: dict[str, float] = {}
-        remaining = allowed_watts
-
-        # Group by throttle_order
-        for _, group_iter in groupby(eligible, key=lambda ds: ds.entry.throttle_order):
-            group = list(group_iter)
-            group_rated = sum(ds.entry.rated_power for ds in group)
-
-            if remaining >= group_rated:
-                # This group runs at 100%
-                for ds in group:
-                    result[ds.device_id] = 100.0
-                remaining -= group_rated
-            else:
-                # This group gets throttled -- split remaining equally by device count
-                per_device_watts = remaining / len(group) if len(group) > 0 else 0.0
-                for ds in group:
-                    pct = max(0.0, min(100.0, (per_device_watts / ds.entry.rated_power) * 100.0))
-                    result[ds.device_id] = round(pct, 1)
-                remaining = 0.0
-
-            if remaining <= 0:
-                break
-
-        # Any eligible device not yet assigned gets 0%
-        for ds in eligible:
-            if ds.device_id not in result:
-                result[ds.device_id] = 0.0
 
         return result
 

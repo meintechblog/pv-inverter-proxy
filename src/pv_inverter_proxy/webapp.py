@@ -283,7 +283,6 @@ async def config_get_handler(request: web.Request) -> web.Response:
             "topic_prefix": config.mqtt_publish.topic_prefix,
             "interval_s": config.mqtt_publish.interval_s,
         },
-        "auto_throttle": config.auto_throttle,
     })
 
 
@@ -400,10 +399,6 @@ async def config_save_handler(request: web.Request) -> web.Response:
         config.venus.host = venus_host
         config.venus.port = venus_port
         config.venus.portal_id = venus_portal_id
-
-        # Update auto_throttle if provided
-        if "auto_throttle" in body:
-            config.auto_throttle = bool(body["auto_throttle"])
 
         save_config(request.app["config_path"], config)
         log.info("user_action", action="config_saved", venus_changed=venus_changed, venus_host=venus_host)
@@ -769,7 +764,6 @@ async def broadcast_virtual_snapshot(app: web.Application) -> None:
         "total_rated_w": total_rated_w,
         "virtual_name": config.virtual_inverter.name,
         "contributions": contributions,
-        "auto_throttle": config.auto_throttle,
     }})
     for ws in set(clients):
         try:
@@ -1652,7 +1646,6 @@ async def virtual_snapshot_handler(request: web.Request) -> web.Response:
         "virtual_name": config.virtual_inverter.name,
         "contributions": contributions,
         "control": control,
-        "auto_throttle": config.auto_throttle,
     })
 
 

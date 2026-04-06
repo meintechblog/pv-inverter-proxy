@@ -962,8 +962,8 @@ async def test_virtual_snapshot_includes_throttle_metadata(client, shared_ctx):
     assert "measured_response_time_s" in contrib
 
 
-async def test_virtual_snapshot_no_preset_field(client, shared_ctx):
-    """Virtual snapshot response does not include auto_throttle_preset."""
+async def test_virtual_snapshot_no_throttle_config_fields(client, shared_ctx):
+    """Virtual snapshot response does not include removed throttle config fields."""
     config: Config = client.app["config"]
     inv_id = config.inverters[0].id
     mock_collector = MagicMock()
@@ -977,5 +977,5 @@ async def test_virtual_snapshot_no_preset_field(client, shared_ctx):
     resp = await client.get("/api/devices/virtual/snapshot")
     assert resp.status == 200
     data = await resp.json()
-    assert "auto_throttle" in data
+    assert "auto_throttle" not in data
     assert "auto_throttle_preset" not in data
