@@ -1862,6 +1862,50 @@ function buildVirtualPVPage(container, data) {
         var pActive = pn === atPreset ? ' ve-btn--primary' : '';
         presetBtns += '<button class="ve-btn ve-btn--sm' + pActive + '" data-preset="' + pn + '">' + pn.charAt(0).toUpperCase() + pn.slice(1) + '</button>';
     }
+    var presetDescriptions = {
+        aggressive: {
+            title: 'Aggressive',
+            summary: 'Schnelle Reaktion, gr\u00f6\u00dfere Toleranz',
+            details: [
+                'Konvergenz-Toleranz: \u00b110% \u2014 Inverter gilt als \u201estabil\u201c wenn er innerhalb von 10% des Zielwerts liegt',
+                'Max. Samples: 5 \u2014 Durchschnitt wird \u00fcber nur 5 Messwerte berechnet (schnelle Anpassung)',
+                'Ziel\u00e4nderungs-Schwelle: 5% \u2014 Kleine Ziel\u00e4nderungen (<5%) werden ignoriert',
+                'Binary-Off Schwelle: 100W \u2014 Unter 100W wird der Inverter ganz abgeschaltet'
+            ]
+        },
+        balanced: {
+            title: 'Balanced',
+            summary: 'Ausgewogener Kompromiss zwischen Geschwindigkeit und Stabilit\u00e4t',
+            details: [
+                'Konvergenz-Toleranz: \u00b15% \u2014 Inverter muss n\u00e4her am Zielwert sein um als stabil zu gelten',
+                'Max. Samples: 10 \u2014 Durchschnitt \u00fcber 10 Messwerte (gl\u00e4ttere Werte)',
+                'Ziel\u00e4nderungs-Schwelle: 2% \u2014 Reagiert auf kleinere \u00c4nderungen',
+                'Binary-Off Schwelle: 50W \u2014 Unter 50W wird der Inverter ganz abgeschaltet'
+            ]
+        },
+        conservative: {
+            title: 'Conservative',
+            summary: 'Maximale Stabilit\u00e4t, langsame Anpassung',
+            details: [
+                'Konvergenz-Toleranz: \u00b13% \u2014 Inverter muss sehr genau am Zielwert sein',
+                'Max. Samples: 20 \u2014 Durchschnitt \u00fcber 20 Messwerte (sehr stabil, aber tr\u00e4ge)',
+                'Ziel\u00e4nderungs-Schwelle: 1% \u2014 Reagiert auf jede kleine \u00c4nderung',
+                'Binary-Off Schwelle: 25W \u2014 Erst unter 25W wird abgeschaltet'
+            ]
+        }
+    };
+    var presetDetailsHtml = '';
+    for (var pk in presetDescriptions) {
+        var pd = presetDescriptions[pk];
+        var isOpen = pk === atPreset ? ' open' : '';
+        presetDetailsHtml += '<details class="ve-preset-details" data-preset-info="' + pk + '"' + isOpen + '>' +
+            '<summary class="ve-preset-summary"><span class="ve-preset-summary-title">' + pd.title + '</span><span class="ve-preset-summary-text">' + pd.summary + '</span></summary>' +
+            '<ul class="ve-preset-detail-list">';
+        for (var di = 0; di < pd.details.length; di++) {
+            presetDetailsHtml += '<li>' + pd.details[di] + '</li>';
+        }
+        presetDetailsHtml += '</ul></details>';
+    }
     atCard.innerHTML =
         '<h2 class="ve-card-title">Auto-Throttle</h2>' +
         '<div class="ve-auto-throttle-card">' +
@@ -1871,7 +1915,8 @@ function buildVirtualPVPage(container, data) {
         '    <span class="ve-switch"><span class="ve-switch-knob"></span></span>' +
         '  </label>' +
         '  <div class="ve-preset-group">' + presetBtns + '</div>' +
-        '</div>';
+        '</div>' +
+        '<div class="ve-preset-info-section">' + presetDetailsHtml + '</div>';
     container.appendChild(atCard);
 
     // Auto-throttle toggle handler
@@ -1896,6 +1941,12 @@ function buildVirtualPVPage(container, data) {
             // Optimistic UI update
             presetGroupBtns.forEach(function(b) { b.classList.remove('ve-btn--primary'); });
             btn.classList.add('ve-btn--primary');
+            // Open matching details, close others
+            var allDetails = atCard.querySelectorAll('.ve-preset-details');
+            allDetails.forEach(function(d) {
+                if (d.getAttribute('data-preset-info') === preset) { d.open = true; }
+                else { d.open = false; }
+            });
             fetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2023,7 +2074,7 @@ function updateVirtualPVPage(data) {
         atToggle.checked = !!data.auto_throttle;
     }
 
-    // Sync preset buttons
+    // Sync preset buttons and details sections
     var presetBtns = el.querySelectorAll('.ve-preset-group .ve-btn');
     var curPreset = data.auto_throttle_preset || 'balanced';
     presetBtns.forEach(function(btn) {
@@ -2032,6 +2083,10 @@ function updateVirtualPVPage(data) {
         } else {
             btn.classList.remove('ve-btn--primary');
         }
+    });
+    var allDetails = el.querySelectorAll('.ve-preset-details');
+    allDetails.forEach(function(d) {
+        if (d.getAttribute('data-preset-info') === curPreset && !d.open) { d.open = true; }
     });
 
     // Check if contribution count changed -- rebuild if so
