@@ -931,13 +931,13 @@ function renderInverterRegisters(container, deviceId, deviceType) {
     // Doc links per device type
     var docLinks = {
         solaredge:
-            '<a href="https://knowledge-center.solaredge.com/sites/kc/files/sunspec-implementation-technical-note.pdf" target="_blank" rel="noopener" class="ve-doc-link" title="SolarEdge SunSpec Register Map (PDF)">SE</a>',
+            '<a href="https://github.com/nmakel/solaredge_modbus" target="_blank" rel="noopener" class="ve-doc-link" title="SolarEdge Modbus Register Reference">SE</a>',
         opendtu:
             '<a href="https://www.opendtu.solar/" target="_blank" rel="noopener" class="ve-doc-link" title="OpenDTU Documentation">DTU</a>',
         shelly:
             '<a href="https://shelly-api-docs.shelly.cloud/" target="_blank" rel="noopener" class="ve-doc-link" title="Shelly API Documentation">Shelly</a>',
         sungrow:
-            '<a href="https://github.com/mkanet/sungrow-modbus" target="_blank" rel="noopener" class="ve-doc-link" title="Sungrow Modbus Register Map">SG</a>'
+            '<a href="https://github.com/bohdan-s/SunGather" target="_blank" rel="noopener" class="ve-doc-link" title="Sungrow Modbus Register Map (SunGather)">SG</a>'
     };
     var typeLink = docLinks[deviceType] || '';
 
