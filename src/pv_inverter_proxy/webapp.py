@@ -1217,10 +1217,15 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
     if ds and ds.plugin:
         plugin = ds.plugin
 
-    if max_pct < 100 and plugin is not None:
-        await plugin.write_power_limit(True, max_pct, force=True)
-    elif max_pct >= 100 and plugin is not None:
-        await plugin.write_power_limit(True, 100.0, force=True)
+    if plugin is not None:
+        caps = get_throttle_caps(plugin)
+        if caps and caps.mode == "binary":
+            # Binary device: switch on/off based on max_pct
+            await plugin.switch(max_pct > 0)
+        elif max_pct < 100:
+            await plugin.write_power_limit(True, max_pct, force=True)
+        else:
+            await plugin.write_power_limit(True, 100.0, force=True)
 
     return web.json_response({"success": True})
 
