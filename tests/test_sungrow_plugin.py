@@ -30,20 +30,20 @@ def _make_sample_sungrow_registers() -> list[int]:
     """Build 36-element list representing wire addresses 5002-5037.
 
     Offsets relative to raw[0] = wire 5002:
-      raw[1]=100, raw[2]=0 -> total energy = (100<<16|0)*0.1 = 655360.0 kWh -> *100 = 6553600 Wh
+      raw[1]=100, raw[2]=0 -> total energy = (100<<16|0)*100 = 655360000 Wh (= 655360 kWh)
       raw[5]=350 -> temperature = 35.0 degC (signed)
       raw[8]=2300 -> DC1 voltage = 230.0V
       raw[9]=45 -> DC1 current = 4.5A
       raw[10]=2310 -> DC2 voltage = 231.0V
       raw[11]=42 -> DC2 current = 4.2A
-      raw[14]=4000, raw[15]=0 -> total DC power = 4000W
+      raw[14]=0, raw[15]=4000 -> total DC power = (0<<16|4000) = 4000W
       raw[16]=2310 -> phase A voltage = 231.0V
       raw[17]=2320 -> phase B voltage = 232.0V
       raw[18]=2305 -> phase C voltage = 230.5V
       raw[19]=58 -> phase A current = 5.8A
       raw[20]=57 -> phase B current = 5.7A
       raw[21]=59 -> phase C current = 5.9A
-      raw[28]=3900, raw[29]=0 -> total active power = 3900W
+      raw[28]=0, raw[29]=3900 -> total active power = (0<<16|3900) = 3900W
       raw[32]=998 -> power factor = 0.998
       raw[33]=500 -> frequency = 50.0 Hz
       raw[35]=0x8000 -> running state = Run
@@ -56,16 +56,16 @@ def _make_sample_sungrow_registers() -> list[int]:
     raw[9] = 45       # DC1 current (0.1A)
     raw[10] = 2310    # DC2 voltage (0.1V)
     raw[11] = 42      # DC2 current (0.1A)
-    raw[14] = 4000    # total DC power high word
-    raw[15] = 0       # total DC power low word
+    raw[14] = 0       # total DC power high word (U32: high<<16|low = 4000W)
+    raw[15] = 4000    # total DC power low word
     raw[16] = 2310    # phase A voltage (0.1V)
     raw[17] = 2320    # phase B voltage (0.1V)
     raw[18] = 2305    # phase C voltage (0.1V)
     raw[19] = 58      # phase A current (0.1A)
     raw[20] = 57      # phase B current (0.1A)
     raw[21] = 59      # phase C current (0.1A)
-    raw[28] = 3900    # total active power high word
-    raw[29] = 0       # total active power low word
+    raw[28] = 0       # total active power high word (U32: high<<16|low = 3900W)
+    raw[29] = 3900    # total active power low word
     raw[32] = 998     # power factor
     raw[33] = 500     # frequency (0.1 Hz)
     raw[35] = 0x8000  # running state = Run
@@ -188,8 +188,8 @@ class TestSungrowParsing:
         """U32 high-word-first for total energy, converted from 0.1kWh to Wh."""
         plugin = SungrowPlugin()
         data = plugin._parse_sungrow_data(SAMPLE_SUNGROW)
-        # (100 << 16 | 0) * 100 = 6553600 Wh
-        assert data["total_energy_wh"] == 6553600
+        # (100 << 16 | 0) = 6553600 raw, * 100 (0.1kWh->Wh) = 655360000 Wh
+        assert data["total_energy_wh"] == 655360000
 
     def test_parse_temperature_signed(self):
         """S16 temperature at 0.1 degC resolution."""
@@ -311,7 +311,7 @@ class TestSunSpecEncoding:
         """Energy at regs[24-25] as acc32 Wh."""
         regs = self._get_encoded()
         energy_wh = (regs[24] << 16) | regs[25]
-        assert energy_wh == 6553600
+        assert energy_wh == 655360000
 
     def test_dc_values(self):
         """DC current/voltage/power at correct offsets."""
