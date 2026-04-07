@@ -184,11 +184,19 @@ class ControlState:
             pass
 
     def get_device_clamp(self, device_id: str) -> tuple[int, int]:
-        """Return (min_pct, max_pct) for a device, falling back to global."""
+        """Return (min_pct, max_pct) for a device.
+
+        If no per-device entry exists, auto-initialize with safe defaults
+        (0/100) and persist — prevents new devices from inheriting
+        restrictive global clamp values.
+        """
         dc = self.device_clamps.get(device_id)
         if dc:
             return dc.get("min", 0), dc.get("max", 100)
-        return self.clamp_min_pct, self.clamp_max_pct
+        # Auto-initialize new devices with unrestricted defaults
+        self.device_clamps[device_id] = {"min": 0, "max": 100}
+        self.save_ui_state()
+        return 0, 100
 
     def set_device_clamp(self, device_id: str, min_pct: int, max_pct: int) -> None:
         """Set per-device clamp values."""

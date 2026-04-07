@@ -154,24 +154,24 @@ class SungrowPlugin(InverterPlugin):
 
         Offsets relative to raw[0] = wire 5002.
         Sungrow conventions:
-        - U32: high word at lower address
+        - U32: low word at lower address (little-endian word order)
         - Scale factors: voltage 0.1V, current 0.1A, freq 0.1Hz, temp 0.1degC
         - Energy: 0.1 kWh (converted to Wh by multiplying by 100)
         """
-        total_energy_wh = ((raw[1] << 16) | raw[2]) * 100  # U32, 0.1kWh -> Wh
+        total_energy_wh = ((raw[2] << 16) | raw[1]) * 100  # U32 LE, 0.1kWh -> Wh
         temperature_c = _clamp(_s16(raw[5]) * 0.1, *_CLAMP_TEMP)  # S16, 0.1degC
         dc1_voltage_v = _clamp(raw[8] * 0.1, *_CLAMP_VOLTAGE)    # wire 5010
         dc1_current_a = _clamp(raw[9] * 0.1, *_CLAMP_CURRENT)    # wire 5011
         dc2_voltage_v = _clamp(raw[10] * 0.1, *_CLAMP_VOLTAGE)   # wire 5012
         dc2_current_a = _clamp(raw[11] * 0.1, *_CLAMP_CURRENT)   # wire 5013
-        total_dc_power_w = _clamp((raw[14] << 16) | raw[15], *_CLAMP_POWER)  # U32, wire 5016-5017
+        total_dc_power_w = _clamp((raw[15] << 16) | raw[14], *_CLAMP_POWER)  # U32 LE, wire 5016-5017
         phase_a_voltage_v = _clamp(raw[16] * 0.1, *_CLAMP_VOLTAGE)  # wire 5018
         phase_b_voltage_v = _clamp(raw[17] * 0.1, *_CLAMP_VOLTAGE)  # wire 5019
         phase_c_voltage_v = _clamp(raw[18] * 0.1, *_CLAMP_VOLTAGE)  # wire 5020
         phase_a_current_a = _clamp(raw[19] * 0.1, *_CLAMP_CURRENT)  # wire 5021
         phase_b_current_a = _clamp(raw[20] * 0.1, *_CLAMP_CURRENT)  # wire 5022
         phase_c_current_a = _clamp(raw[21] * 0.1, *_CLAMP_CURRENT)  # wire 5023
-        total_active_power_w = _clamp((raw[28] << 16) | raw[29], *_CLAMP_POWER)  # U32, wire 5030-5031
+        total_active_power_w = _clamp((raw[29] << 16) | raw[28], *_CLAMP_POWER)  # U32 LE, wire 5030-5031
         power_factor = _s16(raw[32]) * 0.001  # wire 5034
         frequency_hz = raw[33] * 0.1          # wire 5035
         running_state = raw[35]                # wire 5037
