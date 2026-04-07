@@ -894,6 +894,7 @@ def _build_device_list(app_ctx: Any, config: Config) -> list[dict]:
             "throttle_order": inv.throttle_order,
             "throttle_enabled": inv.throttle_enabled,
             "aggregate": inv.aggregate,
+            "panel_power_wp": inv.panel_power_wp,
         }
         if inv.type == "opendtu":
             dev_entry["gateway_host"] = inv.gateway_host
@@ -1725,6 +1726,7 @@ async def inverters_add_handler(request: web.Request) -> web.Response:
         gateway_password=body.get("gateway_password", ""),
         shelly_gen=body.get("shelly_gen", ""),
         rated_power=body.get("rated_power", 0),
+        panel_power_wp=body.get("panel_power_wp", 0),
         throttle_enabled=body.get("throttle_enabled", dev_type not in ("shelly", "sungrow")),
         aggregate=body.get("aggregate", True),
     )
@@ -1761,7 +1763,7 @@ async def inverters_update_handler(request: web.Request) -> web.Response:
         return web.json_response({"error": f"Invalid request: {e}"}, status=400)
 
     was_enabled = entry.enabled
-    for field_name in ("host", "port", "unit_id", "enabled", "manufacturer", "model", "serial", "firmware_version", "rated_power", "name", "gateway_host", "gateway_user", "gateway_password", "throttle_order", "throttle_enabled", "aggregate"):
+    for field_name in ("host", "port", "unit_id", "enabled", "manufacturer", "model", "serial", "firmware_version", "rated_power", "panel_power_wp", "name", "gateway_host", "gateway_user", "gateway_password", "throttle_order", "throttle_enabled", "aggregate"):
         if field_name in body:
             setattr(entry, field_name, body[field_name])
 

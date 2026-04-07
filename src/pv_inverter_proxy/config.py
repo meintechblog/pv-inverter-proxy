@@ -50,7 +50,8 @@ class InverterEntry:
     gateway_user: str = ""        # OpenDTU Basic Auth username (empty = default "admin")
     gateway_password: str = ""    # OpenDTU Basic Auth password (empty = default "openDTU42")
     shelly_gen: str = ""              # Shelly generation: "gen1" or "gen2" (auto-detected, persisted)
-    rated_power: int = 0           # Rated power in watts (0 = unknown)
+    rated_power: int = 0           # Inverter rated power in watts (0 = unknown)
+    panel_power_wp: int = 0        # DC panel peak power in Wp (0 = unknown)
     throttle_order: int = 1           # TO 1 = first to throttle
     throttle_enabled: bool = True     # False = monitoring-only (no limit commands)
     throttle_dead_time_s: float = 0.0 # Per-device dead-time in seconds (default: no wait)

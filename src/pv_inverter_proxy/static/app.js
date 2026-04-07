@@ -1057,9 +1057,10 @@ function buildInverterConfigForm(container, device) {
             '<div class="ve-form-group"><label>Unit ID</label><input type="number" class="ve-input ve-cfg-unit" value="' + (device.unit_id || 1) + '" min="1" max="247"></div>'
         : '') +
         (device.type === 'shelly' ?
-            '<div class="ve-form-group"><label>Generation</label><span class="ve-gen-badge">' + esc(device.shelly_gen === 'gen2' ? 'Gen2' : (device.shelly_gen === 'gen3' ? 'Gen3' : 'Gen1')) + '</span></div>' +
-            '<div class="ve-form-group"><label>Rated Power (W)</label><input type="number" class="ve-input ve-cfg-rated-power" value="' + (device.rated_power || 0) + '" min="0"></div>'
+            '<div class="ve-form-group"><label>Generation</label><span class="ve-gen-badge">' + esc(device.shelly_gen === 'gen2' ? 'Gen2' : (device.shelly_gen === 'gen3' ? 'Gen3' : 'Gen1')) + '</span></div>'
         : '') +
+        '<div class="ve-form-group"><label>Inverter Rated Power (W)</label><input type="number" class="ve-input ve-cfg-rated-power" value="' + (device.rated_power || 0) + '" min="0"></div>' +
+        '<div class="ve-form-group"><label>Panel Peak Power (Wp)</label><input type="number" class="ve-input ve-cfg-panel-power" value="' + (device.panel_power_wp || 0) + '" min="0"></div>' +
         (device.type === 'opendtu' ?
             '<div class="ve-form-group"><label>Gateway User</label><input type="text" class="ve-input ve-cfg-gw-user" value="' + esc(device.gateway_user || '') + '" placeholder="admin (default)"></div>' +
             '<div class="ve-form-group"><label>Gateway Password</label><input type="password" class="ve-input ve-cfg-gw-pass" value="' + esc(device.gateway_password || '') + '" placeholder="openDTU42 (default)"></div>'
@@ -1094,7 +1095,8 @@ function buildInverterConfigForm(container, device) {
         enabled: device.enabled !== false,
         gateway_user: device.gateway_user || '',
         gateway_password: device.gateway_password || '',
-        rated_power: String(device.rated_power || 0)
+        rated_power: String(device.rated_power || 0),
+        panel_power_wp: String(device.panel_power_wp || 0)
     };
 
     var nameInput = panel.querySelector('.ve-cfg-name');
@@ -1104,6 +1106,7 @@ function buildInverterConfigForm(container, device) {
     var gwUserInput = panel.querySelector('.ve-cfg-gw-user');
     var gwPassInput = panel.querySelector('.ve-cfg-gw-pass');
     var rpInput = panel.querySelector('.ve-cfg-rated-power');
+    var ppInput = panel.querySelector('.ve-cfg-panel-power');
     var agToggle = panel.querySelector('.ve-cfg-aggregate');
     var teToggle = panel.querySelector('.ve-cfg-throttle-enabled');
     var enabledToggle = panel.querySelector('.ve-cfg-enabled');
@@ -1121,28 +1124,27 @@ function buildInverterConfigForm(container, device) {
                     teToggle.checked !== originals.throttle_enabled ||
                     (gwUserInput && gwUserInput.value !== originals.gateway_user) ||
                     (gwPassInput && gwPassInput.value !== originals.gateway_password) ||
-                    (rpInput && rpInput.value !== originals.rated_power);
+                    rpInput.value !== originals.rated_power ||
+                    ppInput.value !== originals.panel_power_wp;
         savePair.style.display = dirty ? '' : 'none';
         // Highlight dirty fields
-        var trackFields = [nameInput, hostInput];
+        var trackFields = [nameInput, hostInput, rpInput, ppInput];
         if (portInput) trackFields.push(portInput);
         if (unitInput) trackFields.push(unitInput);
         if (gwUserInput) trackFields.push(gwUserInput);
         if (gwPassInput) trackFields.push(gwPassInput);
-        if (rpInput) trackFields.push(rpInput);
         trackFields.forEach(function(el) {
-            var orig = el === nameInput ? originals.name : el === hostInput ? originals.host : el === portInput ? originals.port : el === unitInput ? originals.unit_id : el === gwUserInput ? originals.gateway_user : el === gwPassInput ? originals.gateway_password : el === rpInput ? originals.rated_power : '';
+            var orig = el === nameInput ? originals.name : el === hostInput ? originals.host : el === portInput ? originals.port : el === unitInput ? originals.unit_id : el === gwUserInput ? originals.gateway_user : el === gwPassInput ? originals.gateway_password : el === rpInput ? originals.rated_power : el === ppInput ? originals.panel_power_wp : '';
             if (el.value !== orig) el.classList.add('ve-input--dirty');
             else el.classList.remove('ve-input--dirty');
         });
     }
 
-    var inputFields = [nameInput, hostInput];
+    var inputFields = [nameInput, hostInput, rpInput, ppInput];
     if (portInput) inputFields.push(portInput);
     if (unitInput) inputFields.push(unitInput);
     if (gwUserInput) inputFields.push(gwUserInput);
     if (gwPassInput) inputFields.push(gwPassInput);
-    if (rpInput) inputFields.push(rpInput);
     inputFields.forEach(function(el) {
         el.addEventListener('input', checkDirty);
     });
@@ -1158,7 +1160,8 @@ function buildInverterConfigForm(container, device) {
         teToggle.checked = originals.throttle_enabled;
         if (gwUserInput) gwUserInput.value = originals.gateway_user;
         if (gwPassInput) gwPassInput.value = originals.gateway_password;
-        if (rpInput) rpInput.value = originals.rated_power;
+        rpInput.value = originals.rated_power;
+        ppInput.value = originals.panel_power_wp;
         checkDirty();
     });
 
@@ -1173,7 +1176,8 @@ function buildInverterConfigForm(container, device) {
         if (unitInput) payload.unit_id = parseInt(unitInput.value);
         if (gwUserInput) payload.gateway_user = gwUserInput.value.trim();
         if (gwPassInput) payload.gateway_password = gwPassInput.value.trim();
-        if (rpInput) payload.rated_power = parseInt(rpInput.value) || 0;
+        payload.rated_power = parseInt(rpInput.value) || 0;
+        payload.panel_power_wp = parseInt(ppInput.value) || 0;
 
         fetch('/api/devices/' + device.id, {
             method: 'PUT',
@@ -1195,7 +1199,8 @@ function buildInverterConfigForm(container, device) {
             originals.throttle_enabled = payload.throttle_enabled;
             if (gwUserInput) originals.gateway_user = payload.gateway_user || '';
             if (gwPassInput) originals.gateway_password = payload.gateway_password || '';
-            if (rpInput) originals.rated_power = String(payload.rated_power || 0);
+            originals.rated_power = String(payload.rated_power || 0);
+            originals.panel_power_wp = String(payload.panel_power_wp || 0);
             checkDirty();
         })
         .catch(function(e) { showToast('Update failed: ' + e.message, 'error'); });
