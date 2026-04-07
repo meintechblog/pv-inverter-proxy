@@ -1066,13 +1066,16 @@ function buildInverterConfigForm(container, device) {
         : '') +
         '<div class="ve-form-group"><label>Type</label><input type="text" class="ve-input" value="' + (device.type || '') + '" readonly style="opacity:0.6"></div>' +
         (identity ? '<div class="ve-form-group"><label>Identity</label><input type="text" class="ve-input" value="' + esc(identity) + '" readonly style="opacity:0.6"></div>' : '') +
-        '<div class="ve-ess-row" style="margin-top:10px">' +
-        '  <label>Fronius Aggregation</label>' +
-        '  <label class="ve-toggle"><input type="checkbox" class="ve-cfg-aggregate" ' + (device.aggregate !== false ? 'checked' : '') + '><span class="ve-toggle-track"></span></label>' +
-        '</div>' +
-        '<div class="ve-ess-row" style="margin-top:10px">' +
-        '  <label>Throttle Enabled</label>' +
-        '  <label class="ve-toggle"><input type="checkbox" class="ve-cfg-throttle-enabled" ' + (device.throttle_enabled !== false ? 'checked' : '') + '><span class="ve-toggle-track"></span></label>' +
+        '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--ve-border)">' +
+        '  <div style="font-size:0.85rem;color:var(--ve-text-dim);margin-bottom:8px">Fronius Proxy</div>' +
+        '  <div class="ve-ess-row">' +
+        '    <label>Include in Aggregation</label>' +
+        '    <label class="ve-toggle"><input type="checkbox" class="ve-cfg-aggregate" ' + (device.aggregate !== false ? 'checked' : '') + '><span class="ve-toggle-track"></span></label>' +
+        '  </div>' +
+        '  <div class="ve-ess-row" style="margin-top:10px">' +
+        '    <label>Power Limit Control</label>' +
+        '    <label class="ve-toggle"><input type="checkbox" class="ve-cfg-throttle-enabled" ' + (device.throttle_enabled !== false ? 'checked' : '') + '><span class="ve-toggle-track"></span></label>' +
+        '  </div>' +
         '</div>' +
         '<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--ve-border)">' +
         '  <button type="button" class="ve-btn ve-btn--danger ve-cfg-delete">Delete Device</button>' +
