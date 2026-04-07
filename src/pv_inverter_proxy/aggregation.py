@@ -165,9 +165,14 @@ class AggregationLayer:
         # Snapshot to avoid dict-changed-size-during-iteration
         device_ids = list(self._app_ctx.devices.keys())
 
+        # Build set of device IDs that participate in aggregation
+        aggregate_ids = {e.id for e in self._config.inverters if e.aggregate}
+
         # Collect active states (those with poll data containing inverter registers)
         active_data: list[dict] = []
         for did in device_ids:
+            if did not in aggregate_ids:
+                continue
             ds = self._app_ctx.devices.get(did)
             if ds is None:
                 continue
@@ -255,7 +260,7 @@ class AggregationLayer:
         """Write WRtg (sum of active rated powers) to Model 120 in the datablock."""
         total_rated = 0
         for entry in self._config.inverters:
-            if entry.enabled and entry.id in active_device_ids and entry.rated_power > 0:
+            if entry.enabled and entry.aggregate and entry.id in active_device_ids and entry.rated_power > 0:
                 total_rated += entry.rated_power
 
         if total_rated > 0:

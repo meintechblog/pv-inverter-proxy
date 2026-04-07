@@ -54,6 +54,7 @@ class InverterEntry:
     throttle_order: int = 1           # TO 1 = first to throttle
     throttle_enabled: bool = True     # False = monitoring-only (no limit commands)
     throttle_dead_time_s: float = 0.0 # Per-device dead-time in seconds (default: no wait)
+    aggregate: bool = True            # Include in Fronius aggregation for Venus OS
 
 
 @dataclass

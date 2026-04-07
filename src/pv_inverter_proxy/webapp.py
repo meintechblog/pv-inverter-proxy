@@ -893,6 +893,7 @@ def _build_device_list(app_ctx: Any, config: Config) -> list[dict]:
             "rated_power": inv.rated_power,
             "throttle_order": inv.throttle_order,
             "throttle_enabled": inv.throttle_enabled,
+            "aggregate": inv.aggregate,
         }
         if inv.type == "opendtu":
             dev_entry["gateway_host"] = inv.gateway_host
@@ -924,7 +925,7 @@ def _build_device_list(app_ctx: Any, config: Config) -> list[dict]:
     if slave_ctx and getattr(slave_ctx, "last_successful_read", 0) > 0:
         age = time.monotonic() - slave_ctx.last_successful_read
         virtual_conn = "connected" if age < 30 else "disconnected"
-    virtual_rated_w = sum(inv.rated_power for inv in config.inverters if inv.enabled)
+    virtual_rated_w = sum(inv.rated_power for inv in config.inverters if inv.enabled and inv.aggregate)
     devices.append({
         "id": "virtual",
         "name": config.virtual_inverter.name,
@@ -1725,6 +1726,7 @@ async def inverters_add_handler(request: web.Request) -> web.Response:
         shelly_gen=body.get("shelly_gen", ""),
         rated_power=body.get("rated_power", 0),
         throttle_enabled=body.get("throttle_enabled", dev_type not in ("shelly", "sungrow")),
+        aggregate=body.get("aggregate", True),
     )
     config: Config = request.app["config"]
     config.inverters.append(entry)
@@ -1759,7 +1761,7 @@ async def inverters_update_handler(request: web.Request) -> web.Response:
         return web.json_response({"error": f"Invalid request: {e}"}, status=400)
 
     was_enabled = entry.enabled
-    for field_name in ("host", "port", "unit_id", "enabled", "manufacturer", "model", "serial", "firmware_version", "rated_power", "name", "gateway_host", "gateway_user", "gateway_password", "throttle_order", "throttle_enabled"):
+    for field_name in ("host", "port", "unit_id", "enabled", "manufacturer", "model", "serial", "firmware_version", "rated_power", "name", "gateway_host", "gateway_user", "gateway_password", "throttle_order", "throttle_enabled", "aggregate"):
         if field_name in body:
             setattr(entry, field_name, body[field_name])
 
@@ -1768,7 +1770,7 @@ async def inverters_update_handler(request: web.Request) -> web.Response:
         return web.json_response({"error": error}, status=400)
 
     # Determine what changed for logging
-    changes = {k: body[k] for k in body if k in ("host", "port", "unit_id", "enabled", "name", "rated_power", "throttle_order", "throttle_enabled")}
+    changes = {k: body[k] for k in body if k in ("host", "port", "unit_id", "enabled", "name", "rated_power", "throttle_order", "throttle_enabled", "aggregate")}
     if was_enabled and not entry.enabled:
         log.info("user_action", action="inverter_disabled", device_id=inv_id, name=entry.name or entry.model)
     elif not was_enabled and entry.enabled:

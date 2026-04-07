@@ -1067,6 +1067,10 @@ function buildInverterConfigForm(container, device) {
         '<div class="ve-form-group"><label>Type</label><input type="text" class="ve-input" value="' + (device.type || '') + '" readonly style="opacity:0.6"></div>' +
         (identity ? '<div class="ve-form-group"><label>Identity</label><input type="text" class="ve-input" value="' + esc(identity) + '" readonly style="opacity:0.6"></div>' : '') +
         '<div class="ve-ess-row" style="margin-top:10px">' +
+        '  <label>Fronius Aggregation</label>' +
+        '  <label class="ve-toggle"><input type="checkbox" class="ve-cfg-aggregate" ' + (device.aggregate !== false ? 'checked' : '') + '><span class="ve-toggle-track"></span></label>' +
+        '</div>' +
+        '<div class="ve-ess-row" style="margin-top:10px">' +
         '  <label>Throttle Enabled</label>' +
         '  <label class="ve-toggle"><input type="checkbox" class="ve-cfg-throttle-enabled" ' + (device.throttle_enabled !== false ? 'checked' : '') + '><span class="ve-toggle-track"></span></label>' +
         '</div>' +
@@ -1082,6 +1086,7 @@ function buildInverterConfigForm(container, device) {
         host: device.host || '',
         port: String(device.port || 1502),
         unit_id: String(device.unit_id || 1),
+        aggregate: device.aggregate !== false,
         throttle_enabled: device.throttle_enabled !== false,
         enabled: device.enabled !== false,
         gateway_user: device.gateway_user || '',
@@ -1096,6 +1101,7 @@ function buildInverterConfigForm(container, device) {
     var gwUserInput = panel.querySelector('.ve-cfg-gw-user');
     var gwPassInput = panel.querySelector('.ve-cfg-gw-pass');
     var rpInput = panel.querySelector('.ve-cfg-rated-power');
+    var agToggle = panel.querySelector('.ve-cfg-aggregate');
     var teToggle = panel.querySelector('.ve-cfg-throttle-enabled');
     var enabledToggle = panel.querySelector('.ve-cfg-enabled');
     var savePair = panel.querySelector('.ve-cfg-save-pair');
@@ -1108,6 +1114,7 @@ function buildInverterConfigForm(container, device) {
                     hostInput.value !== originals.host ||
                     (portInput && portInput.value !== originals.port) ||
                     (unitInput && unitInput.value !== originals.unit_id) ||
+                    agToggle.checked !== originals.aggregate ||
                     teToggle.checked !== originals.throttle_enabled ||
                     (gwUserInput && gwUserInput.value !== originals.gateway_user) ||
                     (gwPassInput && gwPassInput.value !== originals.gateway_password) ||
@@ -1136,6 +1143,7 @@ function buildInverterConfigForm(container, device) {
     inputFields.forEach(function(el) {
         el.addEventListener('input', checkDirty);
     });
+    agToggle.addEventListener('change', checkDirty);
     teToggle.addEventListener('change', checkDirty);
 
     cancelBtn.addEventListener('click', function() {
@@ -1143,6 +1151,7 @@ function buildInverterConfigForm(container, device) {
         hostInput.value = originals.host;
         if (portInput) portInput.value = originals.port;
         if (unitInput) unitInput.value = originals.unit_id;
+        agToggle.checked = originals.aggregate;
         teToggle.checked = originals.throttle_enabled;
         if (gwUserInput) gwUserInput.value = originals.gateway_user;
         if (gwPassInput) gwPassInput.value = originals.gateway_password;
@@ -1154,6 +1163,7 @@ function buildInverterConfigForm(container, device) {
         var payload = {
             name: nameInput.value.trim(),
             host: hostInput.value.trim(),
+            aggregate: agToggle.checked,
             throttle_enabled: teToggle.checked
         };
         if (portInput) payload.port = parseInt(portInput.value);
@@ -1178,6 +1188,7 @@ function buildInverterConfigForm(container, device) {
             originals.host = payload.host;
             if (portInput) originals.port = String(payload.port);
             if (unitInput) originals.unit_id = String(payload.unit_id);
+            originals.aggregate = payload.aggregate;
             originals.throttle_enabled = payload.throttle_enabled;
             if (gwUserInput) originals.gateway_user = payload.gateway_user || '';
             if (gwPassInput) originals.gateway_password = payload.gateway_password || '';
