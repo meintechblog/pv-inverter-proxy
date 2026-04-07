@@ -159,27 +159,27 @@ Based on STATE.md verified data and Sungrow protocol documentation:
 | Wire Addr | Doc Addr | Name | Type | Scale | Unit | Notes |
 |-----------|----------|------|------|-------|------|-------|
 | 4999 | 5000 | Device type code | U16 | 1 | - | Identifies inverter model |
-| 5003 | 5004 | Total energy yield | U32 | 0.1 | kWh | High word first |
+| 5003 | 5004 | Total energy yield | U32 | 0.1 | kWh | Low word first (LE) |
 | 5007 | 5008 | Internal temperature | S16 | 0.1 | degC | Signed |
 | 5010 | 5011 | DC voltage MPPT1 | U16 | 0.1 | V | |
 | 5011 | 5012 | DC current MPPT1 | U16 | 0.1 | A | |
 | 5012 | 5013 | DC voltage MPPT2 | U16 | 0.1 | V | |
 | 5013 | 5014 | DC current MPPT2 | U16 | 0.1 | A | |
-| 5016 | 5017 | Total DC power | U32 | 1 | W | |
+| 5016 | 5017 | Total DC power | U32 | 1 | W | Low word first (LE) [VERIFIED] |
 | 5018 | 5019 | Phase A voltage | U16 | 0.1 | V | |
 | 5019 | 5020 | Phase B voltage | U16 | 0.1 | V | |
 | 5020 | 5021 | Phase C voltage | U16 | 0.1 | V | |
 | 5021 | 5022 | Phase A current | U16 | 0.1 | A | |
 | 5022 | 5023 | Phase B current | U16 | 0.1 | A | |
 | 5023 | 5024 | Phase C current | U16 | 0.1 | A | |
-| 5030 | 5031 | Total active power | U32 | 1 | W | [ASSUMED] may be S32 |
+| 5030 | 5031 | Total active power | U32 | 1 | W | Low word first (LE) [VERIFIED] |
 | 5034 | 5035 | Power factor | S16 | 0.001 | - | |
 | 5035 | 5036 | Grid frequency | U16 | 0.1 | Hz | |
 | 5037 | 5038 | Running state | U16 | - | - | See state codes below |
 
 **Important Sungrow conventions:**
 - Doc address is 1-based, wire address = doc - 1 [VERIFIED: STATE.md]
-- U32 values: high word at lower address, low word at next address [VERIFIED: STATE.md]
+- U32 values: **low word at lower address** (little-endian word order) [VERIFIED: live device 2026-04-07]
 - For current scale values, low word is always 0 for typical values [VERIFIED: STATE.md]
 - Input registers use function code 0x04 [VERIFIED: Sungrow protocol docs]
 
