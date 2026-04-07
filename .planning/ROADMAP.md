@@ -119,7 +119,7 @@ Full details: `.planning/milestones/v6.0-ROADMAP.md`
 
 **Milestone Goal:** Full-Stack Integration des Sungrow SG-RT Wechselrichters als vierter Inverter-Typ mit Modbus TCP Polling, SunSpec Encoding, 3-Phasen Dashboard, Power Limiting, Discovery und Throttle-Integration.
 
-- [ ] **Phase 38: Plugin Core** - Modbus TCP polling, SunSpec encoding, config entry, ThrottleCaps declaration
+- [x] **Phase 38: Plugin Core** - Modbus TCP polling, SunSpec encoding, config entry, ThrottleCaps declaration (completed 2026-04-06)
 - [ ] **Phase 39: Dashboard** - Power gauge, 3-phase AC, MPPT DC channels, state card, register viewer
 - [ ] **Phase 40: Add Device & Discovery** - Type card, Modbus probe, network scan with Sungrow detection
 - [ ] **Phase 41: Power Control** - Write register research, write_power_limit, waterfall distributor integration
@@ -136,10 +136,10 @@ Full details: `.planning/milestones/v6.0-ROADMAP.md`
   2. Polled data is encoded into SunSpec Model 103 registers identical to the pattern used by SolarEdge and OpenDTU plugins
   3. User can change host/port/unit_id via reconfigure() without restarting the proxy
   4. Plugin declares ThrottleCaps with proportional mode and ~2s Modbus response time, producing a valid throttle_score
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
-- [ ] 38-01-PLAN.md -- SungrowPlugin TDD: tests + implementation (Modbus TCP polling, SunSpec encoding, reconfigure, ThrottleCaps)
-- [ ] 38-02-PLAN.md -- Plugin factory wiring (register sungrow type in plugin_factory)
+- [x] 38-01-PLAN.md -- SungrowPlugin TDD: tests + implementation (Modbus TCP polling, SunSpec encoding, reconfigure, ThrottleCaps)
+- [x] 38-02-PLAN.md -- Plugin factory wiring (register sungrow type in plugin_factory)
 
 ### Phase 39: Dashboard
 **Goal**: Each Sungrow device has a full dashboard with power gauge, 3-phase AC table, dual MPPT DC channels, inverter state card, and register viewer
@@ -195,7 +195,7 @@ Phases execute in numeric order: 38 -> 39 -> 40 -> 41 -> 42
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 38. Plugin Core | 0/2 | Planned | - |
+| 38. Plugin Core | 2/2 | Complete    | 2026-04-06 |
 | 39. Dashboard | 0/? | Not started | - |
 | 40. Add Device & Discovery | 0/? | Not started | - |
 | 41. Power Control | 0/? | Not started | - |
