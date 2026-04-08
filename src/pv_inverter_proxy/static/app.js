@@ -1400,8 +1400,7 @@ function buildVenusPage(container, config, venusDevice) {
     var origVenus = {
         name: config.venus.name || '',
         host: config.venus.host || '',
-        port: String(config.venus.port || 1883),
-        portal_id: config.venus.portal_id || ''
+        port: String(config.venus.port || 1883)
     };
 
     cfgPanel.innerHTML =
@@ -1414,33 +1413,30 @@ function buildVenusPage(container, config, venusDevice) {
         '</div>' +
         '<div class="ve-form-group"><label>Display Name</label><input type="text" class="ve-input ve-venus-name" value="' + esc(origVenus.name) + '" placeholder="e.g. Hallbude"></div>' +
         '<div class="ve-form-group"><label>Venus OS IP</label><input type="text" class="ve-input ve-venus-host" value="' + origVenus.host + '" placeholder="e.g. 192.168.1.1"></div>' +
-        '<div class="ve-form-group"><label>MQTT Port</label><input type="number" class="ve-input ve-venus-port" value="' + origVenus.port + '" placeholder="1883" min="1" max="65535"></div>' +
-        '<div class="ve-form-group"><label>Portal ID</label><input type="text" class="ve-input ve-venus-portal-id" value="' + origVenus.portal_id + '" placeholder="leave blank for auto-discovery"></div>';
+        '<div class="ve-form-group"><label>MQTT Port</label><input type="number" class="ve-input ve-venus-port" value="' + origVenus.port + '" placeholder="1883" min="1" max="65535"></div>';
     container.appendChild(cfgPanel);
 
     // Dirty tracking for Venus config
     var vName = cfgPanel.querySelector('.ve-venus-name');
     var vHost = cfgPanel.querySelector('.ve-venus-host');
     var vPort = cfgPanel.querySelector('.ve-venus-port');
-    var vPortalId = cfgPanel.querySelector('.ve-venus-portal-id');
     var vSavePair = cfgPanel.querySelector('.ve-venus-save-pair');
 
     function checkVenusDirty() {
-        var dirty = vName.value !== origVenus.name || vHost.value !== origVenus.host || vPort.value !== origVenus.port || vPortalId.value !== origVenus.portal_id;
+        var dirty = vName.value !== origVenus.name || vHost.value !== origVenus.host || vPort.value !== origVenus.port;
         vSavePair.style.display = dirty ? '' : 'none';
-        [vName, vHost, vPort, vPortalId].forEach(function(el) {
-            var orig = el === vName ? origVenus.name : el === vHost ? origVenus.host : el === vPort ? origVenus.port : origVenus.portal_id;
+        [vName, vHost, vPort].forEach(function(el) {
+            var orig = el === vName ? origVenus.name : el === vHost ? origVenus.host : origVenus.port;
             if (el.value !== orig) el.classList.add('ve-input--dirty');
             else el.classList.remove('ve-input--dirty');
         });
     }
-    [vName, vHost, vPort, vPortalId].forEach(function(el) { el.addEventListener('input', checkVenusDirty); });
+    [vName, vHost, vPort].forEach(function(el) { el.addEventListener('input', checkVenusDirty); });
 
     cfgPanel.querySelector('.ve-venus-cancel').addEventListener('click', function() {
         vName.value = origVenus.name;
         vHost.value = origVenus.host;
         vPort.value = origVenus.port;
-        vPortalId.value = origVenus.portal_id;
         checkVenusDirty();
     });
 
@@ -1453,8 +1449,7 @@ function buildVenusPage(container, config, venusDevice) {
             venus: {
                 name: vName.value.trim(),
                 host: vHost.value.trim(),
-                port: parseInt(vPort.value) || 1883,
-                portal_id: vPortalId.value.trim()
+                port: parseInt(vPort.value) || 1883
             }
         };
 
@@ -1470,7 +1465,6 @@ function buildVenusPage(container, config, venusDevice) {
                 origVenus.name = payload.venus.name;
                 origVenus.host = payload.venus.host;
                 origVenus.port = String(payload.venus.port);
-                origVenus.portal_id = payload.venus.portal_id;
                 checkVenusDirty();
             } else {
                 showToast('Save failed: ' + data.error, 'error');
