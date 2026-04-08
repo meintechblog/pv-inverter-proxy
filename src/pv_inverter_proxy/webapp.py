@@ -272,6 +272,7 @@ async def config_get_handler(request: web.Request) -> web.Response:
     return web.json_response({
         "inverters": items,
         "venus": {
+            "name": config.venus.name,
             "host": config.venus.host,
             "port": config.venus.port,
             "portal_id": config.venus.portal_id,
@@ -357,6 +358,7 @@ async def config_save_handler(request: web.Request) -> web.Response:
 
     # --- Parse venus config ---
     venus_body = body.get("venus", {})
+    venus_name = venus_body.get("name", "")
     venus_host = venus_body.get("host", "")
     venus_port = venus_body.get("port", 1883)
     venus_portal_id = venus_body.get("portal_id", "")
@@ -396,6 +398,7 @@ async def config_save_handler(request: web.Request) -> web.Response:
         mqtt_publish_changed = old_mqtt_pub != new_mqtt_pub
 
         # Update venus config
+        config.venus.name = venus_name
         config.venus.host = venus_host
         config.venus.port = venus_port
         config.venus.portal_id = venus_portal_id
