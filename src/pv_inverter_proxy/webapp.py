@@ -41,6 +41,9 @@ from pv_inverter_proxy.plugins.shelly import ShellyPlugin
 from pv_inverter_proxy.scanner import ScanConfig, scan_subnet
 from pv_inverter_proxy.venus_reader import venus_mqtt_loop
 
+# Phase 44: Passive Version Badge
+from pv_inverter_proxy.updater.version import Version
+
 log = structlog.get_logger()
 
 
@@ -257,6 +260,38 @@ async def health_handler(request: web.Request) -> web.Response:
         "cache_stale": cache.is_stale,
         "last_poll_age": last_poll_age,
         "device_count": len(app_ctx.devices),
+    })
+
+
+async def update_available_handler(request: web.Request) -> web.Response:
+    """GET /api/update/available -- CHECK-05.
+
+    Returns the current version, commit, and (if available) the latest GitHub
+    release info. CHECK-06: also surfaces last_check_at and last_check_failed_at
+    so the UI can show a stale/failed indicator.
+
+    Response shape:
+        {
+          "current_version": "8.0.0",
+          "current_commit": "abc123d",
+          "available_update": {
+             "latest_version": "v8.1.0",
+             "tag_name": "v8.1.0",
+             "release_notes": "...",
+             "published_at": "2026-04-10T...",
+             "html_url": "https://github.com/..."
+          } | null,
+          "last_check_at": 1712755200.0 | null,
+          "last_check_failed_at": null | 1712755200.0
+        }
+    """
+    app_ctx = request.app["app_ctx"]
+    return web.json_response({
+        "current_version": app_ctx.current_version,
+        "current_commit": app_ctx.current_commit,
+        "available_update": app_ctx.available_update,
+        "last_check_at": app_ctx.update_last_check_at,
+        "last_check_failed_at": app_ctx.update_last_check_failed_at,
     })
 
 
@@ -667,6 +702,19 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
         devices = _build_device_list(ws_app_ctx, config)
         await ws.send_json({"type": "device_list", "data": {"devices": devices}})
 
+        # Phase 44: send initial available_update state so fresh clients know
+        # the current version + any pending release info (CHECK-01/05/06)
+        await ws.send_json({
+            "type": "available_update",
+            "data": {
+                "current_version": ws_app_ctx.current_version,
+                "current_commit": ws_app_ctx.current_commit,
+                "available_update": ws_app_ctx.available_update,
+                "last_check_at": ws_app_ctx.update_last_check_at,
+                "last_check_failed_at": ws_app_ctx.update_last_check_failed_at,
+            },
+        })
+
         # Keep connection alive; read loop for future commands (Phase 7)
         async for msg in ws:
             if msg.type in (web.WSMsgType.ERROR, web.WSMsgType.CLOSE):
@@ -970,6 +1018,36 @@ async def broadcast_device_list(app: web.Application) -> None:
     payload = json.dumps({"type": "device_list", "data": {
         "devices": devices,
     }})
+    for ws in set(clients):
+        try:
+            await ws.send_str(payload)
+        except (ConnectionError, RuntimeError, ConnectionResetError):
+            clients.discard(ws)
+
+
+async def broadcast_available_update(app: web.Application) -> None:
+    """Push updated available_update + version info to all WS clients.
+
+    Called by the scheduler callback whenever AppContext.available_update or
+    the last_check_{at,failed_at} fields change. Mirrors broadcast_device_list
+    to reuse its pruning pattern for dead clients.
+    """
+    clients = app.get("ws_clients")
+    if not clients:
+        return
+    app_ctx = app.get("app_ctx")
+    if app_ctx is None:
+        return
+    payload = json.dumps({
+        "type": "available_update",
+        "data": {
+            "current_version": app_ctx.current_version,
+            "current_commit": app_ctx.current_commit,
+            "available_update": app_ctx.available_update,
+            "last_check_at": app_ctx.update_last_check_at,
+            "last_check_failed_at": app_ctx.update_last_check_failed_at,
+        },
+    })
     for ws in set(clients):
         try:
             await ws.send_str(payload)
@@ -2010,6 +2088,8 @@ async def create_webapp(
     app.router.add_get("/", index_handler)
     app.router.add_get("/api/status", status_handler)
     app.router.add_get("/api/health", health_handler)
+    # Phase 44: Passive Version Badge (CHECK-05)
+    app.router.add_get("/api/update/available", update_available_handler)
     app.router.add_get("/api/config", config_get_handler)
     app.router.add_post("/api/config", config_save_handler)
     app.router.add_post("/api/config/test", config_test_handler)
