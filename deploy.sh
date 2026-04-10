@@ -52,10 +52,16 @@ SETUP
     exit 0
 fi
 
-# Sync source code (exclude dev files, .planning, tests, .git)
+# Sync source code (exclude dev files, .planning, tests, .git*)
+# NOTE: We exclude both `.git/` (directory in main checkouts) and `.git`
+# (file pointer in git worktrees). Without the file exclude, a deploy from
+# a worktree would ship the dangling gitdir pointer to the LXC, breaking
+# install.sh migration's `git describe` call with a nosha/v0.0 fallback name.
 echo ">>> Syncing source code..."
 rsync -avz --delete \
     --exclude '.git/' \
+    --exclude '.git' \
+    --exclude '.gitignore' \
     --exclude '.planning/' \
     --exclude '.claude/' \
     --exclude 'tests/' \
