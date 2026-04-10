@@ -359,6 +359,117 @@ async def health_handler(request: web.Request) -> web.Response:
     return web.json_response(payload)
 
 
+async def update_start_handler(request: web.Request) -> web.Response:
+    """POST /api/update/start -- EXEC-01, EXEC-02, SEC-07.
+
+    Writes a trigger file atomically to ``/etc/pv-inverter-proxy/update-trigger.json``
+    and returns HTTP 202. The actual update work happens in the root helper
+    (``pv-inverter-proxy-updater.service``) triggered by a ``.path`` unit
+    on ``PathModified``. Plan 45-02 only provides the producer half; the
+    consumer ships in Plan 45-03/04.
+
+    Phase 45 scope deliberately omits auth / CSRF / rate limiting — those
+    ship in Phase 46 **before** the UI surfaces an Install button. The
+    risk window is the interval between Plan 45-04 (updater runs) and
+    Phase 46 (hardening); during that window the only consumers are the
+    CLI self-tests described in the phase plan. See 45-02 threat register
+    T-45-02-02 for the acceptance record.
+
+    Request body (JSON):
+
+        {"op": "update", "target_sha": "<40-char lowercase hex>"}
+
+    or for rollback:
+
+        {"op": "rollback", "target_sha": "previous"}
+
+    Response:
+
+        202 — trigger written, updater will pick it up:
+            {"update_id": "<nonce>", "status_url": "/api/update/status"}
+        400 — body malformed or schema-invalid:
+            {"error": "<reason>"}
+        500 — disk write failed (ENOSPC, EACCES, ...):
+            {"error": "trigger_write_failed: <detail>"}
+
+    Latency budget (EXEC-01): the handler must complete in <100ms. The
+    write path is sync and tiny — tempfile create, 5-field json.dumps,
+    os.replace, chmod — all within the same filesystem as the target.
+    No network I/O, no subprocess, no await-on-blocking. The only await
+    is ``request.json()`` which reads an already-buffered body.
+    """
+    # Local import keeps module-load time flat for webapp.py and avoids a
+    # circular-import risk if the updater package ever pulls webapp types.
+    from pv_inverter_proxy.updater.trigger import (
+        TriggerPayload,
+        generate_nonce,
+        now_iso_utc,
+        write_trigger,
+    )
+
+    try:
+        body = await request.json()
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        return web.json_response(
+            {"error": f"invalid_json: {exc}"},
+            status=400,
+        )
+
+    if not isinstance(body, dict):
+        return web.json_response(
+            {"error": "body_must_be_json_object"},
+            status=400,
+        )
+
+    op = body.get("op", "update")
+    target_sha = body.get("target_sha")
+
+    if not isinstance(op, str) or not isinstance(target_sha, str):
+        return web.json_response(
+            {"error": "op and target_sha required as strings"},
+            status=400,
+        )
+
+    payload = TriggerPayload(
+        op=op,
+        target_sha=target_sha,
+        requested_at=now_iso_utc(),
+        requested_by="webapp",
+        nonce=generate_nonce(),
+    )
+
+    try:
+        payload.validate()
+    except ValueError as exc:
+        return web.json_response(
+            {"error": f"invalid_payload: {exc}"},
+            status=400,
+        )
+
+    try:
+        write_trigger(payload)
+    except OSError as exc:
+        log.error("update_start_write_failed", error=str(exc))
+        return web.json_response(
+            {"error": f"trigger_write_failed: {exc}"},
+            status=500,
+        )
+
+    log.info(
+        "update_start_accepted",
+        op=payload.op,
+        target_sha=payload.target_sha,
+        nonce=payload.nonce,
+    )
+    return web.json_response(
+        {
+            "update_id": payload.nonce,
+            "status_url": "/api/update/status",
+        },
+        status=202,
+    )
+
+
 async def update_available_handler(request: web.Request) -> web.Response:
     """GET /api/update/available -- CHECK-05.
 
@@ -2186,6 +2297,8 @@ async def create_webapp(
     app.router.add_get("/api/health", health_handler)
     # Phase 44: Passive Version Badge (CHECK-05)
     app.router.add_get("/api/update/available", update_available_handler)
+    # Phase 45-02: EXEC-01, EXEC-02 — update trigger producer
+    app.router.add_post("/api/update/start", update_start_handler)
     app.router.add_get("/api/config", config_get_handler)
     app.router.add_post("/api/config", config_save_handler)
     app.router.add_post("/api/config/test", config_test_handler)
