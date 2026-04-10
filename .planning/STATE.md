@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v8.0
 milestone_name: Auto-Update System
-status: verifying
-stopped_at: Completed 45-02-trigger-status-contracts-PLAN.md
-last_updated: "2026-04-10T21:20:00.000Z"
-last_activity: 2026-04-10 — Completed 45-02 trigger/status contracts + POST /api/update/start; LXC verified HTTP 202 median 2.5ms
+status: Ready for Plan 45-04 (systemd .service + .path units + runner state machine)
+stopped_at: Completed 45-03-updater-root-primitives-PLAN.md
+last_updated: "2026-04-10T21:30:26.147Z"
+last_activity: 2026-04-10 — Completed 45-03 updater_root primitives: git_ops, backup, trigger_reader, gpg_verify + AST-enforced trust boundary (84 tests passing)
 progress:
   total_phases: 5
   completed_phases: 2
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 ## Current Position
 
 Phase: 45 — Privileged Updater Service
-Plan: 02 — Trigger + status file contracts (COMPLETE, LXC-verified)
-Status: Ready for Plan 45-03 (root updater + path unit)
-Last activity: 2026-04-10 — Completed 45-02 trigger/status contracts + POST /api/update/start; LXC verified HTTP 202 median 2.5ms
+Plan: 03 — updater_root primitives (COMPLETE)
+Status: Ready for Plan 45-04 (systemd .service + .path units + runner state machine)
+Last activity: 2026-04-10 — Completed 45-03 updater_root primitives: git_ops, backup, trigger_reader, gpg_verify + AST-enforced trust boundary (84 tests passing)
 
 Progress: [████████░░] 83% (2/5 phases, 10/12 plans)
 
@@ -78,6 +78,9 @@ Progress: [████████░░] 83% (2/5 phases, 10/12 plans)
 - [Phase 45]: Plan 45-02: Trigger file ownership drifts to pv-proxy:pv-proxy after first atomic write — inherent to os.replace; SEC-07 security intent preserved (mode 0664 + root bypasses ownership); Plan 45-03 consumer must NOT assert stat().st_uid==0
 - [Phase 45]: Plan 45-02: /etc/pv-inverter-proxy/ directory stays pv-proxy-owned from Phase 43; ownership enforced at file level in install.sh Step 6b (resolves permission research flag)
 - [Phase 45]: Plan 45-02: update_start_handler hardcodes requested_by="webapp" in Phase 45; Phase 46 widens with source IP / audit metadata; op parameter defaults to "update" when missing
+- [Phase 45]: updater_root trust boundary enforced via AST walk (not grep) to avoid docstring false positives
+- [Phase 45]: NonceDedupStore fails open on corruption (reprocess > permanent update lockout)
+- [Phase 45]: gpg_verify primitives dormant in v8.0 runner; EXEC-10 delivered via git SHA content hashing in 45-04
 
 ### Sungrow Reference
 
@@ -116,6 +119,7 @@ Progress: [████████░░] 83% (2/5 phases, 10/12 plans)
 | Phase 44 P02 | 25 min | 3 tasks | 6 files |
 | Phase 44 P03 | ~7 min | 2 tasks + human-verify | 6 files |
 | Phase 45 P01 | 45m | 2 tasks | 4 files |
+| Phase 45 P03 | ~50m | 6 tasks | 10 files |
 
 ### Blockers/Concerns
 
@@ -123,6 +127,6 @@ Progress: [████████░░] 83% (2/5 phases, 10/12 plans)
 
 ## Session Continuity
 
-Last session: 2026-04-10T21:20:00.000Z
-Stopped at: Completed 45-02-trigger-status-contracts-PLAN.md
+Last session: 2026-04-10T21:30:26.144Z
+Stopped at: Completed 45-03-updater-root-primitives-PLAN.md
 Resume point: Execute 45-03 root-updater-path-unit plan
