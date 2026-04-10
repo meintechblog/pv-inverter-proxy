@@ -49,3 +49,10 @@ in a dedicated debug/fix workflow.
   - Action: Document in 45-02 SUMMARY.md. Phase 45-03 consumer MUST NOT rely
     on `stat().st_uid == 0`; it only matters that the file is readable by
     root (which it always is). No code change needed for 45-02.
+
+## 45-05 out-of-scope discoveries
+
+- **tests/test_webapp.py::test_config_get_venus_defaults** (pre-existing FAIL):
+  the handler returns a `name` field the test does not expect.
+  Reproduces on main before Plan 45-05 changes (verified via `git stash`).
+  Not caused by Plan 45-05. Triage in a future hygiene plan or Phase 46.

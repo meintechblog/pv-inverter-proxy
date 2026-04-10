@@ -137,7 +137,15 @@ class ControlState:
             pass
 
     def save_last_limit(self) -> None:
-        """Persist current limit for restart recovery."""
+        """Persist current limit for restart recovery.
+
+        Writes to two files for belt-and-braces redundancy:
+
+        1. ``_LAST_LIMIT_FILE`` (legacy, kept for the UI state path).
+        2. ``state_file.STATE_FILE_PATH`` — Plan 45-05 SAFETY-09 wiring.
+           Merges with any existing state so night_mode_active is
+           preserved when only the power limit changes.
+        """
         try:
             with open(_LAST_LIMIT_FILE, "w") as f:
                 json.dump({
@@ -147,6 +155,16 @@ class ControlState:
                 }, f)
         except OSError:
             pass
+        # Plan 45-05 SAFETY-09: also mirror to state.json.
+        try:
+            from pv_inverter_proxy import state_file
+
+            cur = state_file.load_state()
+            cur.power_limit_pct = float(self.wmaxlimpct_raw)
+            cur.power_limit_set_at = time.time()
+            state_file.save_state(cur)
+        except Exception as exc:  # pragma: no cover - best effort
+            logger.warning("state_file_mirror_failed: %s", exc)
 
     _UI_STATE_FILE = "/etc/pv-inverter-proxy/ui_state.json"
 

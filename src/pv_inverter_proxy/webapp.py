@@ -14,7 +14,7 @@ import os
 import tempfile
 import time
 import weakref
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
@@ -359,6 +359,41 @@ async def health_handler(request: web.Request) -> web.Response:
     return web.json_response(payload)
 
 
+async def broadcast_update_in_progress(app) -> None:
+    """Plan 45-05 RESTART-03: pre-shutdown WebSocket broadcast.
+
+    Fires the ``update_in_progress`` message to every connected client
+    so the UI can show a "reconnect in ~10s" banner before the Modbus
+    server + webapp go down. Best-effort: dead clients are silently
+    dropped, any send failure is logged but does not abort the other
+    sends.
+
+    Accepts either an aiohttp ``web.Application`` or a plain dict-like
+    object with a ``ws_clients`` entry (tests use the latter).
+    """
+    if app is None:
+        return
+    clients = app.get("ws_clients") if hasattr(app, "get") else None
+    if not clients:
+        return
+    payload = json.dumps({
+        "type": "update_in_progress",
+        "message": "Update starting — reconnect in ~10s",
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    })
+    for ws in list(clients):
+        try:
+            await ws.send_str(payload)
+        except (ConnectionError, ConnectionResetError, RuntimeError) as exc:
+            log.warning("ws_broadcast_update_in_progress_send_failed", error=str(exc))
+            try:
+                clients.discard(ws)
+            except Exception:
+                pass
+        except Exception as exc:  # pragma: no cover - defensive
+            log.warning("ws_broadcast_update_in_progress_unexpected", error=str(exc))
+
+
 async def update_start_handler(request: web.Request) -> web.Response:
     """POST /api/update/start -- EXEC-01, EXEC-02, SEC-07.
 
@@ -445,6 +480,24 @@ async def update_start_handler(request: web.Request) -> web.Response:
             {"error": f"invalid_payload: {exc}"},
             status=400,
         )
+
+    # Plan 45-05 RESTART-01/03: enter maintenance mode + broadcast
+    # BEFORE writing the trigger. Venus OS will see DEVICE_BUSY on its
+    # next Model 123 write during the drain window; connected web UI
+    # clients receive the update_in_progress banner.
+    try:
+        from pv_inverter_proxy.updater.maintenance import enter_maintenance_mode
+
+        app_ctx = request.app.get("app_ctx") if hasattr(request.app, "get") else None
+        if app_ctx is not None:
+            await enter_maintenance_mode(app_ctx, reason="update_requested")
+    except Exception as exc:  # pragma: no cover - best effort
+        log.warning("maintenance_mode_enter_failed", error=str(exc))
+
+    try:
+        await broadcast_update_in_progress(request.app)
+    except Exception as exc:  # pragma: no cover - best effort
+        log.warning("ws_broadcast_update_in_progress_failed", error=str(exc))
 
     try:
         write_trigger(payload)

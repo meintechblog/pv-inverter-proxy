@@ -178,6 +178,37 @@ async def _on_update_available(
             log.warning("update_broadcast_failed", error=str(e))
 
 
+async def _graceful_shutdown_maintenance(ctx: AppContext) -> None:
+    """Plan 45-05 RESTART-02: drain + 3s grace before task cancellation.
+
+    Called from run_with_shutdown after ``shutdown_event`` is set. If
+    the shutdown was triggered by an update (maintenance_mode already
+    True because update_start_handler raised the flag), this path
+    drains in-flight Modbus writes with a 2s timeout, then sleeps 3s
+    to guarantee at least one full Venus OS poll cycle observes the
+    DEVICE_BUSY response.
+
+    If maintenance_mode is False the shutdown is unplanned (admin kill,
+    crash) and we skip the drain — no point blocking an emergency stop.
+    """
+    log = structlog.get_logger(component="main.shutdown")
+    if not ctx.maintenance_mode:
+        log.info("unplanned_shutdown_no_drain")
+        return
+    from pv_inverter_proxy.updater.maintenance import drain_inflight_modbus
+
+    log.info("maintenance_shutdown_draining", timeout_s=2.0)
+    try:
+        drained = await drain_inflight_modbus(ctx, timeout_s=2.0)
+        log.info("maintenance_shutdown_drain_result", drained=drained)
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("maintenance_shutdown_drain_error", error=str(exc))
+    # Hold the DEVICE_BUSY window open for one full Venus OS poll cycle
+    # (~2s) plus safety margin. This is the RESTART-02 "at least 3s" gate.
+    await asyncio.sleep(3.0)
+    log.info("maintenance_shutdown_grace_complete")
+
+
 def _has_active_ws_client(app_ctx: AppContext) -> bool:
     """CHECK-07: return True iff a WebSocket client is currently connected.
 
@@ -223,35 +254,45 @@ def main():
         log_level=config.log_level,
     )
 
-    # SAFETY-09: load persisted power-limit / night-mode state and log it.
-    # The actual boot-time restoration (re-issuing the Modbus write to SE30K)
-    # is deferred to Phase 45 where the full restart-safety flow lives. For
-    # Phase 43 we deliver the persistence infrastructure + a boot-time observable
-    # so Phase 45 can confirm the state file is being read correctly.
+    # Build typed application context
+    app_ctx = AppContext()
+    app_ctx.config = config
+    app_ctx.config_path = args.config or DEFAULT_CONFIG_PATH
+
+    # Plan 45-05 SAFETY-09 completion: load persisted power-limit state
+    # and stash it on app_ctx for the run_with_shutdown restore hook to
+    # re-issue after the distributor is ready.
     try:
         from pv_inverter_proxy.state_file import load_state, is_power_limit_fresh
         persisted = load_state()
         if persisted.power_limit_pct is not None:
             # 900s is a placeholder for the SE30K CommandTimeout register.
-            # Phase 45 will read the real value from register 0xF100 at startup.
+            # Phase 47 will read the real value from register 0xF100.
             fresh = is_power_limit_fresh(persisted, command_timeout_s=900.0)
-            log.info(
-                "persisted_state_loaded",
-                power_limit_pct=persisted.power_limit_pct,
-                power_limit_set_at=persisted.power_limit_set_at,
-                night_mode_active=persisted.night_mode_active,
-                fresh_within_timeout_half=fresh,
-                note="restoration wiring deferred to Phase 45",
-            )
+            if fresh:
+                app_ctx._pending_restore_limit_pct = persisted.power_limit_pct
+                log.info(
+                    "persisted_state_restore_scheduled",
+                    power_limit_pct=persisted.power_limit_pct,
+                    power_limit_set_at=persisted.power_limit_set_at,
+                    age_s=(
+                        time.time() - persisted.power_limit_set_at
+                        if persisted.power_limit_set_at else None
+                    ),
+                )
+            else:
+                log.info(
+                    "persisted_state_stale_ignored",
+                    power_limit_pct=persisted.power_limit_pct,
+                    age_s=(
+                        time.time() - persisted.power_limit_set_at
+                        if persisted.power_limit_set_at else None
+                    ),
+                )
         else:
             log.info("persisted_state_empty")
     except Exception as e:
         log.warning("persisted_state_load_failed", error=str(e))
-
-    # Build typed application context
-    app_ctx = AppContext()
-    app_ctx.config = config
-    app_ctx.config_path = args.config or DEFAULT_CONFIG_PATH
 
     async def _health_heartbeat(ctx: AppContext):
         """Log health heartbeat every 5 minutes (per locked CONTEXT.md decision).
@@ -353,6 +394,27 @@ def main():
 
         # Start all enabled devices
         await registry.start_all()
+
+        # Plan 45-05 SAFETY-09: re-issue persisted power limit (if fresh)
+        # AFTER distributor + devices are ready but BEFORE we wait on the
+        # shutdown event. Belt-and-braces: the legacy _LAST_LIMIT_FILE
+        # path still runs inside ControlState.__init__ for UI continuity.
+        restore_pct = getattr(app_ctx, "_pending_restore_limit_pct", None)
+        if restore_pct is not None:
+            try:
+                log.info("power_limit_restore_starting", pct=restore_pct)
+                control_state.update_wmaxlimpct(int(restore_pct))
+                control_state.update_wmaxlim_ena(1)
+                control_state.set_from_venus_os()
+                control_state.save_last_limit()
+                if app_ctx.distributor is not None:
+                    await app_ctx.distributor.distribute(
+                        control_state.wmaxlimpct_float,
+                        control_state.is_enabled,
+                    )
+                log.info("power_limit_restored", pct=restore_pct)
+            except Exception as e:
+                log.warning("power_limit_restore_failed", error=str(e))
 
         if registry.get_active_count() == 0:
             log.warning("no_active_inverter", msg="No enabled inverter -- Modbus server will return stale errors")
@@ -476,6 +538,10 @@ def main():
 
         # Wait for shutdown signal
         await app_ctx.shutdown_event.wait()
+
+        # Plan 45-05 RESTART-02: drain in-flight Modbus writes + hold
+        # the DEVICE_BUSY window open for one Venus OS poll cycle.
+        await _graceful_shutdown_maintenance(app_ctx)
 
         log.info("graceful_shutdown_starting")
 
