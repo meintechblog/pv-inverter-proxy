@@ -66,3 +66,10 @@ class AppContext:
     mqtt_pub_bytes: int = 0                # Total bytes published
     mqtt_pub_skipped: int = 0              # Messages skipped (change detection)
     mqtt_pub_last_ts: float = 0.0          # Timestamp of last publish
+
+    # Phase 44: Passive Version Badge (CHECK-01, CHECK-05, CHECK-06)
+    current_version: str | None = None         # From importlib.metadata at startup
+    current_commit: str | None = None          # From git rev-parse --short HEAD at startup
+    available_update: dict | None = None       # Parsed GitHub release info when latest > current
+    update_last_check_at: float | None = None  # UNIX timestamp of last successful scheduler iteration
+    update_last_check_failed_at: float | None = None  # UNIX timestamp of last failed iteration

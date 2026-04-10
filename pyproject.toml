@@ -1,6 +1,6 @@
 [project]
 name = "pv-inverter-master"
-version = "6.0.0"
+version = "8.0.0"
 description = "Multi-inverter proxy aggregating SolarEdge, OpenDTU, and Shelly devices into a single Fronius-compatible SunSpec endpoint for Venus OS"
 requires-python = ">=3.11"
 dependencies = [
