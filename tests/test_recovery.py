@@ -300,6 +300,56 @@ def test_recover_rolled_back(tmp_path: Path):
     assert (releases_root / "current").resolve() == v1.resolve()
 
 
+def test_recover_updater_active_skips_rollback(tmp_path: Path):
+    """Phase 45-04: when the updater-active tmpfs flag is set, recovery
+    must NOT roll back — the updater is managing the restart cycle
+    itself and will handle rollback via HealthChecker if needed.
+    """
+    releases_root, v1, v2 = _setup_releases(tmp_path)
+    marker = tmp_path / "marker"
+    _write_marker(
+        marker,
+        previous_release=str(v1),
+        target_release=str(v2),
+        created_at=time.time(),
+    )
+    # Simulate the updater raising its active flag before restart
+    flag = tmp_path / "updater-active"
+    flag.touch()
+    outcome = recover_if_needed(
+        pending_path=marker,
+        last_success_path=tmp_path / "no_success",
+        releases_root=releases_root,
+        updater_active_flag=flag,
+    )
+    assert outcome == "updater_active"
+    # Marker stays — updater may still roll back via HealthChecker
+    assert marker.exists()
+    # Symlink untouched (still pointing at v2 = the new release)
+    assert (releases_root / "current").resolve() == v2.resolve()
+
+
+def test_recover_updater_active_flag_missing_falls_through(tmp_path: Path):
+    """When the updater-active flag does not exist, recovery runs its
+    normal path and rolls back as Phase 43 specified.
+    """
+    releases_root, v1, v2 = _setup_releases(tmp_path)
+    marker = tmp_path / "marker"
+    _write_marker(
+        marker,
+        previous_release=str(v1),
+        target_release=str(v2),
+        created_at=time.time(),
+    )
+    outcome = recover_if_needed(
+        pending_path=marker,
+        last_success_path=tmp_path / "no_success",
+        releases_root=releases_root,
+        updater_active_flag=tmp_path / "not-there",
+    )
+    assert outcome == "rolled_back"
+
+
 def test_recover_rolled_back_idempotent(tmp_path: Path):
     """Second call after rollback returns no_pending (marker gone)."""
     releases_root, v1, v2 = _setup_releases(tmp_path)

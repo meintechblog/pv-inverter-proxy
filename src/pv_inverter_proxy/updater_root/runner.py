@@ -43,7 +43,11 @@ from typing import Any, Awaitable, Callable
 
 import structlog
 
-from pv_inverter_proxy.recovery import PENDING_MARKER_PATH, PendingMarker
+from pv_inverter_proxy.recovery import (
+    PENDING_MARKER_PATH,
+    UPDATER_ACTIVE_FLAG,
+    PendingMarker,
+)
 from pv_inverter_proxy.releases import (
     CURRENT_SYMLINK_NAME,
     DEFAULT_KEEP_RELEASES,
@@ -133,6 +137,7 @@ class UpdateRunnerConfig:
     config_path: Path
     dedup_path: Path
     pending_marker_path: Path
+    updater_active_flag: Path
     main_service_unit: str = "pv-inverter-proxy.service"
     keep_releases: int = DEFAULT_KEEP_RELEASES
     release_name_fallback: str = "release"
@@ -149,6 +154,7 @@ class UpdateRunnerConfig:
             config_path=Path("/etc/pv-inverter-proxy/config.yaml"),
             dedup_path=Path("/var/lib/pv-inverter-proxy/processed-nonces.json"),
             pending_marker_path=PENDING_MARKER_PATH,
+            updater_active_flag=UPDATER_ACTIVE_FLAG,
         )
 
 
@@ -229,6 +235,11 @@ class UpdateRunner:
         """
         self._status = self._p.status_writer_factory()
         status = self._status
+        # Phase 45-04: raise the updater-active flag (on tmpfs) so the
+        # Phase 43 recovery hook skips rollback during the in-flight
+        # systemctl restart we are about to issue. The flag is cleared in
+        # the finally block below, regardless of outcome.
+        self._raise_updater_active_flag()
         try:
             # 1. Read + validate trigger
             dedup = self._p.make_dedup_store(self._cfg.dedup_path)
@@ -428,6 +439,10 @@ class UpdateRunner:
                 except Exception:  # noqa: BLE001
                     pass
             return EXIT_FAILURE
+        finally:
+            # Always drop the updater-active flag so a subsequent real
+            # boot can engage Phase 43 recovery normally.
+            self._drop_updater_active_flag()
 
     # ------------------------------------------------------------------
     # Rollback (HEALTH-07, HEALTH-08 single-rollback cap)
@@ -526,3 +541,37 @@ class UpdateRunner:
             return base
         # Append clock epoch to distinguish replays (same-SHA smoke test)
         return self._cfg.releases_root / f"{self._cfg.release_name_fallback}-{short}-{int(self._clock())}"
+
+    def _raise_updater_active_flag(self) -> None:
+        """Create the updater-active tmpfs flag.
+
+        Best-effort: if the parent directory doesn't exist (unusual — the
+        main service creates /run/pv-inverter-proxy via RuntimeDirectory),
+        we fall back to creating it. Any OSError is logged but not raised
+        so the main update flow is never blocked by tmpfs issues.
+        """
+        try:
+            flag = self._cfg.updater_active_flag
+            flag.parent.mkdir(parents=True, exist_ok=True)
+            flag.touch(exist_ok=True)
+            log.info("updater_active_flag_raised", path=str(flag))
+        except OSError as e:
+            log.warning(
+                "updater_active_flag_raise_failed",
+                error=str(e),
+                path=str(self._cfg.updater_active_flag),
+            )
+
+    def _drop_updater_active_flag(self) -> None:
+        """Remove the updater-active tmpfs flag. Silent on missing."""
+        try:
+            flag = self._cfg.updater_active_flag
+            if flag.exists():
+                flag.unlink()
+            log.info("updater_active_flag_dropped", path=str(flag))
+        except OSError as e:
+            log.warning(
+                "updater_active_flag_drop_failed",
+                error=str(e),
+                path=str(self._cfg.updater_active_flag),
+            )

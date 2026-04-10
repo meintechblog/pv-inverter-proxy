@@ -33,6 +33,21 @@ from pv_inverter_proxy.releases import (
 PENDING_MARKER_PATH: Path = Path("/var/lib/pv-inverter-proxy/update-pending.marker")
 LAST_BOOT_SUCCESS_PATH: Path = Path("/var/lib/pv-inverter-proxy/last-boot-success.marker")
 
+#: Phase 45-04 — tmpfs flag touched by ``updater_root.runner`` while an
+#: update is in flight. When this file exists, the recovery hook skips
+#: rollback because the updater is actively managing the restart cycle
+#: and will handle rollback itself via HealthChecker. Because the file
+#: lives on ``/run`` (tmpfs), it vanishes automatically on every reboot,
+#: which preserves the Phase 43 recovery guarantee at actual boot time.
+#:
+#: NOT placed inside /run/pv-inverter-proxy/ because that is the
+#: main service's RuntimeDirectory, which systemd destroys whenever
+#: the main service stops — including the in-flight restart the
+#: updater is issuing — defeating the purpose of the flag. Using the
+#: top-level /run directory means the flag survives the main service
+#: restart but still vanishes on actual reboot.
+UPDATER_ACTIVE_FLAG: Path = Path("/run/pv-inverter-proxy-updater-active")
+
 
 def _configure_logging() -> None:
     """Minimal structlog configuration for standalone boot-time use.
@@ -147,11 +162,13 @@ def recover_if_needed(
     pending_path: Path | None = None,
     last_success_path: Path | None = None,
     releases_root: Path | None = None,
+    updater_active_flag: Path | None = None,
 ) -> str:
     """Core recovery decision logic.
 
     Returns one of:
     - "no_pending": no PENDING marker (normal boot)
+    - "updater_active": PENDING present but updater-active tmpfs flag is set
     - "stale_pending_cleaned": PENDING present but last-boot-success is newer
     - "rolled_back": symlink flipped back to previous_release
     - "target_missing": previous_release does not exist on disk
@@ -160,11 +177,28 @@ def recover_if_needed(
     p_path = pending_path or PENDING_MARKER_PATH
     s_path = last_success_path or LAST_BOOT_SUCCESS_PATH
     rr = releases_root or RELEASES_ROOT
+    ua_path = updater_active_flag or UPDATER_ACTIVE_FLAG
 
     marker = load_pending_marker(p_path)
     if marker is None:
         log.info("no_pending_marker")
         return "no_pending"
+
+    # Phase 45-04: the updater manages its own restart + health + rollback
+    # cycle. While an update is in flight the main service restarts twice
+    # (once for the new release, possibly once for rollback) and recovery
+    # must NOT interfere. The updater creates
+    # /run/pv-inverter-proxy/updater-active before issuing systemctl restart
+    # and removes it on exit. Because /run is tmpfs the flag is gone after
+    # a real reboot, so boot-time recovery still engages for genuine
+    # failed-update boots (where the machine power-cycled mid-update).
+    if ua_path.exists():
+        log.info(
+            "updater_active_skip_recovery",
+            flag=str(ua_path),
+            pending_target=marker.target_release,
+        )
+        return "updater_active"
 
     log.info(
         "pending_marker_found",

@@ -88,18 +88,32 @@ set -euo pipefail
 cd /opt/pv-inverter-proxy
 .venv/bin/pip install -e . --quiet
 
-# Update systemd units (main + recovery, Phase 43+).
-# The recovery unit is copied even if this is pre-migration — the file is
-# harmless until install.sh enables it, and having it in place means the
-# next install.sh run has no unit-file copy work left to do.
+# Update systemd units (main + recovery + updater, Phase 43+ / 45-04).
+# The recovery + updater units are copied even if this is pre-migration —
+# the files are harmless until install.sh enables them, and having them
+# in place means the next install.sh run has no unit-file copy work left.
 cp config/pv-inverter-proxy.service /etc/systemd/system/
 if [ -f config/pv-inverter-proxy-recovery.service ]; then
     cp config/pv-inverter-proxy-recovery.service /etc/systemd/system/
+fi
+# Phase 45-04 privileged updater path+service pair
+if [ -f config/pv-inverter-proxy-updater.path ]; then
+    cp config/pv-inverter-proxy-updater.path /etc/systemd/system/
+fi
+if [ -f config/pv-inverter-proxy-updater.service ]; then
+    cp config/pv-inverter-proxy-updater.service /etc/systemd/system/
 fi
 systemctl daemon-reload
 # Enable recovery unit if present (idempotent; safe on pre-migration hosts).
 if [ -f /etc/systemd/system/pv-inverter-proxy-recovery.service ]; then
     systemctl enable pv-inverter-proxy-recovery.service 2>/dev/null || true
+fi
+# Phase 45-04: enable + start the updater .path watcher (idempotent).
+# The .service has no [Install] and is only activated by the .path.
+if [ -f /etc/systemd/system/pv-inverter-proxy-updater.path ]; then
+    systemctl enable pv-inverter-proxy-updater.path 2>/dev/null || true
+    systemctl restart pv-inverter-proxy-updater.path 2>/dev/null || \
+        systemctl start pv-inverter-proxy-updater.path 2>/dev/null || true
 fi
 INSTALL
 

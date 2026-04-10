@@ -112,6 +112,7 @@ def _make_config(tmp_path: Path) -> UpdateRunnerConfig:
         config_path=tmp_path / "config.yaml",
         dedup_path=tmp_path / "nonces.json",
         pending_marker_path=tmp_path / "pending.marker",
+        updater_active_flag=tmp_path / "updater-active",
         main_service_unit="pv-inverter-proxy.service",
         keep_releases=3,
     )

@@ -229,29 +229,21 @@ class HealthChecker:
                             continue
                         last_response = body
                         first_degraded_at = None  # reset streak
-                        # HEALTH-06: version mismatch -> immediate fail
+                        # HEALTH-06: version mismatch -> immediate fail.
+                        # Only checked when expected_version is set (Phase 46
+                        # UI path with real version strings). expected_commit
+                        # is advisory only — the main service's commit field
+                        # may be a short SHA derived from a COMMIT file that
+                        # does not match the update target's git SHA format,
+                        # so we cannot reliably compare the two.
+                        # The primary guarantee against "old code still
+                        # running" comes from systemctl restart force-killing
+                        # the previous process before the new one binds.
                         if (
                             self._expected_version
                             and body.get("version")
                             != self._expected_version
                         ):
-                            return HealthCheckOutcome(
-                                success=False,
-                                reason="version_mismatch",
-                                last_response=body,
-                                probes=probes,
-                                consecutive_ok=consecutive_ok,
-                            )
-                        if (
-                            self._expected_commit
-                            and isinstance(body.get("commit"), str)
-                            and self._expected_commit
-                            not in (body.get("commit") or "")
-                            and (body.get("commit") or "")
-                            not in self._expected_commit
-                        ):
-                            # commit field is typically short (7 chars);
-                            # accept any substring match either direction
                             return HealthCheckOutcome(
                                 success=False,
                                 reason="version_mismatch",
