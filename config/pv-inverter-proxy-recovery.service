@@ -1,0 +1,18 @@
+[Unit]
+Description=PV-Inverter-Proxy Boot-Time Recovery (SAFETY-04)
+Documentation=https://github.com/meintechblog/pv-inverter-proxy
+DefaultDependencies=yes
+After=local-fs.target
+Before=pv-inverter-proxy.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/pv-inverter-proxy/.venv/bin/python3 -m pv_inverter_proxy.recovery
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pv-inverter-proxy-recovery
+
+[Install]
+RequiredBy=pv-inverter-proxy.service
