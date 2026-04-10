@@ -1,90 +1,178 @@
-# Requirements: PV-Inverter-Master v7.0 — Sungrow SG-RT Plugin
+# Requirements: PV-Inverter-Master v8.0 — Auto-Update System
 
-**Defined:** 2026-04-06
+**Defined:** 2026-04-10
 **Core Value:** Venus OS muss alle PV-Inverter als einen virtuellen Fronius-Inverter erkennen und steuern koennen
 
-## v7.0 Requirements
+## Milestone Goal
 
-Requirements for Sungrow SG-RT Plugin milestone. Each maps to roadmap phases.
+Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem GitHub-Repo direkt aus der Webapp installieren, ohne SSH-Zugriff, mit automatischer Verfuegbarkeits-Pruefung, Backup, Health-Check und Rollback-Sicherheit.
 
-### Plugin Core
+## Product Decisions
 
-- [ ] **PLUG-01**: Sungrow plugin polls live data via Modbus TCP (AC power, voltage, current, frequency, DC MPPT1+MPPT2, temperature, energy counters, running state)
-- [ ] **PLUG-02**: Plugin encodes polled data into SunSpec Model 103 registers (identical pattern to SolarEdge/OpenDTU)
-- [ ] **PLUG-03**: Plugin supports reconfigure (host/port/unit_id change without restart)
-- [ ] **PLUG-04**: Plugin declares ThrottleCaps (proportional mode, ~2s Modbus response time)
+- **Auto-Install Default:** OFF — Scheduler prueft nur und zeigt Badge, User klickt bewusst auf Install
+- **Release Retention:** 3 Releases im Blue-Green-Layout (current + 2 Rollback-Kandidaten)
+- **GPG Signing:** Optional in v8.0 (config flag `updates.allow_unsigned`), required in v8.1
+- **Update Source:** Nur getaggte GitHub Releases (`/releases/latest`), NIE main branch
+- **Rollback Distance:** Max N-1 (one release back), Multi-hop manuell
+- **Config Kompatibilitaet:** v7.x config.py tolerieren unknown keys bereits (verified) — kein v7.1.x compat release noetig
 
-### Power Control
+## v8.0 Requirements
 
-- [ ] **CTRL-01**: Plugin can write power limit (0-100%) via Sungrow Modbus holding registers
-- [ ] **CTRL-02**: Power limit integrates with score-based waterfall distributor
+### Safety Foundation (SAFETY-xx)
 
-### Dashboard
+- [ ] **SAFETY-01**: Blue-Green-Verzeichnis-Layout: `/opt/pv-inverter-proxy-releases/<version>-<sha>/` mit `current` Symlink; `/opt/pv-inverter-proxy` zeigt auf `releases/current`
+- [ ] **SAFETY-02**: Retention-Policy haelt genau 3 Release-Verzeichnisse (konfigurierbar via `updates.keep_releases`, Default 3); aelteste werden bei erfolgreichem Update geloescht (nie das aktuelle oder vorherige)
+- [ ] **SAFETY-03**: One-Time Migration beim ersten v8.0 Start: alte flat Layout wird erkannt, `git status --porcelain` auf Dirty geprueft, Baum ins Release-Verzeichnis kopiert, Symlink erstellt, Dienst neu gestartet; bei Dirty-Tree Migration verweigert und Banner mit Diff angezeigt
+- [ ] **SAFETY-04**: Boot-Time Recovery Hook: `pv-inverter-proxy-recovery.service` (Type=oneshot, Before=pv-inverter-proxy.service) liest PENDING-Marker; wenn letzter Boot ohne SUCCESS-Marker endete, flippt Symlink auf vorheriges Release zurueck
+- [ ] **SAFETY-05**: Systemd-Unit-Hardening: `StartLimitBurst=10`, `StartLimitIntervalSec=120`, `TimeoutStopSec=15`, `KillMode=mixed`
+- [ ] **SAFETY-06**: `RuntimeDirectory=pv-inverter-proxy` in Main-Service-Unit (erzeugt tmpfs `/run/pv-inverter-proxy/` fuer healthy-Flag)
+- [ ] **SAFETY-07**: `/var/lib/pv-inverter-proxy/backups/` Verzeichnis fuer venv-Tarball-Snapshots und Config-Backups; via install.sh erstellt, Owner `root:pv-proxy`, Mode 2775
+- [ ] **SAFETY-08**: Pre-Flight-Disk-Space-Check vor jedem Update: mindestens 500 MB frei auf `/opt` und `/var/cache`; bei weniger Abbruch mit klarer Fehlermeldung
+- [ ] **SAFETY-09**: Persistenter State-File fuer SE30K Power Limit + Nachtmodus-State in `/etc/pv-inverter-proxy/state.json`; wird bei Boot restauriert wenn `now - set_at < CommandTimeout/2`
 
-- [ ] **DASH-01**: Device dashboard shows Power Gauge with rated power
-- [ ] **DASH-02**: 3-Phase AC table (L1/L2/L3 voltage, current, power)
-- [ ] **DASH-03**: DC section shows MPPT1 and MPPT2 channels (voltage, current, power)
-- [ ] **DASH-04**: Connection card shows inverter state (Run/Standby/Derating/Fault) and temperature
-- [ ] **DASH-05**: Register viewer with Sungrow-specific register labels
+### Version Check & Discovery (CHECK-xx)
 
-### Add Device Flow
+- [ ] **CHECK-01**: Webapp zeigt aktuelle Version im Footer (aus `importlib.metadata.version`), zusammen mit short commit hash
+- [ ] **CHECK-02**: Background-Scheduler laeuft als asyncio-Task im Main-Event-Loop, pollt GitHub Releases API stuendlich (konfigurierbar via `updates.check_interval_hours`, Default 1)
+- [ ] **CHECK-03**: GitHub API Client verwendet aiohttp mit erforderlichem `User-Agent`-Header, `Accept: application/vnd.github+json`, 10s Timeout; ETag-Caching reduziert Bandbreite
+- [ ] **CHECK-04**: Bei verfuegbarem Update: Badge (orange `ve-dot`) an Sidebar-Eintrag `System`, Release-Notes aus `body`-Feld der GitHub-API-Response
+- [ ] **CHECK-05**: `GET /api/update/available` liefert `{current_version, latest_version, release_notes, published_at, tag_name}` oder `null`
+- [ ] **CHECK-06**: Scheduler ist fehlertolerant: Netzwerkfehler, GitHub unreachable oder 5xx fuehrt nicht zum Crash, nur Log-Warnung; UI zeigt `last_check_failed_at` Timestamp
+- [ ] **CHECK-07**: Scheduler schiebt Check auf naechste Stunde wenn WebSocket-Client verbunden ist (User aktiv = keine Hintergrund-Aktion)
 
-- [ ] **ADD-01**: Type card "Sungrow" als vierte Option neben SolarEdge/OpenDTU/Shelly
-- [ ] **ADD-02**: Modbus TCP probe (read device type code + serial) before saving
-- [ ] **ADD-03**: Auto-Discovery via Netzwerk-Scan (Port 502, Sungrow device type detection)
+### Update Execution (EXEC-xx)
 
-### Config & Integration
+- [ ] **EXEC-01**: `POST /api/update/start` liefert HTTP 202 mit `{update_id, status_url}` innerhalb <100ms und schreibt Trigger-File atomar (tempfile + `os.replace`) nach `/etc/pv-inverter-proxy/update-trigger.json`
+- [ ] **EXEC-02**: Trigger-File-Schema enthaelt `{op, target_sha, requested_at, requested_by, nonce}`; nonce wird vom Updater gegen `/var/lib/pv-inverter-proxy/processed-nonces.json` (letzte 50) geprueft, Duplikate werden ignoriert
+- [ ] **EXEC-03**: Privilegierter Updater (`pv-inverter-proxy-updater.service`, `Type=oneshot`, `User=root`) wird via Path-Unit (`pv-inverter-proxy-updater.path`, `PathModified=/etc/.../update-trigger.json`) getriggert
+- [ ] **EXEC-04**: Updater validiert `target_sha` gegen `refs/remotes/origin/main` via `git merge-base --is-ancestor`; SHAs ausserhalb der main-History werden abgelehnt (Security Root of Trust)
+- [ ] **EXEC-05**: Updater erstellt Backup vor Update: venv-Tarball nach `/var/lib/pv-inverter-proxy/backups/venv-<timestamp>.tar.gz`, Kopie von `config.yaml`, Snapshot von `pyproject.toml`
+- [ ] **EXEC-06**: Neuer Release wird in neues Verzeichnis `/opt/pv-inverter-proxy-releases/<version>-<sha>/` extrahiert; `git clone --shared` oder tarball extract; neue isolierte `.venv/` wird dort erstellt und `pip install -e .` laeuft gegen den neuen venv (nicht den laufenden)
+- [ ] **EXEC-07**: Updater fuehrt `pip install --dry-run` als Pre-Flight aus und bricht ab falls neue Dependencies nicht beschaffbar (Netzwerkfehler, fehlende Build-Tools)
+- [ ] **EXEC-08**: Post-Install Smoke-Import: `<new_venv>/bin/python -c "import pv_inverter_proxy"` und ein Config-Dry-Run `load_config('/etc/pv-inverter-proxy/config.yaml')` laeuft gegen den neuen Code; bei Fehler Abbruch OHNE Symlink-Flip und OHNE Restart
+- [ ] **EXEC-09**: `python -m compileall -q <release>/src` wird nach Install ausgefuehrt (pre-compile pyc, vermeidet Runtime-Schreibversuche unter `ProtectSystem=strict`)
+- [ ] **EXEC-10**: SHA256SUMS-Verifikation: Release-Tarball wird heruntergeladen, zusammen mit `SHA256SUMS` Asset, Hashes werden geprueft bevor Extraktion
 
-- [ ] **CFG-01**: Config form with Host, Port, Unit ID, Rated Power, Throttle Enabled
-- [ ] **CFG-02**: Sungrow data flows into virtual PV inverter aggregation
-- [ ] **CFG-03**: MQTT publisher includes Sungrow device data
+### Restart Safety (RESTART-xx)
 
-## v8.0+ Requirements
+- [ ] **RESTART-01**: Vor jedem Restart: Main-Service geht in Maintenance-Mode (`app_ctx.maintenance_mode = True`), Modbus-Server antwortet auf Writes mit `SlaveBusy` (Exception Code 0x06), Reads weiter aus Cache
+- [ ] **RESTART-02**: Mindestens 3 Sekunden Drain-Zeit nach Maintenance-Mode (laenger als Venus OS Poll-Zyklus) bevor Prozess beendet wird; in-flight pymodbus-Transaktionen werden via `asyncio.wait_for(drain(), 2.0)` abgewartet
+- [ ] **RESTART-03**: Pre-Shutdown WebSocket-Broadcast `update_in_progress` an alle verbundenen Clients ("Update laeuft — Rekonnekt in ~10s") bevor Shutdown
+- [ ] **RESTART-04**: Updater fuehrt Symlink-Flip atomar aus (`ln -sfn <new_release> current.new && mv -T current.new current`), dann `systemctl restart pv-inverter-proxy.service`
+- [ ] **RESTART-05**: Updater ueberlebt Main-Service-Restart, polled `/api/health` und `/run/pv-inverter-proxy/healthy` nach Restart bis zu 60 Sekunden
+- [ ] **RESTART-06**: pymodbus-Server bindet mit `SO_REUSEADDR` (verifizieren, ggf. patchen) — verhindert Bind-Fehler beim schnellen Restart
 
-Deferred to future release.
+### Health Check & Rollback (HEALTH-xx)
 
-### Extended Sungrow Support
+- [ ] **HEALTH-01**: `GET /api/health` liefert JSON mit `{status, version, commit, uptime_seconds, webapp, modbus_server, devices, venus_os}`; jede Komponente ist `ok | starting | degraded | failed`
+- [ ] **HEALTH-02**: Required-Health-Kriterien fuer Update-Erfolg: `webapp=ok`, `modbus_server=ok`, mindestens 1 Device in `devices` mit `ok` (hat erfolgreichen Poll produziert)
+- [ ] **HEALTH-03**: Warn-Only (kein Rollback-Trigger): `venus_os` MQTT noch nicht connected — MQTT-Reconnect kann laenger dauern und sollte Update-Erfolg nicht blockieren
+- [ ] **HEALTH-04**: Main-Service schreibt `/run/pv-inverter-proxy/healthy` (tmpfs, via `RuntimeDirectory`) sobald DeviceRegistry ersten erfolgreichen Poll abgeschlossen hat
+- [ ] **HEALTH-05**: Updater verlangt 3 aufeinanderfolgende erfolgreiche Health-Polls ueber 15 Sekunden (Stabilitaets-Check) bevor Update als erfolgreich markiert wird
+- [ ] **HEALTH-06**: Rollback-Trigger: `systemctl is-active` liefert `failed`, Version-Mismatch im Health-Response (alter Code laeuft noch), 5xx/unreachable > 45s, oder kein `healthy`-Flag nach 60s
+- [ ] **HEALTH-07**: Rollback-Mechanismus: Symlink zurueck auf vorheriges Release-Verzeichnis, `systemctl restart`, Health-Check gegen rolled-back Version
+- [ ] **HEALTH-08**: Maximal 1 automatischer Rollback pro Update-Versuch; wenn rolled-back Version auch Health-Check failed, schreibt Updater `phase=rollback_failed` mit CRITICAL-State, belaesst Symlink wie ist, User muss SSH
+- [ ] **HEALTH-09**: Status-File `/etc/pv-inverter-proxy/update-status.json` mit Phase-Progression (`trigger_received, backup, extract, pip_install, config_dryrun, restarting, healthcheck, done | rollback | rollback_failed`) und History-Array
 
-- **SGEXT-01**: Support for Sungrow hybrid inverters (SH-RT series with battery)
-- **SGEXT-02**: Battery charge/discharge control via Modbus
-- **SGEXT-03**: Support for multiple Sungrow inverters on same WiNet-S
+### UI & User Experience (UI-xx)
+
+- [ ] **UI-01**: Neue Sidebar-Rubrik `System / Software` (konsistent mit bestehendem Style)
+- [ ] **UI-02**: Software-Seite zeigt: aktuelle Version + commit hash, letzte Check-Zeit, manueller `Check now` Button, Status-Dot fuer Scheduler (ok / failed)
+- [ ] **UI-03**: Bei verfuegbarem Update: prominente Card mit Version from/to, Release-Notes gerendert (minimaler Markdown-Subset: headings, lists, bold, code, links), Install-Button, "View on GitHub"-Link
+- [ ] **UI-04**: Confirmation-Modal vor Install: Default-Focus auf Cancel, KEINE Type-to-Confirm (Update ist via Rollback reversibel), klare Risiko-Aufklaerung
+- [ ] **UI-05**: Progress-View mit Phase-Checklist, angetrieben von WebSocket `update_progress` Nachrichten (eine Nachricht pro Phase-Transition)
+- [ ] **UI-06**: Success-/Failure-Toast nach Abschluss, reuseed existing Toast-Stacking-System (v2.1) mit `ve-toast--success` / `ve-toast--error`
+- [ ] **UI-07**: Rollback-Button sichtbar nach erfolgreichem Update (fuer X Minuten nach Restart oder via Update-History-Eintrag); triggert POST /api/update/rollback mit target=previous_release
+- [ ] **UI-08**: Browser-Tab-Stale-Version-Reload: WebSocket-Reconnect pollt `/api/version`; wenn Version != gespeicherte, `location.reload()` forcen (verhindert Stale-UI nach Update)
+- [ ] **UI-09**: UI-State-Machine: Buttons disabled waehrend `state != idle`; konkurrierende Update-Versuche zeigen klare "Update already in progress"-Meldung
+
+### Security & Rate Limiting (SEC-xx)
+
+- [ ] **SEC-01**: CSRF-Token auf allen POST-Endpunkten fuer Update-Operationen; Token wird bei Seiten-Load generiert und an Session gebunden
+- [ ] **SEC-02**: Rate Limit: maximal 1 Update-Versuch pro 60 Sekunden; zweiter Versuch liefert HTTP 429 mit `Retry-After` Header
+- [ ] **SEC-03**: Concurrent-Update-Guard: wenn Phase != `idle | done | failed`, liefert POST /api/update/start HTTP 409 Conflict
+- [ ] **SEC-04**: Update-Audit-Log in `/var/lib/pv-inverter-proxy/update-audit.log`: jede Anfrage mit Timestamp, Source-IP, User-Agent, Outcome (accepted / rejected / failed)
+- [ ] **SEC-05**: Optional GPG-Signatur-Pruefung: wenn `updates.allow_unsigned: false` (Default in v8.0: true), lehnt Updater Releases ohne gueltige `SHA256SUMS.asc`-Signatur ab
+- [ ] **SEC-06**: Updater akzeptiert ausschliesslich Releases mit `tag_name` matching `^v\d+\.\d+(\.\d+)?$`; main branch / unreleased commits werden nie installiert
+- [ ] **SEC-07**: Trigger-File-Verzeichnis-Permissions: `/etc/pv-inverter-proxy/update-trigger.json` mode 0664 owner `root:pv-proxy` (pv-proxy kann schreiben, Updater liest); `update-status.json` mode 0644 owner `root:root` (nur Updater schreibt)
+
+### Helper Service & Monitoring (HELPER-xx)
+
+- [ ] **HELPER-01**: Helper-Heartbeat: Main-Service schreibt alle 60 Sekunden einen `ping`-Trigger, Updater antwortet mit Timestamp in einem Status-File
+- [ ] **HELPER-02**: Helper-Silent-Detection: wenn letzte Heartbeat-Antwort > 3 Minuten alt, rote Banner-Warnung in UI "Auto-Update helper not responding — SSH required"
+- [ ] **HELPER-03**: Install-Time Smoke-Test: `install.sh` triggert einen `self-test` Trigger nach Installation; schlaegt laut fehl wenn End-to-End-Plumbing nicht funktioniert
+- [ ] **HELPER-04**: Strukturiertes Logging fuer Updater via structlog: eine JSON-Zeile pro Update-Attempt mit `{attempt_id, from_version, to_version, outcome, duration_ms, error?}`
+- [ ] **HELPER-05**: Journal-Filter: Updater verwendet `SyslogIdentifier=pv-inverter-proxy-updater`, separiert vom Main-Service, einfach via `journalctl -t pv-inverter-proxy-updater` filterbar
+- [ ] **HELPER-06**: Journal-Rate-Limit auf Helper-Unit: `LogRateLimitIntervalSec=30`, `LogRateLimitBurst=10` um Log-Flood bei Retry-Loop zu verhindern
+
+### Update History (HIST-xx)
+
+- [ ] **HIST-01**: Update-History gespeichert in `/var/lib/pv-inverter-proxy/update-history.json` als Ring-Buffer der letzten 20 Eintraege
+- [ ] **HIST-02**: Jeder Eintrag enthaelt: `{timestamp, from_version, to_version, duration_seconds, outcome (success|rolled_back|failed), rollback_reason, triggered_by}`
+- [ ] **HIST-03**: `GET /api/update/history` liefert letzte 20 Eintraege als JSON-Array
+- [ ] **HIST-04**: Software-Seite zeigt History-Tabelle unter dem Version-Check mit Outcome-Badges und aufklappbaren Details
+
+### Configuration (CFG-xx)
+
+- [ ] **CFG-01**: Neue Config-Section `update:` in `config.yaml` mit Defaults: `enabled: true`, `auto_install: false`, `check_interval_hours: 1`, `github_repo: "meintechblog/pv-inverter-master"`, `keep_releases: 3`, `allow_unsigned: true`
+- [ ] **CFG-02**: Alle Update-Config-Felder editierbar via Webapp (System / Software Settings); Save/Cancel mit Dirty-Tracking wie bestehende Config-Pages
+- [ ] **CFG-03**: Hot-Reload von Update-Config: Scheduler-Task wird bei Config-Aenderung cancelled und mit neuen Werten neu gestartet (pattern wie existing VenusConfig Hot-Reload)
+
+## Future Requirements (v8.1+)
+
+### GPG Enforcement
+- Required GPG-Signatur-Pruefung (allow_unsigned default false, dann entfernt)
+- Maintainer-Key-Distribution via Dokumentation und install.sh
+
+### Release Channels
+- Pre-Release/Beta-Channel-Toggle (filter by `prerelease` flag der GitHub API)
+- Power-User opt-in
+
+### Advanced History
+- Diagnostics-Page mit Journal-Tail fuer failed updates (`journalctl -u pv-inverter-proxy-updater -n 200`)
+- Rollback-Loop-Guard: verhindert mehr als 2 Rollbacks in 24h
+
+### UX Polish
+- "Skip this version" Button (stoppt Badge fuer eine spezifische Version)
+- Service-Health-Banner nach Update zeigt Device-Reconnect-Status
+- Inline Changelog Preview im Badge-Tooltip
 
 ## Out of Scope
 
-| Feature | Reason |
-|---------|--------|
-| Sungrow Cloud/iSolarCloud API | Nur lokale Modbus TCP, kein Cloud-Account noetig |
-| WiNet-S HTTP API (WebSocket) | Modbus TCP ist zuverlaessiger und standardisierter |
-| Battery management (SH-RT) | Nur PV-Inverter-Funktionalitaet, Battery ist separates Thema |
-| Sungrow firmware updates | Ausserhalb des Proxy-Scope |
+- **Silent Auto-Install** — Infrastruktur-Update ohne User-Consent ist inakzeptabel
+- **Main-Branch Auto-Pull** — Nur getaggte Releases, keine unreleased commits via UI
+- **Type-to-Confirm Dialog** — Rollback macht Update reversibel, Standard-Modal reicht
+- **Hot-Reload ohne Restart** — `importlib.resources` caching verhindert das sicher
+- **Multi-Hop Downgrade** — Rollback ist N-1; aeltere Versionen via manuellem git checkout
+- **In-App Dependency Manager** — Dependencies werden via pyproject.toml im Release gepinnt
+- **Multi-Instance Update Coordination** — Jeder LXC ist autonom, kein Central Control Plane
+- **Telemetry / Update-Success-Reporting** — Kein Phone-Home, keine zentrale Metriken
+- **Rollback nach mehr als 1 Stunde** — Aelteres Rollback via manuellem git checkout nicht auto
 
 ## Traceability
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| PLUG-01 | Phase 38 | Pending |
-| PLUG-02 | Phase 38 | Pending |
-| PLUG-03 | Phase 38 | Pending |
-| PLUG-04 | Phase 38 | Pending |
-| CTRL-01 | Phase 41 | Pending |
-| CTRL-02 | Phase 41 | Pending |
-| DASH-01 | Phase 39 | Pending |
-| DASH-02 | Phase 39 | Pending |
-| DASH-03 | Phase 39 | Pending |
-| DASH-04 | Phase 39 | Pending |
-| DASH-05 | Phase 39 | Pending |
-| ADD-01 | Phase 40 | Pending |
-| ADD-02 | Phase 40 | Pending |
-| ADD-03 | Phase 40 | Pending |
-| CFG-01 | Phase 42 | Pending |
-| CFG-02 | Phase 42 | Pending |
-| CFG-03 | Phase 42 | Pending |
+Requirements werden in Phasen gemappt vom gsd-roadmapper (ROADMAP.md).
 
-**Coverage:**
-- v7.0 requirements: 17 total
-- Mapped to phases: 17
-- Unmapped: 0
+| REQ-ID | Phase | Status |
+|--------|-------|--------|
+| SAFETY-01..09 | TBD | - |
+| CHECK-01..07 | TBD | - |
+| EXEC-01..10 | TBD | - |
+| RESTART-01..06 | TBD | - |
+| HEALTH-01..09 | TBD | - |
+| UI-01..09 | TBD | - |
+| SEC-01..07 | TBD | - |
+| HELPER-01..06 | TBD | - |
+| HIST-01..04 | TBD | - |
+| CFG-01..03 | TBD | - |
 
----
-*Requirements defined: 2026-04-06*
-*Last updated: 2026-04-06 after roadmap creation*
+## Success Criteria
+
+Milestone ist fertig wenn:
+
+1. User kann via Webapp ein neues Release installieren, ohne SSH-Zugriff, ohne Datenverlust, ohne Venus-OS-Disconnect laenger als 10s
+2. Ein bewusst kaputter Commit als neues Release taggend fuehrt zu automatischem Rollback und funktionierendem Service ohne User-Intervention
+3. Scheduler findet neue Releases innerhalb einer Stunde nach dem Tagging und zeigt Badge an
+4. Config-Aenderungen in Update-Settings werden ohne Restart wirksam
+5. Update-Historie ist nachvollziehbar ueber die letzten 20 Updates
+6. Disk-Usage bleibt unter 1 GB zusaetzlich durch Release-Retention
