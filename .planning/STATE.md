@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v8.0
 milestone_name: Auto-Update System
 status: executing
-stopped_at: Completed 44-02-webapp-integration-PLAN.md
-last_updated: "2026-04-10T16:33:17.713Z"
-last_activity: 2026-04-10 — Completed 44-02 webapp integration (CHECK-01/02/05/06/07 wired into running service)
+stopped_at: Completed 44-03-frontend-display-PLAN.md code work; Task 3 human-verify checkpoint pending
+last_updated: "2026-04-10T16:44:00Z"
+last_activity: 2026-04-10 — Completed 44-03 frontend display code + LXC deploy (v8.0.0 79be2a0 live); CHECK-04 badge code-complete, visual verification pending
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Core value:** Venus OS muss alle PV-Inverter als einen virtuellen Fronius-Inverter erkennen und steuern koennen
-**Current focus:** Milestone v8.0 — Auto-Update System (executing Phase 44)
+**Current focus:** Milestone v8.0 — Auto-Update System (Phase 44 code-complete, pending human visual verification)
 
 ## Current Position
 
 Phase: 44 — Passive Version Badge
-Plan: 02 — Webapp integration (complete)
-Status: Executing (2/3 plans complete)
-Last activity: 2026-04-10 — Completed 44-02 webapp integration (CHECK-01/02/05/06/07 wired into running service)
+Plan: 03 — Frontend display (code-complete, human checkpoint pending)
+Status: Awaiting human-verify checkpoint on Task 3
+Last activity: 2026-04-10 — Completed 44-03 frontend code + LXC deploy; v8.0.0 (79be2a0) live at 192.168.3.191
 
-Progress: [########..] 86% (1/5 phases, 6/7 plans — 2 of 3 Phase-44 plans done)
+Progress: [##########] 100% code (1/5 phases, 7/7 plans — Phase 44 awaiting visual approval)
 
 ## Performance Metrics
 
@@ -69,6 +69,9 @@ Progress: [########..] 86% (1/5 phases, 6/7 plans — 2 of 3 Phase-44 plans done
 - [Phase 44]: Plan 44-02: refactored scheduler callback from closure to module-level _on_update_available(app_ctx, release) so tests import directly from __main__
 - [Phase 44]: Plan 44-02: shared aiohttp.ClientSession created once in run_with_shutdown, passed to GithubReleaseClient — no per-request sessions
 - [Phase 44]: Plan 44-02: release=None preserves stale available_update (transient fetch errors must not clear a previously advertised update)
+- [Phase 44]: Plan 44-03: release_notes body rendering deferred to Phase 46 — Phase 44 shows only tag_name + GitHub link in the SYSTEM sidebar entry (T-44-17 avoidance until Markdown escape renderer lands)
+- [Phase 44]: Plan 44-03: deploy.sh now writes transient src/pv_inverter_proxy/COMMIT file before rsync (removed via EXIT trap); version.py falls back to reading it when git is unavailable — required because LXC rsync excludes .git/ and CHECK-01 mandates the commit hash in the footer
+- [Phase 44]: Plan 44-03: 2s REST fallback to /api/update/available on page load in case the WS initial push is missed — single-shot, never polls, guards against race with WS handler
 
 ### Sungrow Reference
 
@@ -105,6 +108,7 @@ Progress: [########..] 86% (1/5 phases, 6/7 plans — 2 of 3 Phase-44 plans done
 | 47 | Polish, Scheduler UI & Hardening | 12 (HELPER/HIST/CFG-01/CFG-03) | Phase 46 |
 | Phase 44 P01 | ~45min | 3 tasks | 7 files |
 | Phase 44 P02 | 25 min | 3 tasks | 6 files |
+| Phase 44 P03 | ~7 min | 2 tasks + human-verify | 6 files |
 
 ### Blockers/Concerns
 
