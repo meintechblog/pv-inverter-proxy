@@ -278,14 +278,29 @@ else
 fi
 ok "Update protocol files permissioned (trigger 0664 root:$SERVICE_USER, status 0644 root:root)"
 
-# --- Step 7: Systemd services (main + recovery) ---
+# --- Step 7: Systemd services (main + recovery + updater) ---
+# Phase 45-04 adds two new units:
+#   pv-inverter-proxy-updater.path     — watches update-trigger.json
+#   pv-inverter-proxy-updater.service  — Type=oneshot root helper that
+#                                        runs the update state machine
+# The .path unit is what we enable; it activates the .service on every
+# PathModified event. The .service has no [Install] section because it
+# is only ever spawned by the .path unit (not enabled directly).
 info "Installing systemd services..."
 cp "$INSTALL_DIR/config/pv-inverter-proxy.service" /etc/systemd/system/
 cp "$INSTALL_DIR/config/pv-inverter-proxy-recovery.service" /etc/systemd/system/
+cp "$INSTALL_DIR/config/pv-inverter-proxy-updater.path" /etc/systemd/system/
+cp "$INSTALL_DIR/config/pv-inverter-proxy-updater.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl enable pv-inverter-proxy-recovery.service
-ok "Services installed and enabled (main + recovery)"
+systemctl enable pv-inverter-proxy-updater.path
+# Start the .path unit immediately so it begins watching on install.
+# The .service it activates is Type=oneshot and stays idle until the
+# trigger file is modified by POST /api/update/start.
+systemctl restart pv-inverter-proxy-updater.path || \
+    systemctl start pv-inverter-proxy-updater.path
+ok "Services installed and enabled (main + recovery + updater)"
 
 # --- Step 8: Start ---
 info "Starting service..."
