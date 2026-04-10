@@ -28,7 +28,7 @@ Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem 
 - [ ] **SAFETY-06**: `RuntimeDirectory=pv-inverter-proxy` in Main-Service-Unit (erzeugt tmpfs `/run/pv-inverter-proxy/` fuer healthy-Flag)
 - [ ] **SAFETY-07**: `/var/lib/pv-inverter-proxy/backups/` Verzeichnis fuer venv-Tarball-Snapshots und Config-Backups; via install.sh erstellt, Owner `root:pv-proxy`, Mode 2775
 - [ ] **SAFETY-08**: Pre-Flight-Disk-Space-Check vor jedem Update: mindestens 500 MB frei auf `/opt` und `/var/cache`; bei weniger Abbruch mit klarer Fehlermeldung
-- [ ] **SAFETY-09**: Persistenter State-File fuer SE30K Power Limit + Nachtmodus-State in `/etc/pv-inverter-proxy/state.json`; wird bei Boot restauriert wenn `now - set_at < CommandTimeout/2`
+- [x] **SAFETY-09**: Persistenter State-File fuer SE30K Power Limit + Nachtmodus-State in `/etc/pv-inverter-proxy/state.json`; wird bei Boot restauriert wenn `now - set_at < CommandTimeout/2`
 
 ### Version Check & Discovery (CHECK-xx)
 
@@ -55,12 +55,12 @@ Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem 
 
 ### Restart Safety (RESTART-xx)
 
-- [ ] **RESTART-01**: Vor jedem Restart: Main-Service geht in Maintenance-Mode (`app_ctx.maintenance_mode = True`), Modbus-Server antwortet auf Writes mit `SlaveBusy` (Exception Code 0x06), Reads weiter aus Cache
-- [ ] **RESTART-02**: Mindestens 3 Sekunden Drain-Zeit nach Maintenance-Mode (laenger als Venus OS Poll-Zyklus) bevor Prozess beendet wird; in-flight pymodbus-Transaktionen werden via `asyncio.wait_for(drain(), 2.0)` abgewartet
-- [ ] **RESTART-03**: Pre-Shutdown WebSocket-Broadcast `update_in_progress` an alle verbundenen Clients ("Update laeuft — Rekonnekt in ~10s") bevor Shutdown
+- [x] **RESTART-01**: Vor jedem Restart: Main-Service geht in Maintenance-Mode (`app_ctx.maintenance_mode = True`), Modbus-Server antwortet auf Writes mit `SlaveBusy` (Exception Code 0x06), Reads weiter aus Cache
+- [x] **RESTART-02**: Mindestens 3 Sekunden Drain-Zeit nach Maintenance-Mode (laenger als Venus OS Poll-Zyklus) bevor Prozess beendet wird; in-flight pymodbus-Transaktionen werden via `asyncio.wait_for(drain(), 2.0)` abgewartet
+- [x] **RESTART-03**: Pre-Shutdown WebSocket-Broadcast `update_in_progress` an alle verbundenen Clients ("Update laeuft — Rekonnekt in ~10s") bevor Shutdown
 - [x] **RESTART-04**: Updater fuehrt Symlink-Flip atomar aus (`ln -sfn <new_release> current.new && mv -T current.new current`), dann `systemctl restart pv-inverter-proxy.service`
 - [x] **RESTART-05**: Updater ueberlebt Main-Service-Restart, polled `/api/health` und `/run/pv-inverter-proxy/healthy` nach Restart bis zu 60 Sekunden
-- [ ] **RESTART-06**: pymodbus-Server bindet mit `SO_REUSEADDR` (verifizieren, ggf. patchen) — verhindert Bind-Fehler beim schnellen Restart
+- [x] **RESTART-06**: pymodbus-Server bindet mit `SO_REUSEADDR` (verifizieren, ggf. patchen) — verhindert Bind-Fehler beim schnellen Restart
 
 ### Health Check & Rollback (HEALTH-xx)
 
@@ -163,7 +163,7 @@ Requirements werden in Phasen gemappt vom gsd-roadmapper (ROADMAP.md).
 | SAFETY-06 | Phase 43 | Pending |
 | SAFETY-07 | Phase 43 | Pending |
 | SAFETY-08 | Phase 43 | Pending |
-| SAFETY-09 | Phase 43 | Pending |
+| SAFETY-09 | Phase 43 | Complete |
 | CHECK-01 | Phase 44 | Complete |
 | CHECK-02 | Phase 44 | Complete |
 | CHECK-03 | Phase 44 | Complete |
@@ -181,12 +181,12 @@ Requirements werden in Phasen gemappt vom gsd-roadmapper (ROADMAP.md).
 | EXEC-08 | Phase 45 | Complete |
 | EXEC-09 | Phase 45 | Complete |
 | EXEC-10 | Phase 45 | Complete |
-| RESTART-01 | Phase 45 | Pending |
-| RESTART-02 | Phase 45 | Pending |
-| RESTART-03 | Phase 45 | Pending |
+| RESTART-01 | Phase 45 | Complete |
+| RESTART-02 | Phase 45 | Complete |
+| RESTART-03 | Phase 45 | Complete |
 | RESTART-04 | Phase 45 | Complete |
 | RESTART-05 | Phase 45 | Complete |
-| RESTART-06 | Phase 45 | Pending |
+| RESTART-06 | Phase 45 | Complete |
 | HEALTH-01 | Phase 45 | Complete |
 | HEALTH-02 | Phase 45 | Complete |
 | HEALTH-03 | Phase 45 | Complete |

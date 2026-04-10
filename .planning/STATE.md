@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v8.0
 milestone_name: Auto-Update System
-status: Ready for Plan 45-04 (systemd .service + .path units + runner state machine)
-stopped_at: Completed 45-04-PLAN.md — updater orchestrator + systemd units + LXC E2E green
-last_updated: "2026-04-10T22:06:04.048Z"
-last_activity: "2026-04-10 — Completed 45-03 updater_root primitives: git_ops, backup, trigger_reader, gpg_verify + AST-enforced trust boundary (84 tests passing)"
+status: Phase 45 complete — ready for Phase 46 (UI wiring + release notes rendering)
+stopped_at: Completed 45-05-PLAN.md — maintenance mode + SlaveBusy + SO_REUSEADDR + SAFETY-09; Venus OS disconnect 1.7s (vs 15s baseline)
+last_updated: "2026-04-10T22:30:00.000Z"
+last_activity: "2026-04-10 — Completed 45-05 maintenance mode + SAFETY-09 wiring; Venus OS disconnect window 1.7s (target <5s); Phase 45 closed"
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 12
-  completed_plans: 11
-  percent: 92
+  completed_plans: 12
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 ## Current Position
 
-Phase: 45 — Privileged Updater Service
-Plan: 03 — updater_root primitives (COMPLETE)
-Status: Ready for Plan 45-04 (systemd .service + .path units + runner state machine)
-Last activity: 2026-04-10 — Completed 45-03 updater_root primitives: git_ops, backup, trigger_reader, gpg_verify + AST-enforced trust boundary (84 tests passing)
+Phase: 45 — Privileged Updater Service (COMPLETE)
+Plan: 05 — maintenance mode + SlaveBusy + SAFETY-09 wiring (COMPLETE)
+Status: Phase 45 complete — ready for Phase 46 (UI wiring, release notes rendering, CSRF/rate-limit)
+Last activity: 2026-04-10 — Completed 45-05 maintenance mode + SAFETY-09 wiring; Venus OS disconnect window 1.7s on live LXC (vs 15s Plan 45-04 baseline); Phase 45 closed
 
-Progress: [████████░░] 83% (2/5 phases, 10/12 plans)
+Progress: [██████████] 100% (3/5 phases, 12/12 plans through v8.0 Phases 43-45)
 
 ## Performance Metrics
 
@@ -82,6 +82,13 @@ Progress: [████████░░] 83% (2/5 phases, 10/12 plans)
 - [Phase 45]: NonceDedupStore fails open on corruption (reprocess > permanent update lockout)
 - [Phase 45]: gpg_verify primitives dormant in v8.0 runner; EXEC-10 delivered via git SHA content hashing in 45-04
 - [Phase 45]: Introduced /run/pv-inverter-proxy-updater-active tmpfs flag so Phase 43 recovery skips rollback during updater-controlled restarts, preserving boot-time guarantee
+- [Phase 45]: Plan 45-05: MAINTENANCE_STRATEGY="slavebusy" — return ExcCodes.DEVICE_BUSY (0x06) from async_setValues for Model 123 writes during maintenance; empirically verified via loopback probe that pymodbus 3.12.1 encodes this as wire exception code 6. One-line rollback to "silent_drop" in proxy.py if Venus OS misbehaves.
+- [Phase 45]: Plan 45-05: pymodbus 3.12 ModbusProtocol passes reuse_address=True by default; no explicit SO_REUSEADDR patch needed. Regression-guarded by test_pymodbus_protocol_sets_reuse_address.
+- [Phase 45]: Plan 45-05: update_start_handler enters maintenance mode + broadcasts update_in_progress WS message BEFORE write_trigger — Venus OS sees DEVICE_BUSY on its very next poll, not after the updater has already spawned.
+- [Phase 45]: Plan 45-05: _graceful_shutdown_maintenance fires BEFORE task cancellation, drains in-flight Modbus writes (2s timeout) + holds DEVICE_BUSY window open 3s (one full Venus OS poll cycle).
+- [Phase 45]: Plan 45-05: SAFETY-09 dual-write — control.save_last_limit mirrors to state.json while keeping the legacy _LAST_LIMIT_FILE path. Boot restore via is_power_limit_fresh (< command_timeout_s/2). Verified end-to-end on LXC: write limit=73 → state.json → restart → power_limit_restored journal event.
+- [Phase 45]: Plan 45-05: Live LXC measurement — Venus OS disconnect window shrank from ~15s (Plan 45-04 baseline) to ≤1.7s during a full same-SHA update cycle (90s pymodbus pinger at 500ms interval saw 1 DOWN sample, gross 0.5s outage). Target was <5s.
+- [Phase 45]: COMPLETE — all 28 requirements satisfied across Plans 45-01..45-05 plus SAFETY-09 carryover from Phase 43.
 
 ### Sungrow Reference
 
