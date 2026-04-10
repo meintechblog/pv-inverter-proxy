@@ -2,21 +2,21 @@
 gsd_state_version: 1.0
 milestone: v8.0
 milestone_name: Auto-Update System
-status: planning
-stopped_at: Roadmap drafted — ready to plan Phase 43
-last_updated: "2026-04-10T12:00:00.000Z"
+status: executing
+stopped_at: "Completed 43-02-releases-module-PLAN.md"
+last_updated: "2026-04-10T13:30:00.000Z"
 last_activity: 2026-04-10
 current_position:
   phase: 43
-  plan: null
+  plan: "02"
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 4
+  completed_plans: 2
   total_requirements: 64
   completed_requirements: 0
-  percent: 0
+  percent: 3
 ---
 
 # Project State
@@ -31,11 +31,11 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 ## Current Position
 
 Phase: 43 — Blue-Green Layout + Boot Recovery
-Plan: —
-Status: Planning (roadmap complete, phase planning next)
-Last activity: 2026-04-10 — Roadmap drafted for v8.0 (5 phases, 64 requirements)
+Plan: 02 — Releases module (complete)
+Status: Executing (2/4 plans complete)
+Last activity: 2026-04-10 — Completed 43-02 releases module (SAFETY-01/02/08 library landed)
 
-Progress: [..........] 0% (0/5 phases, 0/64 requirements)
+Progress: [#.........] 3% (0/5 phases, 0/64 requirements — 2 of 4 Phase-43 plans done)
 
 ## Performance Metrics
 
@@ -66,6 +66,9 @@ Progress: [..........] 0% (0/5 phases, 0/64 requirements)
 - [v8.0-research]: Auto-install default OFF — scheduler only checks + shows badge, user clicks bewusst on Install
 - [v8.0-research]: Rollback distance is N-1 only (one release back); multi-hop via manual git checkout
 - [v8.0-research]: GPG signing is optional in v8.0 (`updates.allow_unsigned: true` default), required in v8.1
+- [43-02]: Retention union semantics: `retained = top-N newest ∪ current ∪ protect set`. Protected dirs outside the top-N window retain in ADDITION to top-N (can exceed `keep`). "Never delete current or previous" takes precedence over exact retention count.
+- [43-02]: `releases.py` is strictly read-only — no rmtree, no symlink writes. Phase 45 updater owns all mutations. Module is safe to import in unprivileged pv-proxy context.
+- [43-02]: Layout anchor constants (`RELEASES_ROOT`, `INSTALL_ROOT`, `DEFAULT_KEEP_RELEASES=3`, `MIN_FREE_BYTES=500MB`) now live in `releases.py` as the single source of truth for the entire v8.0 update system.
 
 ### Sungrow Reference
 
@@ -108,5 +111,5 @@ Progress: [..........] 0% (0/5 phases, 0/64 requirements)
 ## Session Continuity
 
 Last session: 2026-04-10
-Stopped at: Roadmap drafted — 5 phases, 64 requirements mapped
-Resume point: `/gsd-plan-phase 43` — plan Blue-Green Layout + Boot Recovery
+Stopped at: Completed 43-02-releases-module-PLAN.md (releases.py + 34 tests landed)
+Resume point: Execute 43-03 systemd-hardening-recovery plan
