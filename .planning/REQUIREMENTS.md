@@ -51,7 +51,7 @@ Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem 
 - [ ] **EXEC-07**: Updater fuehrt `pip install --dry-run` als Pre-Flight aus und bricht ab falls neue Dependencies nicht beschaffbar (Netzwerkfehler, fehlende Build-Tools)
 - [ ] **EXEC-08**: Post-Install Smoke-Import: `<new_venv>/bin/python -c "import pv_inverter_proxy"` und ein Config-Dry-Run `load_config('/etc/pv-inverter-proxy/config.yaml')` laeuft gegen den neuen Code; bei Fehler Abbruch OHNE Symlink-Flip und OHNE Restart
 - [ ] **EXEC-09**: `python -m compileall -q <release>/src` wird nach Install ausgefuehrt (pre-compile pyc, vermeidet Runtime-Schreibversuche unter `ProtectSystem=strict`)
-- [ ] **EXEC-10**: SHA256SUMS-Verifikation: Release-Tarball wird heruntergeladen, zusammen mit `SHA256SUMS` Asset, Hashes werden geprueft bevor Extraktion
+- [ ] **EXEC-10**: Release-Integrity via Git-SHA-Validation: Updater verwendet `git fetch` + `git checkout --detach <target_sha>` statt Tarball-Download. Git-SHAs sind kryptografische Content-Hashes (SHA-1, Phase 47 upgrade auf SHA-256 via `git config extensions.objectFormat sha256`), d.h. `git merge-base --is-ancestor origin/main <target_sha>` ist die Integritaets- UND Authentizitaets-Pruefung in einem Schritt. Separate `SHA256SUMS`-Verifikation ist bei git-basiertem Install redundant. Optional GPG tag signature verification via `git tag -v` unter SEC-05 (Phase 45 optional, Phase 47 required)
 
 ### Restart Safety (RESTART-xx)
 
