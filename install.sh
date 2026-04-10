@@ -238,6 +238,46 @@ install -d -o root -g "$SERVICE_USER" -m 2775 /var/lib/pv-inverter-proxy
 install -d -o root -g "$SERVICE_USER" -m 2775 /var/lib/pv-inverter-proxy/backups
 ok "State dir /var/lib/pv-inverter-proxy/ ready"
 
+# --- Step 6b: Update protocol file permissions (SEC-07) ---
+# update-trigger.json: mode 0664, owner root:pv-proxy.
+#   pv-proxy (main service) writes via tempfile+os.replace in
+#   updater/trigger.py. root (updater.path consumer, Plan 45-03/04) reads
+#   and acts on it.
+# update-status.json: mode 0644, owner root:root.
+#   Only the root updater writes; everyone (including pv-proxy) reads via
+#   updater/status.py. World-readable is intentional — contents are phase
+#   names + SHAs, no secrets.
+#
+# Both files are created empty on fresh installs so the permissions are
+# correct from the first POST /api/update/start. On re-runs we only
+# chown/chmod — we do NOT truncate, so an in-progress update survives a
+# mid-flight install.sh re-run (T-45-02-08).
+#
+# NOTE: $CONFIG_DIR itself stays pv-proxy-owned from Phase 43 so the main
+# service can create per-feature files (state.json, etc). We enforce
+# ownership at the file level, not the directory level.
+info "Setting update protocol file permissions (SEC-07)..."
+TRIGGER_FILE="$CONFIG_DIR/update-trigger.json"
+STATUS_FILE="$CONFIG_DIR/update-status.json"
+
+if [ ! -e "$TRIGGER_FILE" ]; then
+    # Empty placeholder — NOT a valid trigger (schema rejects empty JSON),
+    # safe to leave on disk. The main service overwrites atomically on
+    # first POST /api/update/start.
+    install -o root -g "$SERVICE_USER" -m 0664 /dev/null "$TRIGGER_FILE"
+else
+    chown "root:$SERVICE_USER" "$TRIGGER_FILE"
+    chmod 0664 "$TRIGGER_FILE"
+fi
+
+if [ ! -e "$STATUS_FILE" ]; then
+    install -o root -g root -m 0644 /dev/null "$STATUS_FILE"
+else
+    chown "root:root" "$STATUS_FILE"
+    chmod 0644 "$STATUS_FILE"
+fi
+ok "Update protocol files permissioned (trigger 0664 root:$SERVICE_USER, status 0644 root:root)"
+
 # --- Step 7: Systemd services (main + recovery) ---
 info "Installing systemd services..."
 cp "$INSTALL_DIR/config/pv-inverter-proxy.service" /etc/systemd/system/
