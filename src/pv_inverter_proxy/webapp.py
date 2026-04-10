@@ -236,31 +236,127 @@ async def status_handler(request: web.Request) -> web.Response:
     })
 
 
-async def health_handler(request: web.Request) -> web.Response:
-    """Return uptime, poll success rate, and cache staleness."""
-    app_ctx = request.app["app_ctx"]
+#: Startup grace window in seconds. Inside this window the overall status
+#: collapses to "starting" instead of "degraded" so the Phase 45-04 updater
+#: healthcheck does not misread a cold boot as an update failure
+#: (HEALTH-01..02, read in concert with HEALTH-05's 15s stability check).
+_HEALTH_STARTUP_GRACE_S = 30.0
+
+
+def _derive_health_payload(app_ctx, uptime_s: float, config) -> dict:
+    """Pure helper: build the rich /api/health response dict.
+
+    Implements HEALTH-01..03. Factored out of :func:`health_handler` so that
+    unit tests can exercise every derivation path without spinning up an
+    aiohttp Application. Does no IO — only reads fields off ``app_ctx`` and
+    ``config``. Safe to call from any thread.
+
+    Args:
+        app_ctx: The live :class:`AppContext` instance.
+        uptime_s: Seconds since webapp ``start_time``. Caller computes this
+            via ``time.monotonic() - app["start_time"]`` so the helper stays
+            deterministic under tests.
+        config: A config-like object with a ``venus.host`` attribute. Used
+            to decide ``venus_os == "disabled"`` when the host is empty.
+
+    Returns:
+        A plain dict with exactly the 8 keys mandated by HEALTH-01:
+        ``{status, version, commit, uptime_seconds, webapp, modbus_server,
+        devices, venus_os}``.
+    """
+    # --- per-component derivation ------------------------------------------
+    webapp_s = "ok"  # by definition: if this code runs, the webapp is up
+
     cache = app_ctx.cache
+    if cache is None:
+        modbus_s = "failed"
+    elif cache.is_stale:
+        modbus_s = "degraded"
+    else:
+        modbus_s = "ok"
 
-    # Aggregate poll stats from all devices
-    total = sum(ds.poll_counter["total"] for ds in app_ctx.devices.values())
-    success = sum(ds.poll_counter["success"] for ds in app_ctx.devices.values())
+    devices_s: dict[str, str] = {}
+    for dev_id, ds in app_ctx.devices.items():
+        if ds.poll_counter.get("success", 0) > 0:
+            devices_s[dev_id] = "ok"
+        else:
+            devices_s[dev_id] = "starting"
 
+    # venus_os is warn-only per HEALTH-03 — even when "degraded" it never
+    # flips overall status. "disabled" when host is empty (operator opted out).
+    venus_host = getattr(getattr(config, "venus", None), "host", "") or ""
+    if venus_host == "":
+        venus_s = "disabled"
+    elif app_ctx.venus_mqtt_connected:
+        venus_s = "ok"
+    else:
+        venus_s = "degraded"
+
+    # --- overall status derivation (HEALTH-02) ------------------------------
+    required_ok = (
+        webapp_s == "ok"
+        and modbus_s == "ok"
+        and any(s == "ok" for s in devices_s.values())
+    )
+    in_grace = uptime_s < _HEALTH_STARTUP_GRACE_S
+
+    if required_ok:
+        overall = "ok"
+    elif in_grace:
+        overall = "starting"
+        # Remap flickering component states during startup so the updater
+        # doesn't see a transient "degraded" modbus_server before the first
+        # successful poll lands.
+        if modbus_s in ("degraded", "failed"):
+            modbus_s = "starting"
+        devices_s = {
+            k: ("ok" if v == "ok" else "starting") for k, v in devices_s.items()
+        }
+    else:
+        overall = "degraded"
+
+    return {
+        "status": overall,
+        "version": app_ctx.current_version or "unknown",
+        "commit": app_ctx.current_commit or "unknown",
+        "uptime_seconds": round(uptime_s, 1),
+        "webapp": webapp_s,
+        "modbus_server": modbus_s,
+        "devices": devices_s,
+        "venus_os": venus_s,
+    }
+
+
+async def health_handler(request: web.Request) -> web.Response:
+    """Return the rich component-level health payload.
+
+    Implements HEALTH-01..03 for Phase 45's in-app updater (Plan 45-04 polls
+    this endpoint after restart to decide update success / rollback). The
+    schema is::
+
+        {
+          "status": "ok" | "starting" | "degraded",
+          "version": "8.0.0",
+          "commit": "abc123d",
+          "uptime_seconds": 42.1,
+          "webapp": "ok",
+          "modbus_server": "ok" | "starting" | "degraded" | "failed",
+          "devices": {"<device_id>": "ok" | "starting" | "degraded" | "failed"},
+          "venus_os": "ok" | "degraded" | "disabled"
+        }
+
+    HEALTH-04 (``/run/pv-inverter-proxy/healthy`` flag) is not written here —
+    ``__main__._healthy_flag_watcher`` (Phase 43) owns that side-effect and
+    runs once on the first successful poll.
+
+    The handler itself is a thin wrapper around :func:`_derive_health_payload`
+    to keep the hot path pure (no subprocess, no file IO, no DB).
+    """
+    app_ctx = request.app["app_ctx"]
+    config = request.app["config"]
     uptime = time.monotonic() - request.app["start_time"]
-    rate = (success / total * 100) if total > 0 else 0.0
-
-    last_poll_age = None
-    if cache._has_been_updated:
-        last_poll_age = round(time.monotonic() - cache.last_successful_poll, 1)
-
-    return web.json_response({
-        "uptime_seconds": round(uptime, 1),
-        "poll_success_rate": round(rate, 1),
-        "poll_total": total,
-        "poll_success": success,
-        "cache_stale": cache.is_stale,
-        "last_poll_age": last_poll_age,
-        "device_count": len(app_ctx.devices),
-    })
+    payload = _derive_health_payload(app_ctx, uptime, config)
+    return web.json_response(payload)
 
 
 async def update_available_handler(request: web.Request) -> web.Response:

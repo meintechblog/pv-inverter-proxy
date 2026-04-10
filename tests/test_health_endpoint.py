@@ -50,16 +50,20 @@ class _StubCache:
         self.is_stale = is_stale
 
 
+_UNSET = object()
+
+
 def _make_ctx(
     *,
-    cache=None,
+    cache=_UNSET,
     devices=None,
     venus_connected: bool = True,
     version: str | None = "8.0.0",
     commit: str | None = "abc123d",
 ) -> AppContext:
     ctx = AppContext()
-    ctx.cache = cache if cache is not None else _StubCache(is_stale=False)
+    # Sentinel lets callers explicitly pass cache=None to unwire the cache.
+    ctx.cache = _StubCache(is_stale=False) if cache is _UNSET else cache
     ctx.venus_mqtt_connected = venus_connected
     ctx.current_version = version
     ctx.current_commit = commit

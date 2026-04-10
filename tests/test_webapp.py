@@ -107,15 +107,28 @@ async def test_status_endpoint(client):
 
 
 async def test_health_endpoint(client):
-    """GET /api/health returns JSON with uptime, poll rate, cache staleness."""
+    """GET /api/health returns the rich component-level schema (HEALTH-01).
+
+    The pre-Phase-45 schema (poll_success_rate, cache_stale, etc.) was
+    replaced in Plan 45-01. Derivation paths are covered in detail in
+    tests/test_health_endpoint.py; this test just sanity-checks the wire
+    contract served through the full aiohttp stack.
+    """
     resp = await client.get("/api/health")
     assert resp.status == 200
     data = await resp.json()
-    assert "uptime_seconds" in data
-    assert "poll_success_rate" in data
-    assert "cache_stale" in data
-    assert "poll_total" in data
-    assert "poll_success" in data
+    assert set(data.keys()) == {
+        "status",
+        "version",
+        "commit",
+        "uptime_seconds",
+        "webapp",
+        "modbus_server",
+        "devices",
+        "venus_os",
+    }
+    assert data["webapp"] == "ok"
+    assert isinstance(data["devices"], dict)
 
 
 async def test_config_get(client):
