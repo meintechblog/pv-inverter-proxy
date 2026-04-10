@@ -2,18 +2,23 @@
 Description=PV-Inverter-Master (Multi-Source Solar Aggregator for Venus OS)
 After=network-online.target
 Wants=network-online.target
+StartLimitBurst=10
+StartLimitIntervalSec=120
 
 [Service]
 Type=exec
 ExecStart=/opt/pv-inverter-proxy/.venv/bin/python3 -m pv_inverter_proxy
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=15
+KillMode=mixed
 User=pv-proxy
 Group=pv-proxy
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/etc/pv-inverter-proxy
+ReadWritePaths=/etc/pv-inverter-proxy /var/lib/pv-inverter-proxy
+RuntimeDirectory=pv-inverter-proxy
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=pv-inverter-proxy
