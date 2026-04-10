@@ -211,7 +211,7 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 43. Blue-Green Layout + Boot Recovery | 0/? | Not started | - |
-| 44. Passive Version Badge | 0/? | Not started | - |
+| 44. Passive Version Badge | 1/3 | In Progress|  |
 | 45. Privileged Updater Service | 0/? | Not started | - |
 | 46. UI Wiring & End-to-End Flow | 0/? | Not started | - |
 | 47. Polish, Scheduler UI & Hardening | 0/? | Not started | - |

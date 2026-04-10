@@ -33,12 +33,12 @@ Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem 
 ### Version Check & Discovery (CHECK-xx)
 
 - [ ] **CHECK-01**: Webapp zeigt aktuelle Version im Footer (aus `importlib.metadata.version`), zusammen mit short commit hash
-- [ ] **CHECK-02**: Background-Scheduler laeuft als asyncio-Task im Main-Event-Loop, pollt GitHub Releases API stuendlich (konfigurierbar via `updates.check_interval_hours`, Default 1)
-- [ ] **CHECK-03**: GitHub API Client verwendet aiohttp mit erforderlichem `User-Agent`-Header, `Accept: application/vnd.github+json`, 10s Timeout; ETag-Caching reduziert Bandbreite
+- [x] **CHECK-02**: Background-Scheduler laeuft als asyncio-Task im Main-Event-Loop, pollt GitHub Releases API stuendlich (konfigurierbar via `updates.check_interval_hours`, Default 1)
+- [x] **CHECK-03**: GitHub API Client verwendet aiohttp mit erforderlichem `User-Agent`-Header, `Accept: application/vnd.github+json`, 10s Timeout; ETag-Caching reduziert Bandbreite
 - [ ] **CHECK-04**: Bei verfuegbarem Update: Badge (orange `ve-dot`) an Sidebar-Eintrag `System`, Release-Notes aus `body`-Feld der GitHub-API-Response
 - [ ] **CHECK-05**: `GET /api/update/available` liefert `{current_version, latest_version, release_notes, published_at, tag_name}` oder `null`
-- [ ] **CHECK-06**: Scheduler ist fehlertolerant: Netzwerkfehler, GitHub unreachable oder 5xx fuehrt nicht zum Crash, nur Log-Warnung; UI zeigt `last_check_failed_at` Timestamp
-- [ ] **CHECK-07**: Scheduler schiebt Check auf naechste Stunde wenn WebSocket-Client verbunden ist (User aktiv = keine Hintergrund-Aktion)
+- [x] **CHECK-06**: Scheduler ist fehlertolerant: Netzwerkfehler, GitHub unreachable oder 5xx fuehrt nicht zum Crash, nur Log-Warnung; UI zeigt `last_check_failed_at` Timestamp
+- [x] **CHECK-07**: Scheduler schiebt Check auf naechste Stunde wenn WebSocket-Client verbunden ist (User aktiv = keine Hintergrund-Aktion)
 
 ### Update Execution (EXEC-xx)
 
@@ -165,12 +165,12 @@ Requirements werden in Phasen gemappt vom gsd-roadmapper (ROADMAP.md).
 | SAFETY-08 | Phase 43 | Pending |
 | SAFETY-09 | Phase 43 | Pending |
 | CHECK-01 | Phase 44 | Pending |
-| CHECK-02 | Phase 44 | Pending |
-| CHECK-03 | Phase 44 | Pending |
+| CHECK-02 | Phase 44 | Complete |
+| CHECK-03 | Phase 44 | Complete |
 | CHECK-04 | Phase 44 | Pending |
 | CHECK-05 | Phase 44 | Pending |
-| CHECK-06 | Phase 44 | Pending |
-| CHECK-07 | Phase 44 | Pending |
+| CHECK-06 | Phase 44 | Complete |
+| CHECK-07 | Phase 44 | Complete |
 | EXEC-01 | Phase 45 | Pending |
 | EXEC-02 | Phase 45 | Pending |
 | EXEC-03 | Phase 45 | Pending |
