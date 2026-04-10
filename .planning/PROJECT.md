@@ -74,18 +74,25 @@ Venus OS muss alle PV-Inverter (egal welche Marke/Protokoll) als einen einzigen 
 - ✓ Smart Auto-Throttle: Score-basierte Waterfall-Reihenfolge mit Live-Convergence-Messung — v6.0
 - ✓ Auto-Throttle UI: Toggle, Presets, Throttle-Tabelle, State-Contribution-Bar — v6.0
 
+- ✓ Sungrow Plugin: SG-RT Modbus TCP Polling und SunSpec Register Encoding — v7.0
+- ✓ Sungrow Add-Device Flow mit Modbus Probe — v7.0
+- ✓ Sungrow 3-Phasen Dashboard mit MPPT DC Channels — v7.0
+- ✓ Per-Device Aggregate Toggle (Include in Fronius Aggregation) — v7.0
+
 ### Active
 
-## Current Milestone: v7.0 Sungrow SG-RT Plugin
+## Current Milestone: v8.0 Auto-Update System
 
-**Goal:** Full-Stack Integration des Sungrow SG-RT Wechselrichters als vierter Inverter-Typ mit Modbus TCP Polling, 3-Phasen Dashboard, Power Limiting, Discovery und Throttle-Integration.
+**Goal:** Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem GitHub-Repo direkt aus der Webapp installieren, ohne SSH-Zugriff, mit automatischer Verfuegbarkeits-Pruefung, Backup, Health-Check und Rollback-Sicherheit.
 
 **Target features:**
-- Sungrow Plugin mit Modbus TCP Polling und SunSpec Register Encoding
-- Power Limiting via Modbus Holding Register Write
-- 3-Phasen AC Dashboard mit MPPT DC Channels
-- Add-Device Flow mit Modbus Probe und Netzwerk-Discovery
-- Config UI und Throttle Integration
+- Version-Check gegen GitHub Releases API mit UI-Badge bei verfuegbarem Update
+- One-Click-Update Flow (Download → Backup → Install → Health-Check → Restart)
+- Automatischer Rollback bei Health-Check-Fehler nach Restart
+- Hintergrund-Scheduler fuer periodischen Auto-Check (konfigurierbares Intervall)
+- Root-Capable Helper fuer git pull + systemctl restart (pv-proxy hat kein sudo)
+- Config-Preservation: /etc/pv-inverter-proxy/config.yaml bleibt unangetastet
+- Update-Historie mit Log (Version, Zeit, Ergebnis, Rollback-Grund)
 
 ### Out of Scope
 
@@ -188,6 +195,10 @@ Tech stack: Python 3.12, pymodbus 3.8+, aiohttp (HTTP + WebSocket + REST client 
 
 **10 phases, 12 plans, 23 tasks. See .planning/milestones/ for archive.**
 
+## Completed Milestone: v7.0 Sungrow SG-RT Plugin (shipped 2026-04-10)
+
+**Delivered:** Sungrow SG-RT als vierter Inverter-Typ mit Modbus TCP Polling, 3-Phasen Dashboard, Add-Device Flow mit Probe, Aggregation-Integration und per-Device Aggregate-Toggle zum gezielten Ausschliessen einzelner Geraete aus dem virtuellen Fronius-Inverter.
+
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
@@ -206,4 +217,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-06 after Phase 38 (Plugin Core) complete — SungrowPlugin backend ready*
+*Last updated: 2026-04-10 — Milestone v8.0 Auto-Update System started*
