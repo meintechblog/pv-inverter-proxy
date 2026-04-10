@@ -46,6 +46,7 @@ class AppContext:
 
     # Internal
     polling_paused: bool = False
+    healthy_flag_written: bool = False  # True after first successful poll (SAFETY-06)
     _last_modbus_client_ip: str = ""
     override_log: object = None    # OverrideLog
     shutdown_event: asyncio.Event = field(default_factory=asyncio.Event)
