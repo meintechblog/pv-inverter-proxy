@@ -1,333 +1,284 @@
-# Technology Stack: Shelly Plugin Integration (v6.0)
+# Stack Research — v8.0 Auto-Update System
 
-**Project:** PV-Inverter-Master
-**Researched:** 2026-03-24
-**Scope:** Stack additions for Shelly Gen1/Gen2/Gen3 local REST API plugin
-**Overall confidence:** HIGH
+**Confidence:** HIGH
+**Date:** 2026-04-10
 
-## Critical Finding: No New Dependencies Needed
+## Executive Verdict
 
-The existing `aiohttp` client (already used by OpenDTU plugin) handles all Shelly HTTP/JSON communication. Shelly devices expose a simple local REST API -- same pattern as OpenDTU polling.
+**Zero new Python dependencies required.** Build entirely with existing stack (`aiohttp`, `PyYAML`, `structlog`, `asyncio`) plus stdlib (`subprocess`, `pathlib`, `tempfile`, `shutil`, `hashlib`, `json`, `re`, `tomllib`, `importlib.metadata`).
 
-## Existing Stack (DO NOT CHANGE)
+**Critical decision:** Use **polkit JavaScript rule** (Debian 13 trixie) for privilege escalation. NOT sudoers. NOT a root daemon.
 
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| Python | 3.12 | Runtime |
-| pymodbus | >=3.6,<4.0 | Modbus TCP server + SolarEdge client |
-| aiohttp | >=3.10,<4.0 | HTTP server, WebSocket, REST API, OpenDTU client, **Shelly client** |
-| structlog | >=24.0 | Structured JSON logging |
-| PyYAML | >=6.0,<7.0 | Configuration files |
-| aiomqtt | >=2.3,<3.0 | MQTT publishing |
-| zeroconf | >=0.140,<1.0 | mDNS broker discovery |
-| Vanilla JS | -- | Frontend (zero dependencies, no build) |
+## 1. GitHub Releases API Client
 
-## Recommended Stack Additions
+**Library:** `aiohttp.ClientSession` (already present).
+**Endpoint:** `https://api.github.com/repos/meintechblog/pv-inverter-master/releases/latest`
 
-**None.** Zero new Python packages. `aiohttp.ClientSession` with `session.get()` and `session.json()` is all that is needed.
+**Rate limits:** 60 req/hour unauthenticated per IP. Hourly scheduler + manual clicks will never hit limit.
 
-### Why NOT aioshelly
-
-The Home Assistant project maintains [aioshelly](https://github.com/home-assistant-libs/aioshelly) -- a full-featured Python Shelly library. Do NOT use it because:
-
-| Concern | Detail |
-|---------|--------|
-| Heavy dependencies | Pulls in `orjson`, `bluetooth-data-tools`, CoAP stack |
-| Wrong abstraction | Block/CoAP device model, WebSocket RPC channels -- we only need 2 HTTP GETs per poll |
-| Designed for HA | Tightly coupled to Home Assistant's device model and event system |
-| Project philosophy | "Zero new dependencies" -- extend existing aiohttp usage, same as OpenDTU |
-| Complexity | We need ~150 LOC for the Shelly plugin. aioshelly adds thousands of LOC of unused functionality |
-
-**Confidence: HIGH** -- Verified aioshelly's scope on PyPI and GitHub. Overkill for simple HTTP polling.
-
----
-
-## Shelly API Reference by Generation
-
-### Universal Detection: `GET /shelly`
-
-All Shelly devices (Gen1, Gen2, Gen3) expose `GET http://<ip>/shelly`. This is the single endpoint for generation detection.
-
-**Gen1 response:**
-```json
-{
-  "type": "SHSW-PM",
-  "mac": "AABBCCDDEEFF",
-  "auth": false,
-  "fw": "20230913-114244/v1.14.0-gcb84623",
-  "discoverable": true
-}
-```
-- **No `gen` field.** Presence of `type` without `gen` indicates Gen1.
-
-**Gen2/Gen3 response:**
-```json
-{
-  "name": "My Shelly",
-  "id": "shellyplus1pm-aabbccddeeff",
-  "mac": "AABBCCDDEEFF",
-  "model": "SNSW-001P16EU",
-  "gen": 2,
-  "fw_id": "20231107-164738/1.0.8-g",
-  "ver": "1.0.8",
-  "app": "Plus1PM",
-  "auth_en": false
-}
-```
-- `gen` field present: `2` for Gen2, `3` for Gen3.
-- Gen3 uses the **identical** RPC API as Gen2 (confirmed by official docs, shellyctl, and forum discussions).
-
-**Detection algorithm:**
+**Required headers:**
 ```python
-async def detect_generation(session: aiohttp.ClientSession, host: str) -> tuple[str, dict]:
-    """Detect Shelly generation. Returns ("gen1"|"gen2", device_info_dict)."""
-    async with session.get(f"http://{host}/shelly", timeout=aiohttp.ClientTimeout(total=5)) as resp:
-        data = await resp.json()
-    gen = data.get("gen", 0)
-    if gen >= 2:
-        return "gen2", data  # Gen2 and Gen3 share the same API
-    return "gen1", data
+headers = {
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "pv-inverter-proxy/8.0 (github.com/meintechblog/pv-inverter-master)",
+}
+```
+`User-Agent` is **required** — missing returns 403.
+
+**ETag caching:** Worth implementing for bandwidth, but 304 still costs 1 req for unauthenticated. Cache to `/etc/pv-inverter-proxy/update-state.json`.
+
+**Timeout:** `aiohttp.ClientTimeout(total=10)`. On failure, log + return None, never crash. UI must stay responsive when GitHub is unreachable.
+
+## 2. Version Comparison
+
+**Decision:** Hand-rolled 15-line `Version(NamedTuple)` parser. Do NOT add `packaging` or `semver`.
+
+**Rationale:**
+- Project tags are simple (`v1.0`, `v2.1`, `v8.0`). PEP 440/semver features unused.
+- `packaging` is NOT stdlib; transitive-via-pip presence is a silent time-bomb.
+- `semver` requires strict 2.0.0 format → would force re-tagging.
+
+**Reference:**
+```python
+# src/pv_inverter_proxy/updater/version.py
+import re
+from typing import NamedTuple
+
+_VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)(?:\.(\d+))?$")
+
+class Version(NamedTuple):
+    major: int
+    minor: int
+    patch: int
+
+    @classmethod
+    def parse(cls, raw: str) -> "Version":
+        m = _VERSION_RE.match(raw.strip())
+        if not m:
+            raise ValueError(f"Unparseable version: {raw!r}")
+        return cls(int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+
+    def __str__(self) -> str:
+        return f"v{self.major}.{self.minor}.{self.patch}"
 ```
 
-**Confidence: HIGH** -- Verified via official Shelly Gen1 and Gen2 API docs plus evcc's open-source Go implementation.
+Tuple ordering gives `>`, `<`, `==` for free.
 
----
+**Current version lookup:** `importlib.metadata.version("pv-inverter-master")` — stdlib since 3.8.
 
-### Gen1 API Endpoints
+## 3. Git Operations: subprocess vs GitPython
 
-**Polling: `GET /status`**
+**Decision:** `asyncio.create_subprocess_exec` with explicit argv. Do NOT add GitPython.
 
-Returns full device status including relay state, metering, temperature.
+| Criterion | subprocess | GitPython |
+|---|---|---|
+| New dep | None | +350KB + gitdb + smmap |
+| CVE history | n/a | Multiple (path traversal etc.) |
+| Async | Native via asyncio | Blocking; needs to_thread |
+| Debuggability | Copy-paste from logs | Opaque wrappers |
 
-```json
-{
-  "relays": [
-    {
-      "ison": true,
-      "has_timer": false,
-      "source": "http"
+**Commands needed:**
+```
+git -C /opt/pv-inverter-proxy fetch --tags --quiet origin
+git -C /opt/pv-inverter-proxy rev-parse HEAD            # save for rollback
+git -C /opt/pv-inverter-proxy checkout --quiet tags/v8.1.0
+git -C /opt/pv-inverter-proxy checkout --quiet <saved_sha>  # rollback
+```
+
+**Safety guards:**
+- Always explicit argv, never `shell=True`
+- Use `-C $INSTALL_DIR` not `cwd=`
+- Before fetch: check `git status --porcelain` is clean; refuse update if local mods detected
+- Use `checkout tags/vX.Y` not `git pull` — deterministic, no merge conflicts possible
+
+## 4. Privilege Escalation — CRITICAL
+
+**Decision:** polkit JavaScript rule (Debian 13 trixie) scoped to the specific unit.
+
+**Why newly viable:** Debian 12 shipped old polkit (`.pkla` files, no per-unit filtering). **Debian 13 trixie ships modern polkit with JS `.rules` files** that support per-unit scoping. This removes the historical blocker that forced projects to sudoers.
+
+**Rule:**
+```javascript
+// /etc/polkit-1/rules.d/50-pv-inverter-proxy.rules
+polkit.addRule(function(action, subject) {
+    if (subject.user !== "pv-proxy") return polkit.Result.NOT_HANDLED;
+    var unit = action.lookup("unit");
+    if (unit !== "pv-inverter-proxy.service") return polkit.Result.NOT_HANDLED;
+    if (action.id === "org.freedesktop.systemd1.manage-units") {
+        return polkit.Result.YES;
     }
-  ],
-  "meters": [
-    {
-      "power": 342.5,
-      "is_valid": true,
-      "total": 117920,
-      "counters": [342.5, 340.1, 338.7],
-      "voltage": 230.4,
-      "current": 1.49
-    }
-  ],
-  "temperature": 45.2,
-  "overtemperature": false,
-  "uptime": 86400
-}
+    return polkit.Result.NOT_HANDLED;
+});
 ```
 
-| Field Path | Type | Unit | Notes |
-|------------|------|------|-------|
-| `meters[0].power` | float | W | Instantaneous active power |
-| `meters[0].voltage` | float | V | Supply voltage (1PM, Plug S, 2.5) |
-| `meters[0].current` | float | A | Current draw |
-| `meters[0].total` | float | Wh | Accumulated energy |
-| `relays[0].ison` | bool | -- | Relay on/off state |
-| `temperature` | float | C | Internal temp (not all Gen1 have this -- may be absent) |
-| `overtemperature` | bool | -- | Overtemp protection triggered |
+Grants `pv-proxy` the ability to `systemctl restart pv-inverter-proxy.service` without password or sudo. polkit logs every authorization decision to journal — fully auditable.
 
-Note: Some Gen1 devices (Shelly EM, 3EM) use `emeters[]` instead of `meters[]`. For PV metering plugs (Plug S, 1PM), `meters[]` is the relevant array.
+**Trade-off table:**
 
-**Switching: `GET /relay/0?turn=on` or `GET /relay/0?turn=off`**
+| Option | Security | Install | Verdict |
+|---|---|---|---|
+| **polkit JS rule** | Excellent — unit-scoped, user-scoped | Drop 1 file, reload polkit | **CHOSEN** |
+| sudoers NOPASSWD | Good if scoped via Cmnd_Alias | Drop 1 file | Fallback for Debian 12 |
+| Privileged sidecar daemon | Poor — larger attack surface | Second systemd unit + IPC | Rejected |
+| Run proxy as root | Terrible | Undoes existing hardening | Rejected |
 
+**Sudoers fallback (Debian 12 detection):**
 ```
-GET http://<ip>/relay/0?turn=on   -> {"ison": true, "has_timer": false, ...}
-GET http://<ip>/relay/0?turn=off  -> {"ison": false, "has_timer": false, ...}
-```
-
-Gen1 uses GET for actions (the HTTP method is intentionally ignored per docs). Relay index `0` = first/only relay.
-
-**Confidence: HIGH** -- Official Gen1 API docs.
-
----
-
-### Gen2/Gen3 API Endpoints (Identical Protocol)
-
-Gen2 and Gen3 use the same JSON-RPC 2.0 over HTTP. The official docs cover both under "Gen2+". The CLI tool `shellyctl` explicitly targets "Gen2/3 API". There are no Gen3-specific endpoints.
-
-**Polling: `GET /rpc/Switch.GetStatus?id=0`**
-
-Returns switch status with integrated power metering.
-
-```json
-{
-  "id": 0,
-  "source": "init",
-  "output": true,
-  "apower": 342.5,
-  "voltage": 230.4,
-  "current": 1.49,
-  "aenergy": {
-    "total": 14567.89,
-    "by_minute": [5.23, 5.11, 5.08],
-    "minute_ts": 1699012345
-  },
-  "temperature": {
-    "tC": 45.2,
-    "tF": 113.4
-  }
-}
+pv-proxy ALL=(root) NOPASSWD: /bin/systemctl restart pv-inverter-proxy.service
+pv-proxy ALL=(root) NOPASSWD: /bin/systemctl is-active pv-inverter-proxy.service
+Defaults!/bin/systemctl !requiretty
 ```
 
-| Field Path | Type | Unit | Notes |
-|------------|------|------|-------|
-| `apower` | float | W | Instantaneous active power |
-| `voltage` | float | V | Supply voltage |
-| `current` | float | A | Current draw |
-| `aenergy.total` | float | Wh | Accumulated energy |
-| `output` | bool | -- | Switch on/off state |
-| `temperature.tC` | float/null | C | Device temp (may be null on some models) |
+**systemd hardening note:** Existing unit has `NoNewPrivileges=true`. This is fine for polkit (invoked via D-Bus IPC, not setuid fork) but would block direct sudo fork — another reason to prefer polkit.
 
-For meter-only devices (no relay, PM1 component): `GET /rpc/PM1.GetStatus?id=0` returns same power fields without `output`.
+## 5. Self-Restart Pattern
 
-**Switching: `GET /rpc/Switch.Set?id=0&on=true`**
+**Problem:** Calling `systemctl restart` from inside the service kills the caller mid-operation.
 
-```
-GET http://<ip>/rpc/Switch.Set?id=0&on=true   -> {"was_on": false}
-GET http://<ip>/rpc/Switch.Set?id=0&on=false  -> {"was_on": true}
-```
-
-**Confidence: HIGH** -- Official Gen2 Switch component docs.
-
----
-
-## API Comparison Matrix
-
-| Aspect | Gen1 | Gen2/Gen3 |
-|--------|------|-----------|
-| **Identification** | `/shelly` -> `type` field, no `gen` | `/shelly` -> `gen: 2` or `gen: 3` |
-| **Poll endpoint** | `GET /status` | `GET /rpc/Switch.GetStatus?id=0` |
-| **Power field** | `meters[0].power` | `apower` |
-| **Voltage field** | `meters[0].voltage` | `voltage` |
-| **Current field** | `meters[0].current` | `current` |
-| **Energy field** | `meters[0].total` (Wh) | `aenergy.total` (Wh) |
-| **Relay state** | `relays[0].ison` | `output` |
-| **Temperature** | `temperature` (top-level, may be absent) | `temperature.tC` (may be null) |
-| **Switch ON** | `GET /relay/0?turn=on` | `GET /rpc/Switch.Set?id=0&on=true` |
-| **Switch OFF** | `GET /relay/0?turn=off` | `GET /rpc/Switch.Set?id=0&on=false` |
-| **Auth** | HTTP Basic Auth (if enabled) | Digest Auth (if enabled) |
-| **Power limiting** | Not supported (on/off only) | Not supported (on/off only) |
-
----
-
-## Integration Pattern: Profile-Based Abstraction
-
-Use a dict-based profile to abstract Gen1 vs Gen2 API differences. The ShellyPlugin selects the profile at connect time based on auto-detected generation.
+**Solution:** `systemd-run --on-active=2s` transient unit fires restart from outside the dying cgroup.
 
 ```python
-SHELLY_PROFILES = {
-    "gen1": {
-        "poll_url": "/status",
-        "switch_on_url": "/relay/0?turn=on",
-        "switch_off_url": "/relay/0?turn=off",
-    },
-    "gen2": {  # Also used for Gen3
-        "poll_url": "/rpc/Switch.GetStatus?id=0",
-        "switch_on_url": "/rpc/Switch.Set?id=0&on=true",
-        "switch_off_url": "/rpc/Switch.Set?id=0&on=false",
-    },
-}
+await asyncio.create_subprocess_exec(
+    "systemd-run", "--on-active=2s",
+    "--unit=pv-inverter-proxy-restart",
+    "/bin/systemctl", "restart", "pv-inverter-proxy.service",
+)
+# Respond HTTP 202 immediately, let the client poll
 ```
 
-Each profile has a corresponding `_extract_gen1(data)` / `_extract_gen2(data)` method to normalize the JSON response into a common dict:
+Same polkit rule covers the systemd-run invocation. No extra package needed.
+
+## 6. Health Check Mechanism
+
+**Decision:** Client-browser-polled health endpoint + server-side watchdog oneshot. NOT self-reporting from inside the new version.
+
+**Why not self-report:** If new version crashes on startup, it can't report failure.
+
+**Flow:**
+1. UI POST `/api/update/apply` → server does git checkout + pip install + saves old_sha + queues systemd-run restart → responds HTTP 202 `{ state: "restarting", old_sha, deadline_ts }`
+2. Server dies, systemd restarts with new code
+3. Client polls `GET /api/update/status` every 2s
+4. New version on boot: runs self-checks, writes `state: "healthy"` to `/etc/pv-inverter-proxy/update-state.json`
+5. Client sees healthy → success toast
+6. If deadline reached (60s) without healthy → client calls `POST /api/update/rollback`
+
+**Server-side watchdog (for catastrophic failure where webapp doesn't come up):**
+```
+systemd-run --on-active=90s --unit=pv-inverter-proxy-healthcheck \
+    /opt/pv-inverter-proxy/.venv/bin/python3 -m pv_inverter_proxy.updater.healthcheck
+```
+
+Healthcheck module (~80 LOC): curls `http://localhost/api/health`, on failure does `git checkout <old_sha>` + restart.
+
+**Health signals:**
+- REQUIRED: process up, Modbus server bound, ≥1 device producing frames
+- OPTIONAL (warn-only): MQTT connected (may take longer to reconnect)
+
+## 7. Background Scheduler
+
+**Decision:** `asyncio.create_task` loop in existing event loop. NOT a systemd timer.
+
+**Rationale:** Event loop already exists, matches prior art (EDPC refresh, MQTT reconnect, device polling), ~60 LOC.
 
 ```python
-{
-    "power_w": float,
-    "voltage_v": float,
-    "current_a": float,
-    "energy_wh": float,
-    "is_on": bool,
-    "temperature_c": float | None,
-}
+class UpdateCheckScheduler:
+    async def _loop(self):
+        await asyncio.sleep(60)  # Initial delay
+        while True:
+            try:
+                await self._checker.check_and_cache()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                log.warning("update_check_failed", error=str(exc))
+            await asyncio.sleep(self._interval)
 ```
 
----
-
-## Integration Points with Existing Architecture
-
-### InverterEntry Config Extension
-
-Add to existing `InverterEntry` dataclass:
-
-| New Field | Type | Default | Purpose |
-|-----------|------|---------|---------|
-| (existing) `type` | str | -- | New value: `"shelly"` (alongside `"solaredge"`, `"opendtu"`) |
-| `shelly_gen` | str | `""` | `"gen1"` or `"gen2"` -- auto-detected on first connect, persisted to config |
-
-No `gateway_host` needed -- Shelly devices are standalone (direct IP, no gateway like OpenDTU).
-
-### Plugin Factory Extension
-
-```python
-# In plugins/__init__.py plugin_factory()
-elif entry.type == "shelly":
-    from pv_inverter_proxy.plugins.shelly import ShellyPlugin
-    return ShellyPlugin(host=entry.host, generation=entry.shelly_gen, name=entry.name)
+**Config (defaults):**
+```yaml
+update:
+  auto_check_enabled: true
+  check_interval_seconds: 3600
+  github_repo: "meintechblog/pv-inverter-master"
 ```
 
-### InverterPlugin ABC Method Mapping
+**Hot-reload:** Follow existing VenusConfig pattern — cancel old task, start new loop on config change.
 
-| ABC Method | Shelly Implementation |
-|------------|----------------------|
-| `connect()` | Create `aiohttp.ClientSession`, `GET /shelly` for generation detection + device info |
-| `poll()` | GET profile poll URL, extract fields, encode to SunSpec Model 103 registers |
-| `get_static_common_overrides()` | Manufacturer = `"Shelly"`, model from `/shelly` response (`type` or `app`) |
-| `get_model_120_registers()` | Synthesize nameplate with `rated_power` from config (Shelly has no self-reported rating) |
-| `write_power_limit()` | **No-op** -- return `WriteResult(success=True)`. Shelly has no %-based power limiting. |
-| `close()` | Close aiohttp session |
-| `reconfigure()` | Close session, update host. New session created on next `connect()` |
+## 8. Summary: Dependency Impact
 
-### Shelly-Specific Extension
+**New runtime dependencies: ZERO.**
 
-Add `send_switch_command(on: bool) -> WriteResult` method outside the ABC -- exposed via webapp API route. Same pattern as OpenDTU's `send_power_command()`.
+| Need | Solution | Source |
+|---|---|---|
+| HTTP to GitHub | `aiohttp.ClientSession` | existing |
+| JSON | `json` | stdlib |
+| Version compare | `NamedTuple` (~15 LOC) | new code, zero deps |
+| Git ops | `asyncio.create_subprocess_exec` | stdlib |
+| Privilege | polkit JS rule + `systemctl` via `systemd-run` | system config |
+| Restart-self | `systemd-run --on-active=2s` | system tool |
+| Scheduler | `asyncio.create_task` | stdlib |
+| State persistence | `json` → update-state.json | stdlib |
+| Version lookup | `importlib.metadata.version` | stdlib |
+| Config | existing `PyYAML` | existing |
+| Logging | existing `structlog` | existing |
+| Healthcheck client (standalone) | `urllib.request` | stdlib |
 
-### Polling Interval
+**Explicitly rejected:**
+- GitPython (350KB, CVEs, blocking)
+- packaging (not stdlib, transitive time-bomb)
+- semver (strict format incompatible with project tags)
+- httpx/requests (aiohttp already present)
+- APScheduler (asyncio task replaces)
+- Privileged sidecar daemon (IPC complexity, attack surface)
 
-Use 5s (same as OpenDTU default). Shelly devices respond in <100ms on LAN with no rate limiting.
+## 9. Files to Add (v8.0 scope)
 
----
+```
+src/pv_inverter_proxy/updater/
+    __init__.py
+    github_client.py       # aiohttp wrapper + ETag cache (~80 LOC)
+    version.py             # NamedTuple parser (~30 LOC)
+    git_ops.py             # async subprocess wrappers (~100 LOC)
+    scheduler.py           # asyncio task loop (~60 LOC)
+    orchestrator.py        # update flow state machine (~150 LOC)
+    healthcheck.py         # standalone rollback watchdog script (~80 LOC)
+    state.py               # update-state.json read/write (~40 LOC)
 
-## What NOT to Add
+# Webapp route additions in webapp.py: /api/update/* (~120 LOC)
 
-| Library/Feature | Why Not |
-|-----------------|---------|
-| `aioshelly` | Pulls CoAP, Bluetooth deps. We need 2 HTTP GETs per poll. Overkill. |
-| `orjson` | Responses are tiny JSON (<1KB). stdlib `json` is fine. |
-| WebSocket RPC channel | Gen2 supports WS-based RPC but HTTP GET is simpler, stateless, proven by OpenDTU pattern. |
-| Shelly Cloud API | Explicitly out of scope per PROJECT.md. Local API only. |
-| mDNS discovery for Shellys | Could use existing zeroconf to find `_http._tcp.local.` Shelly devices, but add-device flow should use manual IP entry first. Discovery can be a follow-up. |
-| Auth support | PROJECT.md: "kein Sicherheits-Overhead, alles im selben LAN". Skip for v6.0. |
+# System config:
+config/polkit/50-pv-inverter-proxy.rules  # new file
 
-## Installation
+# Modifications:
+install.sh                 # + polkit rule install step
+pyproject.toml             # no change — zero new deps
+config/pv-inverter-proxy.service  # no change
+```
 
-No changes to `pyproject.toml`. No new `pip install` commands.
+**Estimated total:** ~660 LOC Python + 1 polkit rules file.
 
-## New Files
+## 10. Integration Points
 
-| File | Purpose |
-|------|---------|
-| `src/pv_inverter_proxy/plugins/shelly.py` | ShellyPlugin: poll, switch, SunSpec encoding, gen1/gen2 profiles |
+- **Scheduler task** joins existing task group in `__main__.py run()` alongside device_polling, modbus_server, webapp, mqtt_loop
+- **Version cache** at `/etc/pv-inverter-proxy/update-state.json` — same dir as existing writable paths (`ReadWritePaths=/etc/pv-inverter-proxy`). No systemd unit changes.
+- **Webapp routes** in `webapp.py` following existing REST patterns
+- **structlog events:** `update_check_started`, `update_available`, `update_apply_initiated`, `git_checkout_complete`, `restart_queued`, `health_check_passed`, `rollback_initiated`
+- **WebSocket snapshot extension:** add `available_update: { version, published_at, release_notes_url } | null` to existing snapshot (matches "extend snapshot, not protocol" decision)
 
-Modified files: `plugins/__init__.py` (add shelly case), `config.py` (add `shelly_gen` field to `InverterEntry`), `webapp.py` (add switch command route, add-device flow), frontend files (Shelly device option, on/off toggle).
+## 11. Open Questions for REQUIREMENTS.md
+
+1. **Health definition:** Process up + Modbus bound + ≥1 device producing = required. MQTT = warn-only. Confirm.
+2. **Tag selection:** v8.0 UI shows only `latest` release, but internal API accepts any tag for manual pinning. Confirm.
+3. **pip install failure mode:** timeout + capture output + immediate rollback before restart.
+4. **Config migration:** Continue existing pattern (code tolerates missing fields with defaults). Updater never touches config.yaml.
+5. **Power-limit race:** During restart, EDPC refresh pauses → SolarEdge CommandTimeout auto-reverts to full power. Document as "brief return to full power during updates, typically <10s".
 
 ## Sources
 
-- [Shelly Gen1 API Reference](https://shelly-api-docs.shelly.cloud/gen1/) -- HIGH confidence
-- [Shelly Gen2 API Reference](https://shelly-api-docs.shelly.cloud/gen2/) -- HIGH confidence
-- [Shelly Gen2 Switch Component](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch/) -- HIGH confidence
-- [Shelly Gen2 Shelly.GetDeviceInfo](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly/) -- HIGH confidence
-- [Shelly Gen2 PM1 Component](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/PM1/) -- HIGH confidence
-- [Shelly Gen1 Compatibility Layer (Gen2)](https://shelly-api-docs.shelly.cloud/gen2/0.14/General/gen1Compatibility/) -- MEDIUM confidence
-- [Shelly Gen1/Gen2/Gen3/Gen4 Comparison](https://support.shelly.cloud/en/support/solutions/articles/103000316073) -- MEDIUM confidence
-- [evcc Shelly meter (Go, real-world reference)](https://pkg.go.dev/github.com/evcc-io/evcc/meter/shelly) -- HIGH confidence
-- [shellyctl Gen2/3 CLI](https://github.com/jcodybaker/shellyctl) -- confirms Gen3 = Gen2 API
-- [aioshelly on PyPI](https://pypi.org/project/aioshelly/) -- evaluated and rejected
+- GitHub: Rate limits for the REST API (docs.github.com)
+- GitHub Changelog: Updated rate limits for unauthenticated requests (May 2025)
+- polkit(8) / polkitd — Debian trixie manpage
+- PolicyKit — Debian Wiki
+- Polkit — ArchWiki (JS rule reference)
+- packaging library — PyPA docs

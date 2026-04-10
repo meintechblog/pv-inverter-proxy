@@ -1,259 +1,337 @@
-# Domain Pitfalls: Shelly Plugin Integration (v6.0)
+# Pitfalls Research — v8.0 Auto-Update System
 
-**Domain:** Adding Shelly smart device support to multi-inverter PV aggregation proxy
-**Researched:** 2026-03-24
-**Applies to:** v6.0 milestone (Shelly smart plug/switch as third device type alongside SolarEdge and OpenDTU)
-**Overall confidence:** HIGH (verified against official Shelly API docs, existing codebase analysis, and community reports)
+**Confidence:** HIGH
+**Date:** 2026-04-10
 
----
+## Severity Legend
 
-## Critical Pitfalls
+- **BLOCKING** — must be solved before v8.0 ships; failure = lockout or data corruption
+- **HIGH** — should solve in v8.0; real reliability issue
+- **MEDIUM** — handle opportunistically or defer to v8.1
+- **LOW** — document only
 
-Mistakes that cause rewrites, data corruption, or broken aggregation.
+## Phase Tag Legend
 
-### Pitfall 1: Treating a Switch/Meter as an Inverter
-
-**What goes wrong:** The existing `InverterPlugin` ABC assumes all devices are inverters with percentage-based power limiting (`write_power_limit(enable, limit_pct)`). A Shelly Plug is a switch + power meter -- it can only turn on or off. Sending a 47% power limit to a Shelly makes no sense. If the `PowerLimitDistributor` includes Shelly devices in waterfall calculations, it will compute nonsensical per-device watt budgets that cannot be applied.
-
-**Why it happens:** The codebase evolved around the inverter metaphor. The plugin ABC, the distributor, and the aggregation layer all assume "device = inverter that can be throttled."
-
-**Consequences:**
-- `PowerLimitDistributor._waterfall()` computes per-device watt budgets including Shelly `rated_power`, then tries to call `write_power_limit(True, 63.2)` on a device that only supports on/off
-- Aggregated WRtg (Model 120 nameplate) includes Shelly rated power, inflating what Venus OS thinks the total system capacity is
-- Venus OS sends a global limit percentage that gets distributed across Shelly devices, reducing the budget available for real inverters
-- If Shelly `rated_power` is 0 (unset), the distributor's division-by-rated_power in `_waterfall()` causes division by zero
-
-**Prevention:**
-- Shelly devices MUST have `throttle_enabled: False` hardcoded. Do NOT allow users to enable throttling on Shelly devices. Enforce this in the config save handler.
-- `write_power_limit()` should be a no-op returning `WriteResult(success=True)` -- not an error, since the distributor calls it on all eligible devices.
-- Add a separate `switch_control(on: bool)` method that is Shelly-specific, exposed only in the Shelly dashboard UI, NOT through the Venus OS power limit path.
-- Consider whether Shelly `rated_power` should be included in WRtg aggregation. If the Shelly monitors a micro-inverter (Balkonkraftwerk), YES -- the power is real PV generation. Store a `contributes_to_aggregation: bool` flag or similar. Default: True.
-
-**Detection:** Venus OS shows higher total capacity than expected. Power limit distribution leaves real inverters with less budget than they should have.
-
-**Phase:** Must be addressed in the very first phase (plugin skeleton). Getting this wrong poisons the aggregation layer.
+- P1-Layout, P2-Helper, P3-Pipeline, P4-Restart, P5-UI, P6-Safety
 
 ---
 
-### Pitfall 2: Gen1 vs Gen2/Gen3 API Incompatibility
+## BLOCKING
 
-**What goes wrong:** Gen1 and Gen2+ use completely different API paradigms. Treating them as minor variants leads to a fragile if/else mess, or worse, calling the wrong endpoints silently.
+### C1. Bad Commit Lockout via systemd StartLimit
 
-**Gen1 API (Legacy HTTP actions):**
-- Status: `GET /status` -- returns flat JSON with `meters` array and `relays` array
-- Relay control: `GET /relay/0?turn=on` (or `turn=off`, `turn=toggle`)
-- Power data: `meters[0].power` (Watts), `meters[0].total` (**Watt-minutes**, not Wh)
-- Temperature: top-level `temperature` field (Celsius, not all models)
-- No frequency, no current, no voltage on basic Plug S
-- Auth: HTTP Basic Auth; `/shelly` endpoint is auth-free
-- Device info: `GET /shelly` returns `{"type": "SHPLG-S", "mac": "...", "auth": false}`
+**Phase:** P1-Layout, P4-Restart
 
-**Gen2/Gen3 API (RPC protocol):**
-- Status: `GET /rpc/Switch.GetStatus?id=0` -- returns structured JSON
-- Switch control: `GET /rpc/Switch.Set?id=0&on=true`
-- Power data: `apower` (Watts), `voltage` (V), `current` (A), `aenergy.total` (**Watt-hours**)
-- Frequency: `freq` (Hz), Power factor: `pf`
-- Temperature: `temperature.tC` (Celsius), `temperature.tF` (Fahrenheit)
-- Auth: Digest Auth (SHA-256), NOT Basic Auth
-- Device info: `GET /rpc/Shelly.GetDeviceInfo` returns `{"gen": 2, ...}` or `GET /shelly` also works
-
-**Consequences:**
-- Calling `/relay/0` on a Gen2 device: HTTP 404
-- Calling `/rpc/Switch.GetStatus` on a Gen1 device: HTTP 404
-- Energy values off by 60x if Watt-minutes treated as Watt-hours (Gen1 total of 60000 Wm = 1000 Wh, not 60000 Wh)
-- Auth fails silently or returns 401 if wrong auth scheme used
+**What goes wrong:** systemd default is `StartLimitBurst=5` in `StartLimitIntervalSec=10s`. A bad update crashing on import will be restarted 5 times, then systemd marks unit `failed`. Webapp gone = user locked out (no SSH = physical access needed).
 
 **Prevention:**
-- Use a **profile/strategy pattern**: `ShellyGen1Profile` and `ShellyGen2Profile` classes with identical interfaces but different endpoint URLs, JSON parsing logic, energy unit conversion, and auth handling.
-- Auto-detect generation at add-device time (see Pitfall 3), store `gen: 1` or `gen: 2` in InverterEntry config, never re-detect at runtime.
-- Gen1 energy conversion at parse time: `total_wh = total_watt_minutes / 60.0`
-- Gen2 energy: already in Wh, use directly.
-- The OpenDTU plugin pattern (single class, single API) does NOT apply here. Two distinct API shapes need two distinct profile implementations.
+1. **Blue-green directory layout** — never mutate running code tree:
+   ```
+   /opt/pv-inverter-proxy/             # symlink → releases/current
+   /opt/pv-inverter-proxy-releases/
+     ├── v7.0-abc1234/                 # full checkout + .venv
+     ├── v8.0-def5678/                 # full checkout + .venv
+     └── current -> v8.0-def5678       # atomic symlink swap
+   ```
+   Rollback = symlink flip + restart. Zero git operations at rollback time.
+2. **Out-of-process watchdog** — updater helper survives main service restart and decides rollback, not the webapp itself.
+3. **Unit hardening:** `StartLimitBurst=10`, `StartLimitIntervalSec=120`, `TimeoutStopSec=15`.
+4. **Boot-time recovery hook** — separate `pv-proxy-recovery.service` (Type=oneshot, before main service) reads PENDING marker; if last boot ended without SUCCESS marker, flips symlink back.
 
-**Detection:** Energy values 60x too high or too low. HTTP 404 errors in poll logs. Auth 401 errors.
+### C2. Privileged Helper Single Point of Failure
 
-**Phase:** Must be the first implementation decision. Profile pattern needs to be in the plugin skeleton.
+**Phase:** P2-Helper, P6-Safety
+
+**What goes wrong:** If helper crashes, is masked, or is stopped, the webapp silently can't update. Users click "Update" forever seeing "in progress" that never completes.
+
+**Prevention:**
+1. **Dedicated root helper: `pv-inverter-proxy-updater.service`** (Type=oneshot, RemainAfterExit=no) triggered via `.path` unit watching `/etc/pv-inverter-proxy/update-trigger.json`.
+2. **Helper heartbeat endpoint** — main service writes `ping` trigger every 60s; helper responds. If no response in 3min, UI shows red banner: "Auto-Update helper not responding — SSH required."
+3. **Install-time smoke test** — installer runs helper with `--self-test` to confirm end-to-end plumbing before enabling.
+4. **Never use sudo, polkit, or runtime capabilities** — see ARCHITECTURE.md for rationale (polkit requires logind session which nologin pv-proxy user doesn't have).
+
+### C3. Modbus Write In-Flight During Restart
+
+**Phase:** P4-Restart, P6-Safety
+
+**What goes wrong:** Venus OS polls every ~2s, issues writes (power limit, EDPC refresh every 30s). Killing mid-write → TCP reset → Venus OS logs "override failed". Worse: SolarEdge may hold stale limit past CommandTimeout, violating user intent.
+
+**Prevention:**
+1. **Pre-shutdown maintenance mode:**
+   - Set `app_ctx.maintenance_mode = True`
+   - Modbus server returns `SlaveBusy` (exception 0x06) for writes; reads continue from cache
+   - Wait 3s (> one Venus OS poll cycle, < user patience)
+   - Stop poller, drain in-flight pymodbus transactions (`asyncio.wait_for(drain(), 2.0)`)
+   - THEN trigger restart
+2. **Preserve SE30K last-set limit across restart** — write `{limit_pct, set_at}` to `/etc/pv-inverter-proxy/state.json`. On boot, restore if `now - set_at < CommandTimeout/2`.
+3. **`KillMode=mixed, TimeoutStopSec=15`** — SIGTERM first, asyncio shutdown hooks run, SIGKILL only if needed.
+
+### C4. Dependency Install Failure Leaves Half-Updated System
+
+**Phase:** P3-Pipeline, P4-Restart
+
+**What goes wrong:** v8.0 adds new dep; pip download fails mid-install (network, disk, missing libffi-dev). New code in place importing uninstalled lib. Restart → ImportError → StartLimit → lockout.
+
+**Prevention:**
+1. **Isolated .venv per release dir** — new venv installed while old venv still serves traffic. Failure doesn't touch the running system.
+2. **Pre-flight `pip install --dry-run`** — verify all deps obtainable BEFORE touching real venv.
+3. **Post-install smoke import** — `new_venv/bin/python -c "import pv_inverter_proxy; startup_selfcheck()"` before restart. Failure → abort, don't restart, don't swap symlink.
+4. **NEVER run `pip install` against currently-running venv.**
+
+### C5. LAN Webapp = Arbitrary Code Execution Surface
+
+**Phase:** P2-Helper, P5-UI, P6-Safety
+
+**What goes wrong:** No auth today. Adding "Update to latest from GitHub" button means any LAN device can install arbitrary code. Attack vectors:
+1. Compromised IoT device (TV, printer, vulnerable inverter firmware) POSTs to `/api/update`
+2. GitHub account compromise → malicious release pulled worldwide
+3. CSRF from browser tab on malicious site
+4. MITM on git fetch
+
+**Prevention:**
+1. **Pin updates to tagged GitHub Releases, not `main`** — scheduler polls `/repos/.../releases/latest`, only annotated tags count. Main branch auto-install explicitly rejected.
+2. **Verify release asset checksum** — each release uploads `SHA256SUMS`, helper verifies before extract.
+3. **Optional GPG verification** — `SHA256SUMS.asc` signed by maintainer key. Config `updates.allow_unsigned: false` (default).
+4. **Rate limit** — max 1 update per 60s.
+5. **CSRF token on update endpoint** — defeats drive-by browser attacks.
+6. **Audit log** — every update request logged with requesting IP, UA, timestamp.
+7. **Never auto-install unreleased commits** — manual SHA-install flow requires confirmation token typed from SSH/journal.
 
 ---
 
-### Pitfall 3: Unreliable Generation Auto-Detection
+## HIGH
 
-**What goes wrong:** The detection strategy of "try Gen2 endpoint, fall back to Gen1" has race conditions and unnecessary complexity. A simpler, universal approach exists.
+### H1. File Permission Drift on Re-Install
 
-**Key insight:** Both Gen1 and Gen2+ devices respond to `GET /shelly` (no auth required). The difference:
-- Gen1 response: `{"type": "SHPLG-S", "mac": "AABBCCDDEEFF", "auth": false}` -- NO `gen` field
-- Gen2 response: `{"id": "shellyplugsg3-AABBCCDDEEFF", "mac": "AABBCCDDEEFF", "gen": 2, "auth_en": false, "model": "S3PG-0011UW160EU", ...}` -- has explicit `gen` field
-
-**Consequences of getting it wrong:**
-- Misdetected generation means all subsequent API calls fail with 404
-- During firmware OTA update (30-60s), both endpoints are unavailable -- detection at that moment fails entirely
-- If detection has a long timeout and tries multiple endpoints sequentially, the add-device flow feels slow
+**Phase:** P2-Helper, P3-Pipeline
 
 **Prevention:**
-- Detection algorithm: Call `GET /shelly` (single request, no auth). If response JSON contains `"gen"` field with value >= 2, it is Gen2+. If no `gen` field exists, it is Gen1.
-- One endpoint, no fallback chain, no sequential probing.
-- Use a 5-second timeout. If it times out, return "device unreachable" rather than guessing.
-- Store detected generation in config (`gen: 1` or `gen: 2`) persistently. Never re-detect automatically.
-- Allow manual override in config UI as escape hatch for edge cases.
+1. Helper runs as root but wraps file-touching commands: `sudo -u pv-proxy -- git ...`, `sudo -u pv-proxy -- pip ...`. Only `systemctl restart` and symlink swap run as root.
+2. After extraction, explicit `chown -R pv-proxy:pv-proxy <release_dir>`.
+3. Pre-compile pyc at install time: `python -m compileall -q <release_dir>/src`. Eliminates runtime pyc writes (which `ProtectSystem=strict` blocks anyway).
+4. Post-install assertion: walk `.venv/`, fail if any file not owned by pv-proxy.
 
-**Detection:** Config shows wrong generation for a device. Poll errors showing wrong endpoint format.
+### H2. Partial Download / Network Failure Corrupts Tree
 
-**Phase:** Add-device flow phase. Detection logic must be solid before any polling begins.
+**Phase:** P2-GitOps, P3-Pipeline
+
+**Prevention:**
+1. **Download-to-temp, verify, then move:**
+   ```
+   /tmp/pv-updater-<uuid>/release.tar.gz
+   /tmp/pv-updater-<uuid>/SHA256SUMS
+   sha256sum -c SHA256SUMS
+   tar xzf release.tar.gz -C /opt/pv-inverter-proxy-releases/v8.0-def5678/
+   ```
+2. **Explicit `Content-Length` check** against downloaded bytes.
+3. **GitHub API defensive parsing** — verify `tag_name`, `tarball_url`, `assets` fields present; reject if `message` field set (GitHub error envelope).
+4. **Don't use `git fetch` at update time** — only initial install uses git. Updates use Releases tarballs. Eliminates git-state corruption class.
+5. Optional GitHub PAT for 5000/hr rate limit (vs 60/hr unauth).
+
+### H3. Python Cache / Socket Reuse / Async Shutdown
+
+**Phase:** P4-Restart
+
+**Prevention:**
+1. Isolated `__pycache__/` per release dir (blue-green solves automatically).
+2. Rollback explicitly: `find <old_release>/src -name '__pycache__' -exec rm -rf {} +`, then recompile.
+3. Verify pymodbus server binds with `SO_REUSEADDR` (grep codebase, add if missing).
+4. SIGTERM handler → `asyncio.get_event_loop().create_task(graceful_shutdown())`.
+5. `TimeoutStopSec=15` gives asyncio time to drain.
+
+### H4. Config Schema Forward/Backward Compatibility — CRITICAL PREREQ
+
+**Phase:** P6-Safety, P4-Restart
+
+**What goes wrong:** v8.0 adds `updates:` section. User enables auto-updates. v8.0 bug → rollback to v7.1. v7.1's strict dataclass loader raises `TypeError: unexpected keyword argument 'updates'`. Service won't start. **Rollback itself triggers lockout.**
+
+**Prevention:**
+1. **Config loader MUST tolerate unknown keys.** Verify `src/pv_inverter_proxy/config.py` — if it crashes on unknown keys, ship **v7.1.x compat prep release** BEFORE v8.0 that adds tolerance. Users must upgrade to v7.1.x before v8.0. This is effectively a v8.0 prerequisite.
+2. **`config_version: N` field** at top of config.yaml. Loader warns if > supported, errors if < min.
+3. **Config auto-backup on update** — `config-<version>-<timestamp>.yaml.bak`. Rollback restores matching backup.
+4. **Config migrations in code** — forward migration on startup. Inverse migration or backup restore on rollback.
+5. **Rule:** never REMOVE a config field without 2 releases deprecation. Never REQUIRE a new field without a default.
+
+### H5. Health Check Must Cover Modbus Layer
+
+**Phase:** P4-Restart
+
+**What goes wrong:** Tempting: `/api/health` returns 200 if webapp is up. But poller crash doesn't crash webapp → health returns ok → helper declares success → broken update stays. Silent bad update.
+
+**Prevention:**
+1. **Rich `/api/health`:**
+   ```json
+   {
+     "webapp": "ok",
+     "version": "8.0.0",
+     "commit": "def5678",
+     "modbus_server": "ok",
+     "devices": {"se30k": "ok"},
+     "venus_os": "ok",
+     "uptime_s": 42
+   }
+   ```
+   Any component ≠ "ok" → degraded → helper counts as failure.
+2. **Distinguish startup vs steady-state** — first 30s returns `starting`, not failure. Helper timeout 90s for full startup.
+3. **N successful reads before declaring success** — 3 consecutive ok over 15s.
+4. **Rollback on any single failed** — better false-positive than leaving broken release.
+5. Include `version` + `commit` so helper asserts it's reading the NEW process.
+
+### H6. Scheduler Races User-Initiated Update
+
+**Phase:** P5-UI, P6-Safety
+
+**Prevention:**
+1. **Singleton lock file** — `flock(LOCK_EX|LOCK_NB)` on `/run/pv-inverter-proxy-updater/lock`. Second attempt returns `update_in_progress`.
+2. **Webapp state machine** — states: `idle|checking|downloading|installing|restarting|verifying|success|failed|rolled_back`. UI disables buttons when state ≠ idle.
+3. **Scheduler defers when user is active** — if WebSocket client connected, postpone auto-check by 1h.
+4. **Auto-install default OFF** — scheduler only surfaces badge, user clicks Install. Opt-in toggle `updates.auto_install: false`.
+
+### H7. Git Working Tree Dirty on First Upgrade
+
+**Phase:** P1-Layout
+
+**What goes wrong:** User edited a file in `/opt/pv-inverter-proxy/` on LXC. Next update `git reset --hard` silently obliterates it, or `git pull` fails with conflict.
+
+**Prevention:**
+1. **One-time migration on first v8.0 run** — detect old layout (no symlink), check `git status --porcelain`. If dirty, refuse migration with clear banner showing diff. Otherwise copy tree to release dir, create symlink, verify, remove old dir.
+2. Document migration in v8.0 release notes.
+
+### H8. Disk Space Exhaustion Mid-Install
+
+**Phase:** P6-Safety
+
+**Prevention:**
+1. **Pre-flight `df`** — verify ≥500 MB free on /opt and /var/cache before download.
+2. **Retention policy** — keep max 3 release dirs (configurable `updates.keep_releases: 3`). On successful update, delete Nth-oldest (not current, not previous).
+3. **`PIP_CACHE_DIR=/var/cache/pv-proxy/pip`** — outside venv, shared across releases.
+4. **Emergency cleanup mode** — if < 200MB free, offer to delete all non-current releases + pip cache as pre-update recovery.
 
 ---
 
-### Pitfall 4: No DC Values from Shelly -- Aggregation Register Gaps
+## MEDIUM
 
-**What goes wrong:** Shelly devices measure AC power only (they sit between a wall socket and a load/micro-inverter). They have zero DC data (no DC voltage, DC current, DC power). The existing `AggregationLayer.recalculate()` averages DC voltage across ALL devices by dividing by `n` (total device count). Shelly contributing 0V DC drags down the average.
+### M1. Rollback Infinite Loop
 
-**Why it happens:** In `aggregation.py` line ~203, `avg_keys` includes `dc_voltage_v`. The average divides by `n = len(decoded_list)` which counts all devices, including those with zero DC.
+**Phase:** P4-Restart
 
-**Consequences:**
-- DC voltage average drops: with 1 SolarEdge at 600V DC and 1 Shelly at 0V DC, average becomes 300V -- wrong
-- Venus OS dashboard shows misleading DC values
-- If any code divides by DC voltage to compute efficiency, results are halved or worse
-- DC current sum is also wrong if Shelly contributes 0 rather than "not applicable"
+**What goes wrong:** v8.0 fails health → rollback to v7.1 → v7.1 also fails (shared dep broken by manual install, or H4 config issue) → loop.
 
 **Prevention:**
-- Shelly plugin MUST set DC registers to SunSpec "not implemented" values (`0x8000` for int16, `0xFFFF` for uint16) rather than zero. The existing `decode_model_103_to_physical()` already converts `0x8000`/`0xFFFF` to 0.0, but the averaging must be fixed.
-- Fix `AggregationLayer.recalculate()`: for DC voltage averaging, only count devices where `dc_power_w > 0`. This is a one-line fix but critical.
-- Alternative: change DC voltage aggregation from simple average to power-weighted average (which naturally excludes zero-power devices). This is already how OpenDTU computes its own DC voltage.
+1. **Max 1 rollback per update attempt.** If rolled-back version fails health, helper writes CRITICAL state, stops, keeps rolled-back symlink. Red banner in webapp: "Multiple health check failures — manual intervention required."
+2. Never auto-rollback further than 1 release. Multi-hop is manual only.
 
-**Detection:** Venus OS shows lower-than-expected DC voltage after adding a Shelly device.
+### M2. Clock Skew Breaks TLS
 
-**Phase:** Plugin implementation phase (register encoding) + aggregation fix in the same phase.
+**Phase:** P3-Pipeline
+
+**Prevention:**
+1. Pre-flight time check — call `https://api.github.com/zen`, compare `Date:` header to local clock. Skew > 60s → warning, > 1h → refuse update.
+2. Install step installs `systemd-timesyncd` if missing.
+3. Log NTP sync status in `/api/health`.
+
+### M3. Journal Log Pollution
+
+**Phase:** P5-UI, P6-Safety
+
+**Prevention:**
+1. `SyslogIdentifier=pv-inverter-proxy-updater` distinct from main service.
+2. Structured logging — one JSON line per attempt with `{attempt_id, from, to, outcome, duration_ms}`.
+3. `LogRateLimitIntervalSec=30 LogRateLimitBurst=10` on helper unit.
+
+### M4. Update During Night Mode State Transition
+
+**Phase:** P4-Restart
+
+**Prevention:**
+1. Persist night-mode state in `/etc/pv-inverter-proxy/state.json`. Restore on boot.
+2. Delay auto-updates to quiet hours by default (`updates.auto_install_window: "03:00-04:00"`).
+
+### M5. Version Source-of-Truth Drift
+
+**Phase:** P3-Pipeline, P5-UI
+
+**Prevention:**
+1. **Single source of truth:** git tag. Build step writes `src/pv_inverter_proxy/_version.py` using `git describe --tags --always`.
+2. CI check that tag matches `pyproject.toml version`.
+3. Footer shows BOTH version string AND short commit hash.
+
+### M6. Helper Trigger File Injection
+
+**Phase:** P2-Helper, P6-Safety
+
+**Prevention:**
+1. tmpfiles.d creates `/run/pv-inverter-proxy-updater/` with mode 0750, owner `pv-proxy:root`.
+2. Strict JSON schema validation — reject extra fields. `release_tag` regex `^v\d+\.\d+\.\d+$`.
+3. Helper validates `sha256` BEFORE downloading — webapp must prove it got hash from release manifest, pass in trigger.
 
 ---
 
-## Moderate Pitfalls
+## LOW
 
-### Pitfall 5: Watt-Minute Energy Counter Overflow and Reset
-
-**What goes wrong:** Gen1 Shelly energy counter (`meters[0].total`) is in Watt-minutes and is a cumulative counter that resets to 0 on device reboot/power cycle. Gen2 `aenergy.total` is in Watt-hours and also resets on reboot. If the proxy uses the raw counter value for aggregated `energy_total_wh`, a Shelly reboot causes the aggregated energy total to jump backward, which Venus OS may interpret as negative production.
-
-**Prevention:**
-- Track `_last_energy_raw` per-device. If new value < last value, a reset occurred. Maintain an offset: `corrected = current + accumulated_offset`.
-- Convert Gen1 Watt-minutes to Wh immediately at parse time: `energy_wh = total_wm / 60.0`
-- Gen2: use `aenergy.total` directly (already Wh).
-- The proxy uses in-memory tracking only (no persistent DB), so a proxy restart also loses the offset. This is acceptable -- the existing OpenDTU plugin has the same behavior. Document as a known limitation.
-
-### Pitfall 6: Shelly Auth Differences Break Connection
-
-**What goes wrong:** Gen1 uses HTTP Basic Auth. Gen2 uses Digest Auth with SHA-256. Using the wrong auth scheme causes silent 401 failures.
-
-**Prevention:**
-- Gen1 profile: `aiohttp.BasicAuth(user, password)` on the session (already used by OpenDTU plugin)
-- Gen2 profile: `aiohttp` does NOT natively support Digest Auth. Options:
-  1. Use `aiohttp-digestauth` package (adds a dependency)
-  2. Skip auth entirely if `auth_en: false` (detectable from `/shelly` response at detection time)
-- **Pragmatic approach:** Most Shelly devices in a home LAN have auth disabled by default. Store `auth_enabled: bool` in config during detection. If auth is disabled, skip it entirely. Only implement auth support if a user actually needs it -- and document this limitation.
-- For MVP: support auth-disabled Shelly devices only. This covers the vast majority of home setups.
-
-### Pitfall 7: Firmware OTA Update Makes Device Disappear
-
-**What goes wrong:** Shelly auto-update is ON by default. When firmware updates, the device reboots and is unreachable for 30-60 seconds. The proxy's `ConnectionManager` triggers backoff, poll failures accumulate, and the device may be marked as offline in the UI for several minutes.
-
-**Prevention:**
-- The existing `ConnectionManager` backoff pattern already handles transient failures. No special case needed.
-- Do NOT trigger alarming UI states (red dot, error toast) for short outages. The existing connection state machine (CONNECTING -> CONNECTED -> DISCONNECTED) handles this naturally -- the dot goes orange during backoff.
-- Poll failures during OTA should log at DEBUG level for the first 90 seconds, WARNING only after that. The ConnectionManager's exponential backoff already spaces out retries.
-- Do NOT try to detect OTA state via API -- it adds complexity for marginal benefit. The device will come back on its own.
-
-### Pitfall 8: Shelly Has No Night Mode Equivalent
-
-**What goes wrong:** Real inverters go offline at night (no solar production, device enters sleep mode). The proxy has a Night Mode state machine that detects prolonged poll failures and serves synthetic zero-power registers. A Shelly Plug monitoring a micro-inverter stays powered 24/7 -- it successfully reports 0W at night but never goes "offline." If night mode logic checks whether ALL devices have consecutive failures, the always-online Shelly prevents night mode from triggering.
-
-**Prevention:**
-- Night mode should NOT count Shelly poll failures/successes. Night mode is about inverter sleep state, not power meter availability.
-- The Shelly correctly reports 0W at night. The aggregated power becomes 0W. This is the desired behavior -- no special handling needed.
-- If night mode is triggered by consecutive poll failures (not by power level), exclude Shelly-type devices from the failure count. Only SolarEdge and OpenDTU devices should trigger night mode.
-- Simplest fix: night mode checks `entry.type` and ignores non-inverter types.
-
-### Pitfall 9: Switch State Feedback Lag
-
-**What goes wrong:** After sending `Switch.Set?id=0&on=false` (Gen2) or `relay/0?turn=off` (Gen1), the next poll may still show the old state. Mechanical relay delay is ~10-20ms, but the HTTP round-trip plus the next poll interval (5s) means the UI shows stale state for up to 5 seconds after a switch command.
-
-**Prevention:**
-- After a switch command, set an optimistic local state immediately in the UI (JavaScript side).
-- On the backend, set a `_switch_pending` flag with timestamp. During the pending window (5 seconds), override the polled relay state with the commanded state in the snapshot.
-- Clear the pending flag once the polled state matches the commanded state.
-- This mirrors the dead-time guard pattern already used in `OpenDTUPlugin.write_power_limit()`.
-
-### Pitfall 10: Shelly Plug with No Power Monitoring
-
-**What goes wrong:** Not all Shelly models have power metering. Shelly 1 (no PM variant) is a pure relay -- no power, no energy, no temperature data. If a user adds a Shelly 1 (non-PM), the plugin tries to parse power fields that do not exist, and the aggregation layer receives zeroes that dilute the average.
-
-**Prevention:**
-- During auto-detection, check the device type/model. Gen1 `type` field: `SHPLG-S` (Plug S, has PM), `SHSW-1` (Shelly 1, no PM), `SHSW-PM` (Shelly 1PM, has PM). Gen2 model field identifies PM variants.
-- If the device has no power metering, either reject it at add-device time with a clear message ("This Shelly model does not have power metering and cannot be used as a PV monitor"), or allow it but mark it as relay-only in the UI.
-- For MVP: only support PM-capable models. Reject non-PM devices at detection with a helpful error message listing supported models.
+- **L1. Browser tab stale after update** — WS reconnect polls `/api/version`; force `location.reload()` if changed.
+- **L2. importlib.resources caching** — document: updates ALWAYS require full process restart. No hot-reload.
+- **L3. GitHub API schema drift** — defensive parsing, warn in `/api/health` if parse fails.
+- **L4. Timezone in update log** — log in UTC, render in browser-local time.
 
 ---
 
-## Minor Pitfalls
+## Severity-Ranked Summary
 
-### Pitfall 11: Temperature Field Availability Varies by Model
-
-**What goes wrong:** Not all Shelly models report temperature. Shelly Plug S (Gen1) reports internal temperature. Shelly Plus Plug S (Gen2) reports `temperature.tC`. Some models have no temperature sensor at all. Assuming all Shellys have temperature leads to KeyError or None propagation.
-
-**Prevention:**
-- Always use `.get()` with defaults: `data.get("temperature", {}).get("tC", 0.0)` for Gen2.
-- For Gen1: temperature may be a top-level field `temperature` or absent. Default to 0.0.
-- Never crash on missing fields. The OpenDTU plugin already follows this defensive pattern -- copy it.
-
-### Pitfall 12: Multiple Switch Channels on Pro Devices
-
-**What goes wrong:** Shelly Pro 4PM has 4 independent relay channels, each with its own power meter. Shelly Plus 2PM has 2 channels. If the plugin assumes `switch_id=0`, it only reads one channel.
-
-**Prevention:**
-- Store `switch_id` (default: 0) in InverterEntry config for Shelly devices.
-- For multi-channel devices, each channel should be a separate device entry (one InverterEntry per channel, same host but different `switch_id`).
-- MVP: support single-channel devices only (Plug S, 1PM). Document multi-channel as future enhancement. The add-device flow should detect channel count and warn if >1 channel is found.
-
-### Pitfall 13: Shelly Discovery Collision with Existing Modbus Scanner
-
-**What goes wrong:** The existing scanner probes ports 502/1502 for SunSpec Modbus. Shelly devices do not speak Modbus. Trying to unify Shelly HTTP discovery with Modbus scanning creates unnecessary complexity.
-
-**Prevention:**
-- Shelly discovery is a completely separate flow from the Modbus scanner. Do NOT try to merge them.
-- The "Add Device" dialog should offer "Shelly" as a third option alongside SolarEdge/OpenDTU.
-- Shelly add-flow: user enters IP -> proxy calls `GET /shelly` -> auto-detects generation -> shows device info (model, MAC, firmware) for confirmation -> saves to config.
-- mDNS discovery (`_http._tcp` with `shelly*` hostname filter) is nice-to-have but NOT required for MVP. Manual IP entry is sufficient.
-
-### Pitfall 14: Polling Interval Too Aggressive for Embedded Devices
-
-**What goes wrong:** SolarEdge Modbus polls at 1-second intervals. Applying the same interval to Shelly HTTP API causes connection exhaustion on the embedded device (Gen1 devices have limited RAM/CPU) and excessive network traffic for minimal data freshness benefit.
-
-**Prevention:**
-- Default poll interval for Shelly: 5 seconds (matches OpenDTU default).
-- Gen1 devices: consider 10 seconds to be safe. Gen2+ can handle 5 seconds.
-- Use `aiohttp.ClientTimeout(total=8)` to avoid hanging connections on slow responses.
-- Reuse the `aiohttp.ClientSession` across polls (already done in OpenDTU plugin -- follow the same pattern).
+| # | Pitfall | Severity | Phase |
+|---|---------|----------|-------|
+| C1 | Bad commit lockout / StartLimit | BLOCKING | P1, P4 |
+| C2 | Privileged helper SPOF | BLOCKING | P2, P6 |
+| C3 | Modbus in-flight writes | BLOCKING | P4, P6 |
+| C4 | Dep install failure | BLOCKING | P3, P4 |
+| C5 | LAN webapp ACE surface | BLOCKING | P2, P5, P6 |
+| H1 | Permission drift | HIGH | P2, P3 |
+| H2 | Partial download | HIGH | P2, P3 |
+| H3 | Python cache / sockets | HIGH | P4 |
+| H4 | Config compat (v7.1.x prereq) | HIGH | P4, P6 |
+| H5 | Rich health check | HIGH | P4 |
+| H6 | Scheduler race | HIGH | P5, P6 |
+| H7 | Dirty git tree on first upgrade | HIGH | P1 |
+| H8 | Disk space | HIGH | P6 |
+| M1 | Rollback infinite loop | MEDIUM | P4 |
+| M2 | Clock skew TLS | MEDIUM | P3 |
+| M3 | Journal pollution | MEDIUM | P5, P6 |
+| M4 | Night mode restart | MEDIUM | P4 |
+| M5 | Version drift | MEDIUM | P3, P5 |
+| M6 | Trigger injection | MEDIUM | P2, P6 |
+| L1-L4 | Misc | LOW | P5 |
 
 ---
 
-## Phase-Specific Warnings
+## Must-Have Requirements Emerging From Pitfalls
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Plugin skeleton + profile pattern | Pitfall 1 (switch vs inverter), Pitfall 2 (Gen1/Gen2 API split) | Profile pattern from day one, `throttle_enabled=False` hardcoded, no-op `write_power_limit` |
-| Generation detection | Pitfall 3 (unreliable detection), Pitfall 10 (non-PM models) | Use `/shelly` only, check for PM capability, persist result |
-| Polling implementation | Pitfall 4 (no DC values), Pitfall 11 (missing fields), Pitfall 14 (poll interval) | SunSpec "not implemented" markers, defensive `.get()`, 5s interval |
-| Energy tracking | Pitfall 5 (Watt-minute conversion, counter reset) | Immediate unit conversion at parse, offset tracking for resets |
-| Aggregation integration | Pitfall 4 (DC averaging fix), Pitfall 8 (night mode) | Fix DC voltage averaging to exclude zero-DC devices, exclude Shelly from night mode |
-| Switch control UI | Pitfall 9 (feedback lag) | Optimistic UI state with pending flag |
-| Add-device flow | Pitfall 3 (detection), Pitfall 12 (multi-channel), Pitfall 13 (scanner collision) | Separate Shelly discovery, detect channel count, manual IP for MVP |
-| Auth handling | Pitfall 6 (Basic vs Digest) | Check `auth_en` at detection, skip auth if disabled, defer Digest Auth to post-MVP |
-| Firmware updates | Pitfall 7 (OTA reboot) | Rely on existing ConnectionManager backoff, no special handling |
+These should land in REQUIREMENTS.md:
+
+1. **Blue-green release layout with atomic symlink swap** (C1, C4, H1, H3)
+2. **Dedicated root helper via trigger file, NOT sudo/polkit** (C2, C5, M6)
+3. **Rich `/api/health` covering webapp + Modbus + devices + Venus OS** (H5, C1)
+4. **Out-of-process watchdog for health check + auto-rollback** (C1, H5, M1)
+5. **Modbus SlaveBusy maintenance mode with ≥3s drain before restart** (C3)
+6. **Persistent state file for power limit + night mode across restart** (C3, M4)
+7. **Tarball + SHA256SUMS from GitHub Releases — no main branch auto-install** (C5, H2)
+8. **Pre-flight checks: disk, clock skew, permissions, config compat** (H4, H8, M2)
+9. **Config loader tolerates unknown keys (v7.1.x compat prereq release)** (H4)
+10. **CSRF token + rate limit on update endpoints** (C5)
+11. **Boot-time recovery service** (C1)
+12. **Helper heartbeat surfaced in webapp UI** (C2)
+13. **systemd unit: StartLimitBurst=10, TimeoutStopSec=15, KillMode=mixed** (C1, H3)
+
+## Open Questions for Roadmap
+
+1. **Does Venus OS tolerate SlaveBusy responses without errors?** Needs empirical verification on live LXC. Early prototype spike recommended.
+2. **GPG signing optional or required?** Recommendation: optional in v8.0, required in v8.1.
+3. **Retention default:** 3 releases.
+4. **Auto-install default:** OFF.
+5. **Maximum auto-rollback distance:** 1 release.
 
 ## Sources
 
-- [Shelly Gen1 API Documentation](https://shelly-api-docs.shelly.cloud/gen1/)
-- [Shelly Gen2 API Documentation](https://shelly-api-docs.shelly.cloud/gen2/)
-- [Shelly Gen2 Switch Component](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch/)
-- [Shelly Gen1/Gen2/Gen3/Gen4 Comparison](https://support.shelly.cloud/en/support/solutions/articles/103000316073-comparison-of-shelly-gen1-gen2-gen3-and-gen4-devices)
-- [Shelly Negative Power / Measurement Direction](https://support.shelly.cloud/en/support/solutions/articles/103000316350-which-shelly-devices-can-measure-negative-power-for-returned-energy-)
-- [Shelly Power Meter Accuracy Discussion](https://community.home-assistant.io/t/accuracy-of-shelly-devices/778134)
-- [Shelly Gen1 vs Gen2 API Differences (Forum)](https://shelly-forum.com/thread/17721-difference-in-gen1-api-and-gen2/)
-- [Shelly Troubleshooting Inaccurate Measurements](https://support.shelly.cloud/en/support/solutions/articles/103000359876-troubleshooting-inaccurate-measurements-on-shelly-em-3em-devices)
-- Existing codebase: `plugin.py` (ABC), `plugins/opendtu.py` (REST plugin pattern), `aggregation.py` (DC averaging bug), `distributor.py` (waterfall + throttle_enabled), `config.py` (InverterEntry fields), `plugins/__init__.py` (plugin_factory)
+- systemd.service(5), systemd.exec(5) — training data, stable across versions
+- pymodbus Modbus exception 0x06 SlaveBusy semantics
+- GitHub Releases API, rate limits May 2025 changelog
+- Project files reviewed: PROJECT.md, config/pv-inverter-proxy.service, install.sh, deploy.sh, CLAUDE.md
