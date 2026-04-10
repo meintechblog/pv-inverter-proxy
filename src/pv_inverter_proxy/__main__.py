@@ -14,6 +14,7 @@ import sys
 import time
 from pathlib import Path
 
+import aiohttp
 import structlog
 from aiohttp import web
 
@@ -25,7 +26,11 @@ from pv_inverter_proxy.distributor import PowerLimitDistributor
 from pv_inverter_proxy.logging_config import configure_logging
 from pv_inverter_proxy.proxy import run_modbus_server
 from pv_inverter_proxy.mqtt_publisher import mqtt_publish_loop
-from pv_inverter_proxy.webapp import create_webapp
+from pv_inverter_proxy.releases import INSTALL_ROOT
+from pv_inverter_proxy.updater.github_client import GithubReleaseClient, ReleaseInfo
+from pv_inverter_proxy.updater.scheduler import UpdateCheckScheduler
+from pv_inverter_proxy.updater.version import Version, get_commit_hash, get_current_version
+from pv_inverter_proxy.webapp import broadcast_available_update, create_webapp
 
 
 HEARTBEAT_INTERVAL = 300  # 5 minutes
@@ -79,6 +84,117 @@ def _write_healthy_flag_once(app_ctx, logger) -> None:
         logger.warning("last_boot_success_write_failed", error=str(e))
     except Exception as e:  # pragma: no cover - belt and braces
         logger.warning("last_boot_success_unexpected_error", error=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Phase 44: Passive Version Badge — scheduler callback + WS probe
+# ---------------------------------------------------------------------------
+
+
+async def _on_update_available(
+    app_ctx: AppContext,
+    release: "ReleaseInfo | None",
+) -> None:
+    """Scheduler callback: version-compare, mutate AppContext, broadcast.
+
+    Module-level (not a closure) so tests can import it directly and drive
+    it with a fake AppContext. The scheduler's per-iteration exception
+    shield (CHECK-06) still wraps this call -- we do best-effort error
+    handling here so the UI state stays coherent, but never raise.
+
+    Contract:
+        - Always bumps ``app_ctx.update_last_check_at`` to time.time() so
+          the UI can show "last checked just now" even if the fetch was a
+          no-op.
+        - If ``release is None`` (fetch error / no release / prerelease
+          filtered), leave ``app_ctx.available_update`` UNCHANGED. A
+          transient network failure must not clear a previously-announced
+          update; the scheduler's own ``last_check_failed_at`` tracks the
+          failure and the next successful fetch will refresh state.
+        - If ``release`` is strictly newer than the current version, set
+          ``app_ctx.available_update`` to a plain-dict summary.
+        - If ``release`` is same-or-older, clear ``available_update`` so
+          the UI stops advertising a stale upgrade.
+        - Broadcast via ``broadcast_available_update(app_ctx.webapp)`` only
+          when the available_update dict actually changed (coarse-grained
+          equality check).
+    """
+    log = structlog.get_logger(component="updater.callback")
+
+    app_ctx.update_last_check_at = time.time()
+    previous = app_ctx.available_update
+
+    if release is not None:
+        try:
+            latest = Version.parse(release.tag_name)
+            current_str = app_ctx.current_version or "unknown"
+            if current_str == "unknown":
+                # Can't compare -- defensively show the release so the UI
+                # still offers an upgrade path.
+                is_newer = True
+            else:
+                try:
+                    current = Version.parse(current_str)
+                except ValueError:
+                    # Current version unparseable (e.g. dev build) -- defer
+                    # to UI: show the release as available.
+                    log.debug(
+                        "update_current_version_unparseable",
+                        current=current_str,
+                    )
+                    is_newer = True
+                else:
+                    is_newer = latest > current
+        except ValueError as e:
+            log.warning(
+                "update_version_parse_failed",
+                latest=release.tag_name,
+                current=app_ctx.current_version,
+                error=str(e),
+            )
+            is_newer = False
+
+        if is_newer:
+            app_ctx.available_update = {
+                "latest_version": release.tag_name,
+                "tag_name": release.tag_name,
+                "release_notes": release.body,
+                "published_at": release.published_at,
+                "html_url": release.html_url,
+            }
+            log.info(
+                "update_available",
+                current=app_ctx.current_version,
+                latest=release.tag_name,
+            )
+        else:
+            app_ctx.available_update = None
+
+    # Only broadcast when something user-visible changed.
+    if app_ctx.available_update != previous and app_ctx.webapp is not None:
+        try:
+            await broadcast_available_update(app_ctx.webapp)
+        except Exception as e:  # pragma: no cover - defensive
+            log.warning("update_broadcast_failed", error=str(e))
+
+
+def _has_active_ws_client(app_ctx: AppContext) -> bool:
+    """CHECK-07: return True iff a WebSocket client is currently connected.
+
+    Module-level for testability. The scheduler receives a zero-arg
+    ``Callable[[], bool]`` so ``run_with_shutdown`` wraps this in a tiny
+    closure that binds ``app_ctx``.
+    """
+    app = app_ctx.webapp
+    if app is None:
+        return False
+    clients = app.get("ws_clients")
+    if not clients:
+        return False
+    try:
+        return len(clients) > 0
+    except TypeError:  # pragma: no cover - defensive
+        return False
 
 
 def main():
@@ -198,6 +314,22 @@ def main():
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, handle_signal, sig)
 
+        # Phase 44 CHECK-01: Resolve current version + commit ONCE at
+        # startup and cache on AppContext. subprocess is run once here to
+        # avoid repeated forks on every /api/update/available request.
+        try:
+            app_ctx.current_version = get_current_version()
+            app_ctx.current_commit = get_commit_hash(INSTALL_ROOT)
+            log.info(
+                "version_resolved",
+                version=app_ctx.current_version,
+                commit=app_ctx.current_commit or "unknown",
+            )
+        except Exception as e:
+            log.warning("version_resolution_failed", error=str(e))
+            app_ctx.current_version = "unknown"
+            app_ctx.current_commit = None
+
         # Create Modbus server infrastructure (no plugin needed)
         cache, control_state, server, server_task, slave_ctx = await run_modbus_server(
             host=config.proxy.host,
@@ -314,18 +446,59 @@ def main():
         # Start health heartbeat task
         heartbeat_task = asyncio.create_task(_health_heartbeat(app_ctx))
 
+        # Phase 44 CHECK-02/03/07: Start GitHub update check scheduler.
+        # Single shared aiohttp.ClientSession — do not create one per
+        # request. The session lives for the whole process and is closed
+        # in the graceful-shutdown block below.
+        update_http_session = aiohttp.ClientSession(
+            headers={
+                "User-Agent": (
+                    "pv-inverter-proxy/8.0 "
+                    "(github.com/meintechblog/pv-inverter-master)"
+                )
+            }
+        )
+        update_github_client = GithubReleaseClient(session=update_http_session)
+
+        async def _update_cb(release):
+            await _on_update_available(app_ctx, release)
+
+        def _update_active_probe() -> bool:
+            return _has_active_ws_client(app_ctx)
+
+        update_scheduler = UpdateCheckScheduler(
+            github_client=update_github_client,
+            on_update_available=_update_cb,
+            has_active_websocket_client=_update_active_probe,
+        )
+        update_scheduler_task = update_scheduler.start()
+        log.info("update_scheduler_started")
+
         # Wait for shutdown signal
         await app_ctx.shutdown_event.wait()
 
         log.info("graceful_shutdown_starting")
 
-        # Cancel periodic tasks
-        for task in (heartbeat_task, device_list_task, healthy_flag_task):
+        # Cancel periodic tasks (Phase 44: include update_scheduler_task)
+        for task in (
+            heartbeat_task,
+            device_list_task,
+            healthy_flag_task,
+            update_scheduler_task,
+        ):
             task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
                 pass
+
+        # Phase 44: close the shared aiohttp session used by the update
+        # scheduler. Best-effort; failures here must not block shutdown.
+        try:
+            await update_http_session.close()
+            log.info("update_http_session_closed")
+        except Exception as e:  # pragma: no cover - defensive
+            log.warning("update_http_session_close_failed", error=str(e))
 
         # Stop MQTT publisher
         if app_ctx.mqtt_pub_task is not None:
