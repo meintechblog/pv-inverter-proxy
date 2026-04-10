@@ -64,10 +64,10 @@ Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem 
 
 ### Health Check & Rollback (HEALTH-xx)
 
-- [ ] **HEALTH-01**: `GET /api/health` liefert JSON mit `{status, version, commit, uptime_seconds, webapp, modbus_server, devices, venus_os}`; jede Komponente ist `ok | starting | degraded | failed`
-- [ ] **HEALTH-02**: Required-Health-Kriterien fuer Update-Erfolg: `webapp=ok`, `modbus_server=ok`, mindestens 1 Device in `devices` mit `ok` (hat erfolgreichen Poll produziert)
-- [ ] **HEALTH-03**: Warn-Only (kein Rollback-Trigger): `venus_os` MQTT noch nicht connected — MQTT-Reconnect kann laenger dauern und sollte Update-Erfolg nicht blockieren
-- [ ] **HEALTH-04**: Main-Service schreibt `/run/pv-inverter-proxy/healthy` (tmpfs, via `RuntimeDirectory`) sobald DeviceRegistry ersten erfolgreichen Poll abgeschlossen hat
+- [x] **HEALTH-01**: `GET /api/health` liefert JSON mit `{status, version, commit, uptime_seconds, webapp, modbus_server, devices, venus_os}`; jede Komponente ist `ok | starting | degraded | failed`
+- [x] **HEALTH-02**: Required-Health-Kriterien fuer Update-Erfolg: `webapp=ok`, `modbus_server=ok`, mindestens 1 Device in `devices` mit `ok` (hat erfolgreichen Poll produziert)
+- [x] **HEALTH-03**: Warn-Only (kein Rollback-Trigger): `venus_os` MQTT noch nicht connected — MQTT-Reconnect kann laenger dauern und sollte Update-Erfolg nicht blockieren
+- [x] **HEALTH-04**: Main-Service schreibt `/run/pv-inverter-proxy/healthy` (tmpfs, via `RuntimeDirectory`) sobald DeviceRegistry ersten erfolgreichen Poll abgeschlossen hat
 - [ ] **HEALTH-05**: Updater verlangt 3 aufeinanderfolgende erfolgreiche Health-Polls ueber 15 Sekunden (Stabilitaets-Check) bevor Update als erfolgreich markiert wird
 - [ ] **HEALTH-06**: Rollback-Trigger: `systemctl is-active` liefert `failed`, Version-Mismatch im Health-Response (alter Code laeuft noch), 5xx/unreachable > 45s, oder kein `healthy`-Flag nach 60s
 - [ ] **HEALTH-07**: Rollback-Mechanismus: Symlink zurueck auf vorheriges Release-Verzeichnis, `systemctl restart`, Health-Check gegen rolled-back Version
@@ -187,10 +187,10 @@ Requirements werden in Phasen gemappt vom gsd-roadmapper (ROADMAP.md).
 | RESTART-04 | Phase 45 | Pending |
 | RESTART-05 | Phase 45 | Pending |
 | RESTART-06 | Phase 45 | Pending |
-| HEALTH-01 | Phase 45 | Pending |
-| HEALTH-02 | Phase 45 | Pending |
-| HEALTH-03 | Phase 45 | Pending |
-| HEALTH-04 | Phase 45 | Pending |
+| HEALTH-01 | Phase 45 | Complete |
+| HEALTH-02 | Phase 45 | Complete |
+| HEALTH-03 | Phase 45 | Complete |
+| HEALTH-04 | Phase 45 | Complete |
 | HEALTH-05 | Phase 45 | Pending |
 | HEALTH-06 | Phase 45 | Pending |
 | HEALTH-07 | Phase 45 | Pending |
