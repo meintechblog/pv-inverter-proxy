@@ -31,6 +31,10 @@ var _scanRunning = false;
 var _autoScanDone = false;
 var _configuredInverters = [];
 
+// ===== Phase 44 CHECK-01/04: version footer + update badge state =====
+// Shape: {current_version, current_commit, available_update, last_check_at, last_check_failed_at}
+var _availableUpdateState = null;
+
 // ===== Animation Guards =====
 var prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 var entranceAnimated = false;
@@ -122,8 +126,117 @@ function renderSidebar(devices) {
         container.appendChild(createSidebarGroup('MQTT PUBLISH', [mqttPubDevice]));
     }
 
+    // Phase 44 CHECK-04: SYSTEM group with Software entry (only when update available)
+    if (_availableUpdateState && _availableUpdateState.available_update) {
+        container.appendChild(createSystemSidebarGroup(_availableUpdateState.available_update));
+    }
+
     // Update active highlight
     highlightActiveSidebar();
+}
+
+// ===== Phase 44: Available Update handler =====
+
+function handleAvailableUpdate(data) {
+    _availableUpdateState = data || null;
+    renderVersionFooter();
+    // Re-render sidebar so the SYSTEM group can appear/disappear
+    renderSidebar();
+}
+
+function renderVersionFooter() {
+    var footer = document.getElementById('ve-version-footer');
+    if (!footer) return;
+    var textSpan = footer.querySelector('.ve-version-footer-text');
+    if (!textSpan) return;
+
+    if (!_availableUpdateState) {
+        textSpan.textContent = 'v\u2014';
+        footer.title = '';
+        footer.classList.remove('ve-version-footer--failed');
+        return;
+    }
+
+    var v = _availableUpdateState.current_version || 'unknown';
+    var c = _availableUpdateState.current_commit;
+    var text = 'v' + v;
+    if (c) {
+        text += ' (' + c + ')';
+    }
+    textSpan.textContent = text;
+
+    // CHECK-06 indicator: last_check_failed_at sets tooltip + orange color
+    // Only show failure state if it's newer than the last successful check
+    var failedAt = _availableUpdateState.last_check_failed_at;
+    var okAt = _availableUpdateState.last_check_at;
+    var showFailed = failedAt && (!okAt || failedAt > okAt);
+
+    if (showFailed) {
+        var whenFail = new Date(failedAt * 1000);
+        footer.title = 'Letzter Update-Check fehlgeschlagen: ' + whenFail.toLocaleTimeString();
+        footer.classList.add('ve-version-footer--failed');
+    } else if (okAt) {
+        var whenOk = new Date(okAt * 1000);
+        footer.title = 'Letzter Update-Check: ' + whenOk.toLocaleTimeString();
+        footer.classList.remove('ve-version-footer--failed');
+    } else {
+        footer.title = '';
+        footer.classList.remove('ve-version-footer--failed');
+    }
+}
+
+function createSystemSidebarGroup(availableUpdate) {
+    var group = document.createElement('div');
+    group.className = 've-sidebar-group';
+
+    var header = document.createElement('div');
+    header.className = 've-sidebar-group-header';
+    header.innerHTML = '<span>SYSTEM</span><span class="ve-sidebar-header-right"><span class="ve-chevron">&#9660;</span></span>';
+    header.addEventListener('click', function() {
+        var items = group.querySelector('.ve-sidebar-group-items');
+        var chevron = header.querySelector('.ve-chevron');
+        if (items.classList.contains('ve-sidebar-group-items--collapsed')) {
+            items.classList.remove('ve-sidebar-group-items--collapsed');
+            chevron.classList.remove('ve-chevron--collapsed');
+        } else {
+            items.classList.add('ve-sidebar-group-items--collapsed');
+            chevron.classList.add('ve-chevron--collapsed');
+        }
+    });
+    group.appendChild(header);
+
+    var itemsContainer = document.createElement('div');
+    itemsContainer.className = 've-sidebar-group-items';
+    itemsContainer.appendChild(createSoftwareSidebarEntry(availableUpdate));
+    group.appendChild(itemsContainer);
+    return group;
+}
+
+function createSoftwareSidebarEntry(availableUpdate) {
+    var entry = document.createElement('div');
+    entry.className = 've-sidebar-device ve-sidebar-device--system-with-update';
+
+    var tagName = availableUpdate.tag_name || availableUpdate.latest_version || '';
+    var publishedAt = availableUpdate.published_at || '';
+    var titleParts = ['Update available'];
+    if (tagName) titleParts.push(tagName);
+    if (publishedAt) titleParts.push(publishedAt);
+    entry.title = titleParts.join(' — ');
+
+    // Badge dot uses existing --ve-orange token via the CSS class selector above
+    var dotHtml = '<span class="ve-dot"></span>';
+
+    var linkHtml = '';
+    if (availableUpdate.html_url) {
+        linkHtml = '<a class="ve-sidebar-device-github-link" href="' + esc(availableUpdate.html_url) + '" target="_blank" rel="noopener">GitHub &rarr;</a>';
+    }
+
+    entry.innerHTML =
+        dotHtml +
+        '<span class="ve-sidebar-device-name">' + esc('Software') + '</span>' +
+        linkHtml;
+
+    return entry;
 }
 
 function createSidebarGroup(label, devices, showAddBtn) {
@@ -341,6 +454,7 @@ function connectWebSocket() {
                 updateMqttPubStats();
                 renderMqttTopicPreview();
             }
+            if (msg.type === 'available_update') handleAvailableUpdate(msg.data);
             if (msg.type === 'history') handleHistory(msg.data);
             if (msg.type === 'override_event') handleOverrideEvent(msg.data);
             if (msg.type === 'scan_progress') handleScanProgress(msg.data);
@@ -3032,6 +3146,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Start WebSocket
     connectWebSocket();
+
+    // Phase 44: initial version fetch fallback — WS push is the primary path,
+    // this only runs if WS hasn't delivered available_update within 2 seconds of page load.
+    setTimeout(function() {
+        if (_availableUpdateState === null) {
+            fetch('/api/update/available')
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                    if (data && _availableUpdateState === null) {
+                        handleAvailableUpdate(data);
+                    }
+                })
+                .catch(function() { /* silent */ });
+        }
+    }, 2000);
 
     // Config Export
     document.getElementById('btn-config-export').addEventListener('click', function() {

@@ -2540,3 +2540,45 @@ body {
     }
     .ve-dot--ok, .ve-dot--warn { animation: none; }
 }
+
+/* ===== Phase 44: Version footer (CHECK-01) + System sidebar group (CHECK-04) ===== */
+
+.ve-version-footer {
+    padding: 8px 16px;
+    font-size: 0.8rem;
+    color: var(--ve-text-dim);
+    border-top: 1px solid var(--ve-border);
+    background: var(--ve-bg-surface);
+    font-family: var(--ve-mono);
+    text-align: center;
+    user-select: text;
+}
+
+.ve-version-footer--failed {
+    color: var(--ve-orange);
+}
+
+.ve-version-footer-text {
+    display: inline-block;
+}
+
+/* System sidebar group (CHECK-04): reuses existing .ve-sidebar-group + .ve-sidebar-device
+   but the Software entry has an orange badge dot instead of a power reading. */
+.ve-sidebar-device--system-with-update .ve-dot {
+    background: var(--ve-orange);
+}
+
+.ve-sidebar-device-github-link {
+    margin-left: auto;
+    color: var(--ve-text-dim);
+    font-size: 0.75rem;
+    text-decoration: none;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color var(--ve-duration-fast) var(--ve-easing-default);
+}
+
+.ve-sidebar-device-github-link:hover {
+    color: var(--ve-blue-light);
+    text-decoration: underline;
+}
