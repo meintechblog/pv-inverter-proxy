@@ -10,7 +10,8 @@
 - v4.0 Multi-Source Virtual Inverter -- Phases 21-24 (shipped 2026-03-21)
 - v5.0 MQTT Data Publishing -- Phases 25-27 (shipped 2026-03-22)
 - v6.0 Shelly Plugin -- Phases 28-37 (shipped 2026-03-25)
-- v7.0 Sungrow SG-RT Plugin -- Phases 38-42 (in progress)
+- v7.0 Sungrow SG-RT Plugin -- Phases 38-42 (shipped 2026-04-10)
+- v8.0 Auto-Update System -- Phases 43-47 (in progress)
 
 ## Phases
 
@@ -115,88 +116,102 @@ Full details: `.planning/milestones/v6.0-ROADMAP.md`
 
 </details>
 
-### v7.0 Sungrow SG-RT Plugin (In Progress)
+<details>
+<summary>v7.0 Sungrow SG-RT Plugin (Phases 38-42) -- SHIPPED 2026-04-10</summary>
 
-**Milestone Goal:** Full-Stack Integration des Sungrow SG-RT Wechselrichters als vierter Inverter-Typ mit Modbus TCP Polling, SunSpec Encoding, 3-Phasen Dashboard, Power Limiting, Discovery und Throttle-Integration.
+- [x] Phase 38: Plugin Core (2/2 plans)
+- [x] Phase 39: Dashboard
+- [x] Phase 40: Add Device & Discovery
+- [x] Phase 41: Power Control
+- [x] Phase 42: Integration
 
-- [x] **Phase 38: Plugin Core** - Modbus TCP polling, SunSpec encoding, config entry, ThrottleCaps declaration (completed 2026-04-06)
-- [ ] **Phase 39: Dashboard** - Power gauge, 3-phase AC, MPPT DC channels, state card, register viewer
-- [ ] **Phase 40: Add Device & Discovery** - Type card, Modbus probe, network scan with Sungrow detection
-- [ ] **Phase 41: Power Control** - Write register research, write_power_limit, waterfall distributor integration
-- [ ] **Phase 42: Integration** - Aggregation wiring, MQTT publishing, config UI, E2E verification
+Full details: `.planning/milestones/v7.0-ROADMAP.md`
+
+</details>
+
+### v8.0 Auto-Update System (In Progress)
+
+**Milestone Goal:** Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem GitHub-Repo direkt aus der Webapp installieren, ohne SSH-Zugriff, mit automatischer Verfuegbarkeits-Pruefung, Backup, Health-Check und Rollback-Sicherheit.
+
+- [ ] **Phase 43: Blue-Green Layout + Boot Recovery** - Safety foundation: release directories, symlink layout, boot-time recovery hook, systemd hardening (no user-visible changes)
+- [ ] **Phase 44: Passive Version Badge** - First user-visible feature: GitHub API polling, version display, orange badge on "System" entry when update available
+- [ ] **Phase 45: Privileged Updater Service** - Root helper via path-unit + oneshot: trigger file protocol, git ops, backup, health check, rollback (CLI-only, no UI wiring)
+- [ ] **Phase 46: UI Wiring & End-to-End Flow** - Confirmation modal, progress view, WebSocket update stream, CSRF, rate limit, rollback button -- connects backend to browser
+- [ ] **Phase 47: Polish, Scheduler UI & Hardening** - Helper heartbeat banner, update history, scheduler settings UI, optional GPG verification, structured logging
 
 ## Phase Details
 
-### Phase 38: Plugin Core
-**Goal**: A working SungrowPlugin can connect to a Sungrow SG-RT inverter via Modbus TCP, poll all essential data, encode it as SunSpec registers, and declare its throttle capabilities
-**Depends on**: Phase 37 (v6.0 complete)
-**Requirements**: PLUG-01, PLUG-02, PLUG-03, PLUG-04
+### Phase 43: Blue-Green Layout + Boot Recovery
+**Goal**: The service runs from a versioned release directory behind an atomic symlink and can automatically recover from a bad boot, with zero user-visible UI changes — the safety foundation every subsequent update depends on
+**Depends on**: Phase 42 (v7.0 complete)
+**Requirements**: SAFETY-01, SAFETY-02, SAFETY-03, SAFETY-04, SAFETY-05, SAFETY-06, SAFETY-07, SAFETY-08, SAFETY-09
 **Success Criteria** (what must be TRUE):
-  1. SungrowPlugin implements the full InverterPlugin ABC and polls live data (AC power/voltage/current/frequency, DC MPPT1+MPPT2, temperature, energy counters, running state) from a Sungrow SG-RT at the configured interval
-  2. Polled data is encoded into SunSpec Model 103 registers identical to the pattern used by SolarEdge and OpenDTU plugins
-  3. User can change host/port/unit_id via reconfigure() without restarting the proxy
-  4. Plugin declares ThrottleCaps with proportional mode and ~2s Modbus response time, producing a valid throttle_score
-**Plans:** 2/2 plans complete
-Plans:
-- [x] 38-01-PLAN.md -- SungrowPlugin TDD: tests + implementation (Modbus TCP polling, SunSpec encoding, reconfigure, ThrottleCaps)
-- [x] 38-02-PLAN.md -- Plugin factory wiring (register sungrow type in plugin_factory)
+  1. The running service loads code from `/opt/pv-inverter-proxy-releases/<version>-<sha>/` via a `current` symlink; `/opt/pv-inverter-proxy` points at `releases/current`, and the first-boot migration has moved the existing flat tree into this layout without dirty-tree data loss
+  2. A dedicated `pv-inverter-proxy-recovery.service` runs as a oneshot before the main service on every boot, reads a PENDING marker, and flips the symlink back to the previous release if the last boot ended without a SUCCESS marker
+  3. The main systemd unit is hardened with `StartLimitBurst=10`, `StartLimitIntervalSec=120`, `TimeoutStopSec=15`, `KillMode=mixed`, and a `RuntimeDirectory=pv-inverter-proxy` tmpfs for the `/run/pv-inverter-proxy/healthy` flag
+  4. The `/var/lib/pv-inverter-proxy/backups/` directory exists with mode 2775 root:pv-proxy, a pre-flight disk-space check refuses updates below 500 MB free on `/opt` or `/var/cache`, and retention of at most 3 release directories is enforceable
+  5. The SE30K power-limit and night-mode state persist to `/etc/pv-inverter-proxy/state.json` across restarts and are restored on boot when still within `CommandTimeout/2`
+**Plans**: TBD
 
-### Phase 39: Dashboard
-**Goal**: Each Sungrow device has a full dashboard with power gauge, 3-phase AC table, dual MPPT DC channels, inverter state card, and register viewer
-**Depends on**: Phase 38
-**Requirements**: DASH-01, DASH-02, DASH-03, DASH-04, DASH-05
+### Phase 44: Passive Version Badge
+**Goal**: The webapp discovers new releases on GitHub on a schedule and shows the user a non-actionable badge plus the current version, validating the entire version-check pipeline before any update can be triggered
+**Depends on**: Phase 43
+**Requirements**: CHECK-01, CHECK-02, CHECK-03, CHECK-04, CHECK-05, CHECK-06, CHECK-07
 **Success Criteria** (what must be TRUE):
-  1. The Sungrow device dashboard shows a power gauge scaled to the device's rated power (8kW for SG8.0RT)
-  2. The 3-phase AC table displays L1/L2/L3 voltage, current, and power values updating in real-time
-  3. The DC section shows MPPT1 and MPPT2 channels with voltage, current, and power per tracker
-  4. The connection card displays inverter state (Run/Standby/Derating/Fault) and temperature
-  5. The register viewer shows all Sungrow registers with Sungrow-specific labels (wire addresses 5002-5037)
+  1. The webapp footer displays the current version and short commit hash sourced from `importlib.metadata.version`
+  2. Within one hour of a new GitHub Release being tagged, the sidebar "System" entry shows an orange `ve-dot` and `GET /api/update/available` returns the new `{current_version, latest_version, release_notes, published_at, tag_name}` payload
+  3. The background scheduler runs as an asyncio task in the main event loop, uses aiohttp with the required `User-Agent` and `Accept: application/vnd.github+json` headers, honors ETag caching, and defers checks by one hour when a WebSocket client is connected
+  4. GitHub unreachable, 5xx responses, and network errors never crash the scheduler — the UI surfaces a `last_check_failed_at` timestamp and logs a warning only
 **Plans**: TBD
 **UI hint**: yes
 
-### Phase 40: Add Device & Discovery
-**Goal**: Users can add Sungrow inverters through the webapp with Modbus probe validation, and discover Sungrow devices on the network
-**Depends on**: Phase 39
-**Requirements**: ADD-01, ADD-02, ADD-03
+### Phase 45: Privileged Updater Service
+**Goal**: A CLI-only end-to-end update works: writing a trigger file causes a privileged helper to back up, extract a new release into its own venv, run health checks, and either mark success or automatically roll back — with the Modbus server entering maintenance mode before restart
+**Depends on**: Phase 43
+**Requirements**: EXEC-01, EXEC-02, EXEC-03, EXEC-04, EXEC-05, EXEC-06, EXEC-07, EXEC-08, EXEC-09, EXEC-10, RESTART-01, RESTART-02, RESTART-03, RESTART-04, RESTART-05, RESTART-06, HEALTH-01, HEALTH-02, HEALTH-03, HEALTH-04, HEALTH-05, HEALTH-06, HEALTH-07, HEALTH-08, HEALTH-09, SEC-05, SEC-06, SEC-07
 **Success Criteria** (what must be TRUE):
-  1. The add-device dialog shows "Sungrow" as a fourth option alongside SolarEdge, OpenDTU, and Shelly
-  2. After entering a Sungrow IP, the webapp probes the device via Modbus TCP and displays the detected device type code and serial number before confirming
-  3. The Discover button finds Sungrow inverters on the LAN by scanning port 502 and detecting Sungrow device type responses
+  1. Manually writing a valid trigger file to `/etc/pv-inverter-proxy/update-trigger.json` (atomic via `os.replace`) causes the `pv-inverter-proxy-updater.path`/`.service` pair to activate, the updater validates the target SHA is reachable from `origin/main`, matches `^v\d+\.\d+(\.\d+)?$`, and rejects any other input
+  2. A full successful update extracts the new release into a fresh `/opt/pv-inverter-proxy-releases/<version>-<sha>/` directory with its own isolated `.venv/`, runs `pip install --dry-run` preflight and real install, verifies SHA256SUMS, compiles bytecode, runs a smoke import plus config dry-run against the new code, and flips the symlink atomically before `systemctl restart`
+  3. Before every restart the main service enters maintenance mode — Modbus writes return exception 0x06 (`SlaveBusy`), in-flight transactions drain with a 3s grace, a `update_in_progress` WebSocket broadcast is sent, and the pymodbus server re-binds cleanly via `SO_REUSEADDR`
+  4. `GET /api/health` reports per-component status (webapp, modbus_server, devices, venus_os) and the updater requires three consecutive healthy probes over 15 seconds plus the `/run/pv-inverter-proxy/healthy` tmpfs flag before marking `phase=done`
+  5. A deliberately broken release triggers a single automatic rollback (symlink flip to previous release + restart + health re-check); a second failure is captured as `phase=rollback_failed` CRITICAL with the status file updated and the symlink left untouched for manual SSH recovery
+**Plans**: TBD
+
+### Phase 46: UI Wiring & End-to-End Flow
+**Goal**: A user with no SSH access can click "Install" in the webapp, watch live phase-by-phase progress, and see a success or failure toast — with CSRF protection, rate limiting, and concurrent-update guards in place
+**Depends on**: Phase 45
+**Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, UI-06, UI-07, UI-08, UI-09, SEC-01, SEC-02, SEC-03, SEC-04, CFG-02
+**Success Criteria** (what must be TRUE):
+  1. A new `#system/software` page shows current version + commit, last-check timestamp, a "Check now" button, and when an update is available a prominent card with release notes (rendered via a minimal Markdown subset) and an Install button
+  2. Clicking Install opens a confirmation modal (Cancel is default focus, no type-to-confirm), and confirming calls `POST /api/update/start` with a CSRF token — the endpoint returns HTTP 202 in under 100 ms, atomically writes the trigger file, and broadcasts WebSocket `update_progress` messages for every phase transition rendered as a checklist
+  3. The progress view drives a state machine that disables all update buttons while running, a success or failure toast reuses the existing v2.1 toast stacking system, and after a successful update the browser forces a reload when `/api/version` changes on WebSocket reconnect
+  4. Concurrent update attempts get HTTP 409, the second attempt within 60 seconds gets HTTP 429 with `Retry-After`, every request (accepted or rejected) is written to `/var/lib/pv-inverter-proxy/update-audit.log` with timestamp, source IP, user-agent, and outcome
+  5. A rollback button is visible for a bounded window after a successful update and from any history entry, triggers `POST /api/update/rollback`, and all update-related config fields are editable via the webapp with dirty-tracking Save/Cancel
 **Plans**: TBD
 **UI hint**: yes
 
-### Phase 41: Power Control
-**Goal**: Users can set a power limit (0-100%) on a Sungrow inverter, and the waterfall distributor includes Sungrow in its score-based throttle ordering
-**Depends on**: Phase 38
-**Requirements**: CTRL-01, CTRL-02
+### Phase 47: Polish, Scheduler UI & Hardening
+**Goal**: The v8.0 feature set is complete — update history is visible, a silent helper is loudly surfaced, scheduler and update config are hot-reloadable from the UI, and medium-severity hardening items land behind the working core flow
+**Depends on**: Phase 46
+**Requirements**: HELPER-01, HELPER-02, HELPER-03, HELPER-04, HELPER-05, HELPER-06, HIST-01, HIST-02, HIST-03, HIST-04, CFG-01, CFG-03
 **Success Criteria** (what must be TRUE):
-  1. The proxy can write a power limit percentage to the Sungrow inverter via Modbus holding registers and the inverter responds with actual derating
-  2. When auto-throttle is active, the Sungrow device participates in the score-based waterfall at its declared throttle_score position
-  3. Power limit changes are reflected in the device snapshot and visible on the dashboard within one poll cycle
-**Plans**: TBD
-
-### Phase 42: Integration
-**Goal**: Sungrow devices are fully wired into the virtual PV inverter ecosystem -- aggregation, MQTT publishing, and config UI all work seamlessly
-**Depends on**: Phase 39, Phase 40, Phase 41
-**Requirements**: CFG-01, CFG-02, CFG-03
-**Success Criteria** (what must be TRUE):
-  1. The Sungrow config form allows editing Host, Port, Unit ID, Rated Power, and Throttle Enabled with save-and-apply behavior
-  2. Sungrow AC and DC data flows into the virtual PV inverter aggregation and Venus OS shows the combined power including Sungrow contribution
-  3. MQTT publisher includes Sungrow device telemetry alongside SolarEdge, OpenDTU, and Shelly devices
-  4. End-to-end: adding a Sungrow device, seeing it on the dashboard, and verifying its data in Venus OS works without manual intervention
+  1. The `#system/software` page displays a history table of the last 20 updates with outcome badges (success/rolled_back/failed), expandable details, and rollback reason — backed by `/var/lib/pv-inverter-proxy/update-history.json` and `GET /api/update/history`
+  2. A helper heartbeat runs every 60 seconds and a red "Auto-Update helper not responding — SSH required" banner appears when the last heartbeat reply is older than 3 minutes; `install.sh` runs a `self-test` trigger at install time and fails loudly on plumbing problems
+  3. A new `update:` config section with documented defaults (`enabled: true`, `auto_install: false`, `check_interval_hours: 1`, `github_repo: ...`, `keep_releases: 3`, `allow_unsigned: true`) exists and changes take effect without a service restart via the same hot-reload pattern as VenusConfig
+  4. The updater emits one structured JSON log line per attempt with `{attempt_id, from_version, to_version, outcome, duration_ms, error?}` under `SyslogIdentifier=pv-inverter-proxy-updater`, and systemd rate-limits the helper journal at `LogRateLimitIntervalSec=30`, `LogRateLimitBurst=10`
 **Plans**: TBD
 **UI hint**: yes
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 38 -> 39 -> 40 -> 41 -> 42
-(Note: Phase 41 depends only on Phase 38, so it can run in parallel with 39/40 if desired)
+Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47
+(Note: Phase 44 depends only on Phase 43 and could run in parallel with Phase 45, but sequential execution is cleaner and safer.)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 38. Plugin Core | 2/2 | Complete    | 2026-04-06 |
-| 39. Dashboard | 0/? | Not started | - |
-| 40. Add Device & Discovery | 0/? | Not started | - |
-| 41. Power Control | 0/? | Not started | - |
-| 42. Integration | 0/? | Not started | - |
+| 43. Blue-Green Layout + Boot Recovery | 0/? | Not started | - |
+| 44. Passive Version Badge | 0/? | Not started | - |
+| 45. Privileged Updater Service | 0/? | Not started | - |
+| 46. UI Wiring & End-to-End Flow | 0/? | Not started | - |
+| 47. Polish, Scheduler UI & Hardening | 0/? | Not started | - |

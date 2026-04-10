@@ -155,16 +155,78 @@ Requirements werden in Phasen gemappt vom gsd-roadmapper (ROADMAP.md).
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| SAFETY-01..09 | TBD | - |
-| CHECK-01..07 | TBD | - |
-| EXEC-01..10 | TBD | - |
-| RESTART-01..06 | TBD | - |
-| HEALTH-01..09 | TBD | - |
-| UI-01..09 | TBD | - |
-| SEC-01..07 | TBD | - |
-| HELPER-01..06 | TBD | - |
-| HIST-01..04 | TBD | - |
-| CFG-01..03 | TBD | - |
+| SAFETY-01 | Phase 43 | Pending |
+| SAFETY-02 | Phase 43 | Pending |
+| SAFETY-03 | Phase 43 | Pending |
+| SAFETY-04 | Phase 43 | Pending |
+| SAFETY-05 | Phase 43 | Pending |
+| SAFETY-06 | Phase 43 | Pending |
+| SAFETY-07 | Phase 43 | Pending |
+| SAFETY-08 | Phase 43 | Pending |
+| SAFETY-09 | Phase 43 | Pending |
+| CHECK-01 | Phase 44 | Pending |
+| CHECK-02 | Phase 44 | Pending |
+| CHECK-03 | Phase 44 | Pending |
+| CHECK-04 | Phase 44 | Pending |
+| CHECK-05 | Phase 44 | Pending |
+| CHECK-06 | Phase 44 | Pending |
+| CHECK-07 | Phase 44 | Pending |
+| EXEC-01 | Phase 45 | Pending |
+| EXEC-02 | Phase 45 | Pending |
+| EXEC-03 | Phase 45 | Pending |
+| EXEC-04 | Phase 45 | Pending |
+| EXEC-05 | Phase 45 | Pending |
+| EXEC-06 | Phase 45 | Pending |
+| EXEC-07 | Phase 45 | Pending |
+| EXEC-08 | Phase 45 | Pending |
+| EXEC-09 | Phase 45 | Pending |
+| EXEC-10 | Phase 45 | Pending |
+| RESTART-01 | Phase 45 | Pending |
+| RESTART-02 | Phase 45 | Pending |
+| RESTART-03 | Phase 45 | Pending |
+| RESTART-04 | Phase 45 | Pending |
+| RESTART-05 | Phase 45 | Pending |
+| RESTART-06 | Phase 45 | Pending |
+| HEALTH-01 | Phase 45 | Pending |
+| HEALTH-02 | Phase 45 | Pending |
+| HEALTH-03 | Phase 45 | Pending |
+| HEALTH-04 | Phase 45 | Pending |
+| HEALTH-05 | Phase 45 | Pending |
+| HEALTH-06 | Phase 45 | Pending |
+| HEALTH-07 | Phase 45 | Pending |
+| HEALTH-08 | Phase 45 | Pending |
+| HEALTH-09 | Phase 45 | Pending |
+| SEC-05 | Phase 45 | Pending |
+| SEC-06 | Phase 45 | Pending |
+| SEC-07 | Phase 45 | Pending |
+| UI-01 | Phase 46 | Pending |
+| UI-02 | Phase 46 | Pending |
+| UI-03 | Phase 46 | Pending |
+| UI-04 | Phase 46 | Pending |
+| UI-05 | Phase 46 | Pending |
+| UI-06 | Phase 46 | Pending |
+| UI-07 | Phase 46 | Pending |
+| UI-08 | Phase 46 | Pending |
+| UI-09 | Phase 46 | Pending |
+| SEC-01 | Phase 46 | Pending |
+| SEC-02 | Phase 46 | Pending |
+| SEC-03 | Phase 46 | Pending |
+| SEC-04 | Phase 46 | Pending |
+| CFG-02 | Phase 46 | Pending |
+| HELPER-01 | Phase 47 | Pending |
+| HELPER-02 | Phase 47 | Pending |
+| HELPER-03 | Phase 47 | Pending |
+| HELPER-04 | Phase 47 | Pending |
+| HELPER-05 | Phase 47 | Pending |
+| HELPER-06 | Phase 47 | Pending |
+| HIST-01 | Phase 47 | Pending |
+| HIST-02 | Phase 47 | Pending |
+| HIST-03 | Phase 47 | Pending |
+| HIST-04 | Phase 47 | Pending |
+| CFG-01 | Phase 47 | Pending |
+| CFG-03 | Phase 47 | Pending |
+
+**Coverage:** 64/64 requirements mapped to exactly one phase (no orphans, no duplicates)
 
 ## Success Criteria
 

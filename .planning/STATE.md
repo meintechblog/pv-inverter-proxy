@@ -2,15 +2,20 @@
 gsd_state_version: 1.0
 milestone: v8.0
 milestone_name: Auto-Update System
-status: defining_requirements
-stopped_at: Milestone v8.0 started — gathering requirements
+status: planning
+stopped_at: Roadmap drafted — ready to plan Phase 43
 last_updated: "2026-04-10T12:00:00.000Z"
 last_activity: 2026-04-10
+current_position:
+  phase: 43
+  plan: null
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
+  total_requirements: 64
+  completed_requirements: 0
   percent: 0
 ---
 
@@ -21,16 +26,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Core value:** Venus OS muss alle PV-Inverter als einen virtuellen Fronius-Inverter erkennen und steuern koennen
-**Current focus:** Milestone v8.0 — Auto-Update System (defining requirements)
+**Current focus:** Milestone v8.0 — Auto-Update System (planning Phase 43)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 43 — Blue-Green Layout + Boot Recovery
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-10 — Milestone v8.0 started
+Status: Planning (roadmap complete, phase planning next)
+Last activity: 2026-04-10 — Roadmap drafted for v8.0 (5 phases, 64 requirements)
 
-Progress: [..........] 0%
+Progress: [..........] 0% (0/5 phases, 0/64 requirements)
 
 ## Performance Metrics
 
@@ -44,7 +49,8 @@ Progress: [..........] 0%
 - v4.0: 4 phases, 8 plans
 - v5.0: 3 phases, 6 plans
 - v6.0: 10 phases, 12 plans
-- v7.0: 1 formal phase (38) + ad-hoc polish commits
+- v7.0: 5 phases (38-42), shipped 2026-04-10
+- v8.0: 5 phases (43-47), planned
 
 ## Accumulated Context
 
@@ -54,6 +60,12 @@ Progress: [..........] 0%
 - [v6.0]: Scoring formula: proportional base=7, binary base=3, with response/cooldown/startup penalties
 - [v6.0->post]: Higher score = throttled first (fastest responders handle throttling)
 - [v7.0]: Per-device aggregate toggle independent of throttle_enabled — display + aggregation respect it, throttle distributor stays independent
+- [v8.0-research]: config.py already tolerates unknown keys (verified) — NO v7.1.x compat prep release needed
+- [v8.0-research]: Privilege model is path-unit + root helper, NOT polkit (systemd #22055 blocks polkit for nologin system users)
+- [v8.0-research]: Blue-green release layout with atomic symlink swap is the safety foundation — must land before any update-triggering phase
+- [v8.0-research]: Auto-install default OFF — scheduler only checks + shows badge, user clicks bewusst on Install
+- [v8.0-research]: Rollback distance is N-1 only (one release back); multi-hop via manual git checkout
+- [v8.0-research]: GPG signing is optional in v8.0 (`updates.allow_unsigned: true` default), required in v8.1
 
 ### Sungrow Reference
 
@@ -69,16 +81,32 @@ Progress: [..........] 0%
 - Config at /etc/pv-inverter-proxy/config.yaml (must be preserved across updates)
 - GitHub repo: github.com:meintechblog/pv-inverter-master
 - Target LXC: 192.168.3.191
-- Self-restart challenge: service cannot restart itself via systemctl as non-root
-- Rollback requirement: bad commit must not lock user out of webapp
+- Two-process trust boundary: main service (unprivileged) writes trigger file → path-unit activates root oneshot updater
+- Blue-green layout: `/opt/pv-inverter-proxy-releases/<version>-<sha>/` behind `current` symlink; rollback = symlink flip + restart
+- Health definition: webapp=ok, modbus_server=ok, >=1 device=ok required; MQTT/Venus OS warn-only
+
+### Research Flags (resolve during phase planning)
+
+- Phase 45: Venus OS tolerance of pymodbus exception 0x06 (`SlaveBusy`) during maintenance mode — needs empirical spike on live LXC before implementation
+- Phase 45: `/etc/pv-inverter-proxy/` per-file permissions — trigger file needs pv-proxy writable, status file needs root-only writable
+- Phase 47: GPG key distribution strategy — maintainer key publication, Debian toolchain, install.sh integration
+
+### Phase Summary (v8.0)
+
+| Phase | Name | Reqs | Depends On |
+|-------|------|------|------------|
+| 43 | Blue-Green Layout + Boot Recovery | 9 (SAFETY-01..09) | Phase 42 |
+| 44 | Passive Version Badge | 7 (CHECK-01..07) | Phase 43 |
+| 45 | Privileged Updater Service | 28 (EXEC/RESTART/HEALTH/SEC-05..07) | Phase 43 |
+| 46 | UI Wiring & End-to-End Flow | 14 (UI/SEC-01..04/CFG-02) | Phase 45 |
+| 47 | Polish, Scheduler UI & Hardening | 12 (HELPER/HIST/CFG-01/CFG-03) | Phase 46 |
 
 ### Blockers/Concerns
 
-- Root-privilege strategy for update helper: polkit rule, setuid helper, or separate privileged sidecar service — TBD in research
-- Health-check definition after restart: what counts as "healthy" enough to keep new version
+- None blocking — roadmap approved, Phase 43 ready for planning
 
 ## Session Continuity
 
 Last session: 2026-04-10
-Stopped at: Milestone v8.0 started — gathering requirements
-Resume point: Continue new-milestone workflow → research → requirements → roadmap
+Stopped at: Roadmap drafted — 5 phases, 64 requirements mapped
+Resume point: `/gsd-plan-phase 43` — plan Blue-Green Layout + Boot Recovery
