@@ -114,6 +114,32 @@ def get_current_version() -> str:
         return "unknown"
 
 
+def _read_commit_file_fallback() -> str | None:
+    """Read the short SHA from a packaged ``COMMIT`` file next to this module.
+
+    Phase 44 CHECK-01 fallback: on production LXC installs, ``.git/`` is
+    excluded from the rsync deploy, so ``git rev-parse`` cannot run. The
+    deploy script writes the committed short SHA into
+    ``src/pv_inverter_proxy/COMMIT`` right before the sync, and this
+    function reads it back at startup. Returns ``None`` when the file is
+    missing, empty, contains "unknown", or is unreadable. **Never raises.**
+    """
+    try:
+        commit_file = Path(__file__).resolve().parent.parent / "COMMIT"
+        if not commit_file.is_file():
+            return None
+        content = commit_file.read_text(encoding="utf-8").strip()
+        if not content or content == "unknown":
+            return None
+        # Accept only short-SHA-ish content (hex up to 40 chars).
+        if not all(c in "0123456789abcdefABCDEF" for c in content):
+            return None
+        return content[:7].lower()
+    except Exception as exc:  # pragma: no cover - defensive
+        log.debug("commit_file_read_error", error=str(exc))
+        return None
+
+
 def get_commit_hash(install_dir: Path | None = None) -> str | None:
     """Return the 7-char short SHA of ``install_dir``'s current HEAD.
 
@@ -122,6 +148,12 @@ def get_commit_hash(install_dir: Path | None = None) -> str | None:
     surface. Returns ``None`` on every failure mode — git missing, path
     missing, .git missing, non-zero exit, timeout, permission error —
     **never raises**.
+
+    When git lookup fails (e.g. on production LXC installs where ``.git/``
+    is excluded from the rsync deploy), falls back to reading a packaged
+    ``COMMIT`` file written by ``deploy.sh``. This ensures the version
+    footer can show a real commit SHA in production even without a git
+    checkout on the target host.
 
     Args:
         install_dir: Repository path. Defaults to ``/opt/pv-inverter-proxy``
@@ -141,22 +173,22 @@ def get_commit_hash(install_dir: Path | None = None) -> str | None:
         )
     except FileNotFoundError:
         log.debug("git_binary_missing", install_dir=str(target))
-        return None
+        return _read_commit_file_fallback()
     except subprocess.TimeoutExpired:
         log.debug("git_rev_parse_timeout", install_dir=str(target))
-        return None
+        return _read_commit_file_fallback()
     except OSError as exc:
         log.debug(
             "git_rev_parse_os_error", install_dir=str(target), error=str(exc)
         )
-        return None
+        return _read_commit_file_fallback()
     except Exception as exc:  # pragma: no cover - defensive catch-all
         log.debug(
             "git_rev_parse_unexpected",
             install_dir=str(target),
             error=str(exc),
         )
-        return None
+        return _read_commit_file_fallback()
 
     if result.returncode != 0:
         log.debug(
@@ -165,9 +197,9 @@ def get_commit_hash(install_dir: Path | None = None) -> str | None:
             returncode=result.returncode,
             stderr=(result.stderr or "").strip()[:200],
         )
-        return None
+        return _read_commit_file_fallback()
 
     sha = (result.stdout or "").strip()
     if not sha:
-        return None
+        return _read_commit_file_fallback()
     return sha[:7]

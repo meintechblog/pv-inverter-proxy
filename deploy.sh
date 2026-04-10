@@ -57,7 +57,16 @@ fi
 # (file pointer in git worktrees). Without the file exclude, a deploy from
 # a worktree would ship the dangling gitdir pointer to the LXC, breaking
 # install.sh migration's `git describe` call with a nosha/v0.0 fallback name.
-echo ">>> Syncing source code..."
+# Phase 44 CHECK-01: Capture short SHA from the dev-side git checkout into a
+# COMMIT file that ships with the sync. On the LXC, `.git/` is excluded for
+# size/security reasons, so `git rev-parse` cannot run there. The updater's
+# get_commit_hash() falls back to reading this file. We write it into the
+# source tree briefly, sync it, then remove it so the working tree stays clean.
+COMMIT_SHORT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+echo "$COMMIT_SHORT" > src/pv_inverter_proxy/COMMIT
+trap 'rm -f src/pv_inverter_proxy/COMMIT' EXIT
+
+echo ">>> Syncing source code (commit=$COMMIT_SHORT)..."
 rsync -avz --delete \
     --exclude '.git/' \
     --exclude '.git' \
