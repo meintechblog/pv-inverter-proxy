@@ -134,14 +134,21 @@ def select_releases_to_delete(
 ) -> list[Path]:
     """Return the release directories that are safe to delete.
 
-    Implements SAFETY-02 retention:
+    Implements SAFETY-02 retention with defense-in-depth:
 
-    * Always protects the directory pointed at by the ``current`` symlink
-      (belt-and-braces — even if the caller forgot to pass it in).
-    * Always protects every path in ``protect`` (Phase 45 will pass the
-      previous-release directory recorded in update-status.json).
-    * Retains the ``keep`` newest directories UNION the protected set.
+    * Retains the ``keep`` newest directories by mtime.
+    * Additionally always protects the directory pointed at by the
+      ``current`` symlink, even if it is not among the newest ``keep``
+      (e.g. just after a rollback where the older release is live).
+    * Additionally always protects every path in ``protect`` (Phase 45
+      will pass the previous-release directory recorded in
+      update-status.json).
     * ``keep < 1`` is coerced to ``1`` with a warning (never delete all).
+    * The retained set is the UNION of "top N newest" and all protected
+      paths.  This can exceed ``keep`` when protected dirs fall outside
+      the newest window — the safety posture is "never delete current
+      or previous", which takes precedence over the target retention
+      count.
 
     The caller is responsible for the actual ``shutil.rmtree`` — this
     function never touches the filesystem beyond stat/readlink.
@@ -161,7 +168,8 @@ def select_releases_to_delete(
         )
         effective_keep = 1
 
-    # Build protected set: explicit caller set + current symlink target
+    # Build protected set: explicit caller set + current symlink target.
+    # These are ALWAYS retained regardless of position in the mtime order.
     protected: set[Path] = set()
     for p in (protect or set()):
         try:
@@ -175,11 +183,11 @@ def select_releases_to_delete(
         except OSError:
             protected.add(current)
 
-    # Walk newest-first, retain until we hit the keep count
+    # Retained = {top N newest by mtime} ∪ {protected}.  Union semantics
+    # mean protected dirs outside the newest window increase the total
+    # retained count beyond `effective_keep` — this is intentional.
     retained: set[Path] = set(protected)
-    for d in all_dirs:
-        if len(retained) >= effective_keep:
-            break
+    for d in all_dirs[:effective_keep]:
         try:
             retained.add(d.resolve(strict=False))
         except OSError:
