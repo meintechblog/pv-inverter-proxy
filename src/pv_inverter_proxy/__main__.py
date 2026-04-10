@@ -12,6 +12,7 @@ import asyncio
 import signal
 import sys
 import time
+from pathlib import Path
 
 import structlog
 from aiohttp import web
@@ -28,6 +29,56 @@ from pv_inverter_proxy.webapp import create_webapp
 
 
 HEARTBEAT_INTERVAL = 300  # 5 minutes
+
+HEALTHY_FLAG_PATH = Path("/run/pv-inverter-proxy/healthy")
+LAST_BOOT_SUCCESS_MARKER_PATH = Path("/var/lib/pv-inverter-proxy/last-boot-success.marker")
+
+
+def _write_healthy_flag_once(app_ctx, logger) -> None:
+    """Write /run/pv-inverter-proxy/healthy and last-boot-success marker.
+
+    Best-effort. Errors logged but never raised (we don't want to crash the
+    service over a sentinel file). SAFETY-06 + SAFETY-04 companion write.
+
+    Order of operations:
+    1. Write the tmpfs /run/pv-inverter-proxy/healthy sentinel.
+    2. Set app_ctx.healthy_flag_written so this function becomes a no-op.
+    3. Write the persistent /var/lib/pv-inverter-proxy/last-boot-success.marker.
+    4. Clear any stale PENDING marker (we succeeded post-update).
+
+    Steps 3/4 are best-effort and do not gate step 1/2: if the tmpfs write
+    succeeds but the persistent write fails, we still consider "this boot"
+    healthy. The stale PENDING marker (if any) will just stick around
+    harmlessly until the next successful persistent write.
+    """
+    if app_ctx.healthy_flag_written:
+        return
+    try:
+        HEALTHY_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        HEALTHY_FLAG_PATH.touch(exist_ok=True)
+        app_ctx.healthy_flag_written = True
+        logger.info("healthy_flag_written", path=str(HEALTHY_FLAG_PATH))
+    except OSError as e:
+        logger.warning(
+            "healthy_flag_write_failed",
+            path=str(HEALTHY_FLAG_PATH),
+            error=str(e),
+        )
+        return
+    # Persistent last-boot-success + clear stale PENDING marker
+    try:
+        LAST_BOOT_SUCCESS_MARKER_PATH.parent.mkdir(parents=True, exist_ok=True)
+        LAST_BOOT_SUCCESS_MARKER_PATH.touch(exist_ok=True)
+        logger.info(
+            "last_boot_success_marker_written",
+            path=str(LAST_BOOT_SUCCESS_MARKER_PATH),
+        )
+        from pv_inverter_proxy.recovery import clear_pending_marker
+        clear_pending_marker()
+    except OSError as e:
+        logger.warning("last_boot_success_write_failed", error=str(e))
+    except Exception as e:  # pragma: no cover - belt and braces
+        logger.warning("last_boot_success_unexpected_error", error=str(e))
 
 
 def main():
@@ -55,6 +106,31 @@ def main():
         venus_host=config.venus.host or "(disabled)",
         log_level=config.log_level,
     )
+
+    # SAFETY-09: load persisted power-limit / night-mode state and log it.
+    # The actual boot-time restoration (re-issuing the Modbus write to SE30K)
+    # is deferred to Phase 45 where the full restart-safety flow lives. For
+    # Phase 43 we deliver the persistence infrastructure + a boot-time observable
+    # so Phase 45 can confirm the state file is being read correctly.
+    try:
+        from pv_inverter_proxy.state_file import load_state, is_power_limit_fresh
+        persisted = load_state()
+        if persisted.power_limit_pct is not None:
+            # 900s is a placeholder for the SE30K CommandTimeout register.
+            # Phase 45 will read the real value from register 0xF100 at startup.
+            fresh = is_power_limit_fresh(persisted, command_timeout_s=900.0)
+            log.info(
+                "persisted_state_loaded",
+                power_limit_pct=persisted.power_limit_pct,
+                power_limit_set_at=persisted.power_limit_set_at,
+                night_mode_active=persisted.night_mode_active,
+                fresh_within_timeout_half=fresh,
+                note="restoration wiring deferred to Phase 45",
+            )
+        else:
+            log.info("persisted_state_empty")
+    except Exception as e:
+        log.warning("persisted_state_load_failed", error=str(e))
 
     # Build typed application context
     app_ctx = AppContext()
@@ -212,6 +288,29 @@ def main():
 
         device_list_task = asyncio.create_task(_device_list_refresh(app_ctx))
 
+        async def _healthy_flag_watcher(ctx: AppContext):
+            """Write /run/pv-inverter-proxy/healthy on first successful poll.
+
+            Polls every 500ms for the first device to register a successful poll,
+            then writes the healthy flag (and the persistent last-boot-success
+            marker) exactly once, and exits. If shutdown fires before any poll
+            succeeds, the task exits without writing anything.
+            """
+            watcher_log = structlog.get_logger(component="healthy_flag")
+            while not ctx.shutdown_event.is_set():
+                try:
+                    await asyncio.wait_for(ctx.shutdown_event.wait(), timeout=0.5)
+                    return  # shutdown before first healthy poll
+                except asyncio.TimeoutError:
+                    pass
+                if any(
+                    ds.poll_counter["success"] > 0 for ds in ctx.devices.values()
+                ):
+                    _write_healthy_flag_once(ctx, watcher_log)
+                    return
+
+        healthy_flag_task = asyncio.create_task(_healthy_flag_watcher(app_ctx))
+
         # Start health heartbeat task
         heartbeat_task = asyncio.create_task(_health_heartbeat(app_ctx))
 
@@ -221,7 +320,7 @@ def main():
         log.info("graceful_shutdown_starting")
 
         # Cancel periodic tasks
-        for task in (heartbeat_task, device_list_task):
+        for task in (heartbeat_task, device_list_task, healthy_flag_task):
             task.cancel()
             try:
                 await task
