@@ -179,7 +179,7 @@ Full details: `.planning/milestones/v7.0-ROADMAP.md`
 - [x] 45-01-rich-health-endpoint-PLAN.md — Extend /api/health with per-component schema (HEALTH-01..04)
 - [x] 45-02-trigger-status-contracts-PLAN.md — updater/trigger.py + status.py + POST /api/update/start + install.sh file perms (EXEC-01, EXEC-02, SEC-07) ✓ 2026-04-10
 - [x] 45-03-updater-root-primitives-PLAN.md — updater_root package: git_ops, backup, gpg_verify, trigger_reader (EXEC-04, EXEC-05, EXEC-07, EXEC-10, SEC-05, SEC-06)
-- [ ] 45-04-updater-orchestrator-systemd-PLAN.md — runner state machine + healthcheck + systemd path/service units (EXEC-03, EXEC-06, EXEC-08, EXEC-09, RESTART-04, RESTART-05, HEALTH-05..09)
+- [x] 45-04-updater-orchestrator-systemd-PLAN.md — runner state machine + healthcheck + systemd path/service units (EXEC-03, EXEC-06, EXEC-08, EXEC-09, RESTART-04, RESTART-05, HEALTH-05..09)
 - [ ] 45-05-maintenance-mode-integration-PLAN.md — Venus OS SlaveBusy spike + maintenance mode + SO_REUSEADDR + SAFETY-09 wiring (RESTART-01, RESTART-02, RESTART-03, RESTART-06)
 
 ### Phase 46: UI Wiring & End-to-End Flow
@@ -217,6 +217,6 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47
 |-------|----------------|--------|-----------|
 | 43. Blue-Green Layout + Boot Recovery | 0/? | Not started | - |
 | 44. Passive Version Badge | 3/3 | Code-complete, pending human-verify | 2026-04-10 |
-| 45. Privileged Updater Service | 3/5 | In Progress|  |
+| 45. Privileged Updater Service | 4/5 | In Progress|  |
 | 46. UI Wiring & End-to-End Flow | 0/? | Not started | - |
 | 47. Polish, Scheduler UI & Hardening | 0/? | Not started | - |

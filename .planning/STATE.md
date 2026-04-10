@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v8.0
 milestone_name: Auto-Update System
 status: Ready for Plan 45-04 (systemd .service + .path units + runner state machine)
-stopped_at: Completed 45-03-updater-root-primitives-PLAN.md
-last_updated: "2026-04-10T21:30:26.147Z"
-last_activity: 2026-04-10 — Completed 45-03 updater_root primitives: git_ops, backup, trigger_reader, gpg_verify + AST-enforced trust boundary (84 tests passing)
+stopped_at: Completed 45-04-PLAN.md — updater orchestrator + systemd units + LXC E2E green
+last_updated: "2026-04-10T22:06:04.048Z"
+last_activity: "2026-04-10 — Completed 45-03 updater_root primitives: git_ops, backup, trigger_reader, gpg_verify + AST-enforced trust boundary (84 tests passing)"
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 12
-  completed_plans: 10
-  percent: 83
+  completed_plans: 11
+  percent: 92
 ---
 
 # Project State
@@ -81,6 +81,7 @@ Progress: [████████░░] 83% (2/5 phases, 10/12 plans)
 - [Phase 45]: updater_root trust boundary enforced via AST walk (not grep) to avoid docstring false positives
 - [Phase 45]: NonceDedupStore fails open on corruption (reprocess > permanent update lockout)
 - [Phase 45]: gpg_verify primitives dormant in v8.0 runner; EXEC-10 delivered via git SHA content hashing in 45-04
+- [Phase 45]: Introduced /run/pv-inverter-proxy-updater-active tmpfs flag so Phase 43 recovery skips rollback during updater-controlled restarts, preserving boot-time guarantee
 
 ### Sungrow Reference
 
@@ -120,6 +121,7 @@ Progress: [████████░░] 83% (2/5 phases, 10/12 plans)
 | Phase 44 P03 | ~7 min | 2 tasks + human-verify | 6 files |
 | Phase 45 P01 | 45m | 2 tasks | 4 files |
 | Phase 45 P03 | ~50m | 6 tasks | 10 files |
+| Phase 45 P04 | 3h | 9 tasks | 12 files |
 
 ### Blockers/Concerns
 
@@ -127,6 +129,6 @@ Progress: [████████░░] 83% (2/5 phases, 10/12 plans)
 
 ## Session Continuity
 
-Last session: 2026-04-10T21:30:26.144Z
-Stopped at: Completed 45-03-updater-root-primitives-PLAN.md
+Last session: 2026-04-10T22:06:03.964Z
+Stopped at: Completed 45-04-PLAN.md — updater orchestrator + systemd units + LXC E2E green
 Resume point: Execute 45-03 root-updater-path-unit plan

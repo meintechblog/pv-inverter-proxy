@@ -44,13 +44,13 @@ Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem 
 
 - [x] **EXEC-01**: `POST /api/update/start` liefert HTTP 202 mit `{update_id, status_url}` innerhalb <100ms und schreibt Trigger-File atomar (tempfile + `os.replace`) nach `/etc/pv-inverter-proxy/update-trigger.json`
 - [x] **EXEC-02**: Trigger-File-Schema enthaelt `{op, target_sha, requested_at, requested_by, nonce}`; nonce wird vom Updater gegen `/var/lib/pv-inverter-proxy/processed-nonces.json` (letzte 50) geprueft, Duplikate werden ignoriert
-- [ ] **EXEC-03**: Privilegierter Updater (`pv-inverter-proxy-updater.service`, `Type=oneshot`, `User=root`) wird via Path-Unit (`pv-inverter-proxy-updater.path`, `PathModified=/etc/.../update-trigger.json`) getriggert
+- [x] **EXEC-03**: Privilegierter Updater (`pv-inverter-proxy-updater.service`, `Type=oneshot`, `User=root`) wird via Path-Unit (`pv-inverter-proxy-updater.path`, `PathModified=/etc/.../update-trigger.json`) getriggert
 - [x] **EXEC-04**: Updater validiert `target_sha` gegen `refs/remotes/origin/main` via `git merge-base --is-ancestor`; SHAs ausserhalb der main-History werden abgelehnt (Security Root of Trust)
 - [x] **EXEC-05**: Updater erstellt Backup vor Update: venv-Tarball nach `/var/lib/pv-inverter-proxy/backups/venv-<timestamp>.tar.gz`, Kopie von `config.yaml`, Snapshot von `pyproject.toml`
-- [ ] **EXEC-06**: Neuer Release wird in neues Verzeichnis `/opt/pv-inverter-proxy-releases/<version>-<sha>/` extrahiert; `git clone --shared` oder tarball extract; neue isolierte `.venv/` wird dort erstellt und `pip install -e .` laeuft gegen den neuen venv (nicht den laufenden)
-- [ ] **EXEC-07**: Updater fuehrt `pip install --dry-run` als Pre-Flight aus und bricht ab falls neue Dependencies nicht beschaffbar (Netzwerkfehler, fehlende Build-Tools)
-- [ ] **EXEC-08**: Post-Install Smoke-Import: `<new_venv>/bin/python -c "import pv_inverter_proxy"` und ein Config-Dry-Run `load_config('/etc/pv-inverter-proxy/config.yaml')` laeuft gegen den neuen Code; bei Fehler Abbruch OHNE Symlink-Flip und OHNE Restart
-- [ ] **EXEC-09**: `python -m compileall -q <release>/src` wird nach Install ausgefuehrt (pre-compile pyc, vermeidet Runtime-Schreibversuche unter `ProtectSystem=strict`)
+- [x] **EXEC-06**: Neuer Release wird in neues Verzeichnis `/opt/pv-inverter-proxy-releases/<version>-<sha>/` extrahiert; `git clone --shared` oder tarball extract; neue isolierte `.venv/` wird dort erstellt und `pip install -e .` laeuft gegen den neuen venv (nicht den laufenden)
+- [x] **EXEC-07**: Updater fuehrt `pip install --dry-run` als Pre-Flight aus und bricht ab falls neue Dependencies nicht beschaffbar (Netzwerkfehler, fehlende Build-Tools)
+- [x] **EXEC-08**: Post-Install Smoke-Import: `<new_venv>/bin/python -c "import pv_inverter_proxy"` und ein Config-Dry-Run `load_config('/etc/pv-inverter-proxy/config.yaml')` laeuft gegen den neuen Code; bei Fehler Abbruch OHNE Symlink-Flip und OHNE Restart
+- [x] **EXEC-09**: `python -m compileall -q <release>/src` wird nach Install ausgefuehrt (pre-compile pyc, vermeidet Runtime-Schreibversuche unter `ProtectSystem=strict`)
 - [x] **EXEC-10**: Release-Integrity via Git-SHA-Validation: Updater verwendet `git fetch` + `git checkout --detach <target_sha>` statt Tarball-Download. Git-SHAs sind kryptografische Content-Hashes (SHA-1, Phase 47 upgrade auf SHA-256 via `git config extensions.objectFormat sha256`), d.h. `git merge-base --is-ancestor origin/main <target_sha>` ist die Integritaets- UND Authentizitaets-Pruefung in einem Schritt. Separate `SHA256SUMS`-Verifikation ist bei git-basiertem Install redundant. Optional GPG tag signature verification via `git tag -v` unter SEC-05 (Phase 45 optional, Phase 47 required)
 
 ### Restart Safety (RESTART-xx)
@@ -58,8 +58,8 @@ Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem 
 - [ ] **RESTART-01**: Vor jedem Restart: Main-Service geht in Maintenance-Mode (`app_ctx.maintenance_mode = True`), Modbus-Server antwortet auf Writes mit `SlaveBusy` (Exception Code 0x06), Reads weiter aus Cache
 - [ ] **RESTART-02**: Mindestens 3 Sekunden Drain-Zeit nach Maintenance-Mode (laenger als Venus OS Poll-Zyklus) bevor Prozess beendet wird; in-flight pymodbus-Transaktionen werden via `asyncio.wait_for(drain(), 2.0)` abgewartet
 - [ ] **RESTART-03**: Pre-Shutdown WebSocket-Broadcast `update_in_progress` an alle verbundenen Clients ("Update laeuft — Rekonnekt in ~10s") bevor Shutdown
-- [ ] **RESTART-04**: Updater fuehrt Symlink-Flip atomar aus (`ln -sfn <new_release> current.new && mv -T current.new current`), dann `systemctl restart pv-inverter-proxy.service`
-- [ ] **RESTART-05**: Updater ueberlebt Main-Service-Restart, polled `/api/health` und `/run/pv-inverter-proxy/healthy` nach Restart bis zu 60 Sekunden
+- [x] **RESTART-04**: Updater fuehrt Symlink-Flip atomar aus (`ln -sfn <new_release> current.new && mv -T current.new current`), dann `systemctl restart pv-inverter-proxy.service`
+- [x] **RESTART-05**: Updater ueberlebt Main-Service-Restart, polled `/api/health` und `/run/pv-inverter-proxy/healthy` nach Restart bis zu 60 Sekunden
 - [ ] **RESTART-06**: pymodbus-Server bindet mit `SO_REUSEADDR` (verifizieren, ggf. patchen) — verhindert Bind-Fehler beim schnellen Restart
 
 ### Health Check & Rollback (HEALTH-xx)
@@ -68,11 +68,11 @@ Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem 
 - [x] **HEALTH-02**: Required-Health-Kriterien fuer Update-Erfolg: `webapp=ok`, `modbus_server=ok`, mindestens 1 Device in `devices` mit `ok` (hat erfolgreichen Poll produziert)
 - [x] **HEALTH-03**: Warn-Only (kein Rollback-Trigger): `venus_os` MQTT noch nicht connected — MQTT-Reconnect kann laenger dauern und sollte Update-Erfolg nicht blockieren
 - [x] **HEALTH-04**: Main-Service schreibt `/run/pv-inverter-proxy/healthy` (tmpfs, via `RuntimeDirectory`) sobald DeviceRegistry ersten erfolgreichen Poll abgeschlossen hat
-- [ ] **HEALTH-05**: Updater verlangt 3 aufeinanderfolgende erfolgreiche Health-Polls ueber 15 Sekunden (Stabilitaets-Check) bevor Update als erfolgreich markiert wird
-- [ ] **HEALTH-06**: Rollback-Trigger: `systemctl is-active` liefert `failed`, Version-Mismatch im Health-Response (alter Code laeuft noch), 5xx/unreachable > 45s, oder kein `healthy`-Flag nach 60s
-- [ ] **HEALTH-07**: Rollback-Mechanismus: Symlink zurueck auf vorheriges Release-Verzeichnis, `systemctl restart`, Health-Check gegen rolled-back Version
-- [ ] **HEALTH-08**: Maximal 1 automatischer Rollback pro Update-Versuch; wenn rolled-back Version auch Health-Check failed, schreibt Updater `phase=rollback_failed` mit CRITICAL-State, belaesst Symlink wie ist, User muss SSH
-- [ ] **HEALTH-09**: Status-File `/etc/pv-inverter-proxy/update-status.json` mit Phase-Progression (`trigger_received, backup, extract, pip_install, config_dryrun, restarting, healthcheck, done | rollback | rollback_failed`) und History-Array
+- [x] **HEALTH-05**: Updater verlangt 3 aufeinanderfolgende erfolgreiche Health-Polls ueber 15 Sekunden (Stabilitaets-Check) bevor Update als erfolgreich markiert wird
+- [x] **HEALTH-06**: Rollback-Trigger: `systemctl is-active` liefert `failed`, Version-Mismatch im Health-Response (alter Code laeuft noch), 5xx/unreachable > 45s, oder kein `healthy`-Flag nach 60s
+- [x] **HEALTH-07**: Rollback-Mechanismus: Symlink zurueck auf vorheriges Release-Verzeichnis, `systemctl restart`, Health-Check gegen rolled-back Version
+- [x] **HEALTH-08**: Maximal 1 automatischer Rollback pro Update-Versuch; wenn rolled-back Version auch Health-Check failed, schreibt Updater `phase=rollback_failed` mit CRITICAL-State, belaesst Symlink wie ist, User muss SSH
+- [x] **HEALTH-09**: Status-File `/etc/pv-inverter-proxy/update-status.json` mit Phase-Progression (`trigger_received, backup, extract, pip_install, config_dryrun, restarting, healthcheck, done | rollback | rollback_failed`) und History-Array
 
 ### UI & User Experience (UI-xx)
 
@@ -173,28 +173,28 @@ Requirements werden in Phasen gemappt vom gsd-roadmapper (ROADMAP.md).
 | CHECK-07 | Phase 44 | Complete |
 | EXEC-01 | Phase 45 | Complete (45-02) |
 | EXEC-02 | Phase 45 | Complete (45-02) |
-| EXEC-03 | Phase 45 | Pending |
+| EXEC-03 | Phase 45 | Complete |
 | EXEC-04 | Phase 45 | Complete |
 | EXEC-05 | Phase 45 | Complete |
-| EXEC-06 | Phase 45 | Pending |
-| EXEC-07 | Phase 45 | Pending |
-| EXEC-08 | Phase 45 | Pending |
-| EXEC-09 | Phase 45 | Pending |
+| EXEC-06 | Phase 45 | Complete |
+| EXEC-07 | Phase 45 | Complete |
+| EXEC-08 | Phase 45 | Complete |
+| EXEC-09 | Phase 45 | Complete |
 | EXEC-10 | Phase 45 | Complete |
 | RESTART-01 | Phase 45 | Pending |
 | RESTART-02 | Phase 45 | Pending |
 | RESTART-03 | Phase 45 | Pending |
-| RESTART-04 | Phase 45 | Pending |
-| RESTART-05 | Phase 45 | Pending |
+| RESTART-04 | Phase 45 | Complete |
+| RESTART-05 | Phase 45 | Complete |
 | RESTART-06 | Phase 45 | Pending |
 | HEALTH-01 | Phase 45 | Complete |
 | HEALTH-02 | Phase 45 | Complete |
 | HEALTH-03 | Phase 45 | Complete |
 | HEALTH-04 | Phase 45 | Complete |
-| HEALTH-05 | Phase 45 | Pending |
-| HEALTH-06 | Phase 45 | Pending |
-| HEALTH-07 | Phase 45 | Pending |
-| HEALTH-08 | Phase 45 | Pending |
+| HEALTH-05 | Phase 45 | Complete |
+| HEALTH-06 | Phase 45 | Complete |
+| HEALTH-07 | Phase 45 | Complete |
+| HEALTH-08 | Phase 45 | Complete |
 | HEALTH-09 | Phase 45 | Partial — reader shipped (45-02), writer ships in 45-03/04 |
 | SEC-05 | Phase 45 | Complete |
 | SEC-06 | Phase 45 | Complete |
