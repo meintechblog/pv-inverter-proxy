@@ -1,0 +1,31 @@
+[Unit]
+Description=PV-Inverter-Proxy Privileged Updater (Phase 45, EXEC-03)
+Documentation=https://github.com/meintechblog/pv-inverter-proxy
+After=network-online.target
+Wants=network-online.target
+# CRITICAL: no Requires=/BindsTo=/PartOf=pv-inverter-proxy.service.
+# The updater runs systemctl restart on the main service from outside
+# the dying cgroup. Any unit coupling would cause systemd to kill this
+# unit when the main service restarts, aborting the update mid-flight.
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+User=root
+Group=root
+# Use INSTALL_ROOT (symlink to current release) so we always pick up the
+# venv from the release that was running when the trigger was written.
+# Phase 43 recovery.service flips this symlink back on boot if an
+# earlier update left a PENDING marker, so this path is the right
+# source of truth at activation time.
+ExecStart=/opt/pv-inverter-proxy/.venv/bin/python3 -m pv_inverter_proxy.updater_root
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pv-inverter-proxy-updater
+# A full update can legitimately take minutes (pip install, git clone,
+# compileall, 60s healthcheck). Systemd will still SIGKILL after this
+# many seconds — pick generously so a slow LXC never gets a spurious
+# kill in the middle of pip install.
+TimeoutStartSec=900
+# No Restart= — oneshot semantics. If the updater fails, the next
+# trigger write re-activates it via the .path unit.

@@ -1,0 +1,14 @@
+[Unit]
+Description=Watch for pv-inverter-proxy update triggers (Phase 45, EXEC-03)
+Documentation=https://github.com/meintechblog/pv-inverter-proxy
+# Deliberately NO Requires=/PartOf=/BindsTo= the main service unit.
+# This .path unit must remain active across main-service restarts so
+# the .service it activates can restart the main service without
+# being killed as part of the main service's cgroup.
+
+[Path]
+PathModified=/etc/pv-inverter-proxy/update-trigger.json
+Unit=pv-inverter-proxy-updater.service
+
+[Install]
+WantedBy=multi-user.target
