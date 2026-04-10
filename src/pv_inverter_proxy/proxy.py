@@ -20,9 +20,23 @@ from pymodbus.datastore import (
     ModbusDeviceContext,
     ModbusServerContext,
 )
+from pymodbus.datastore.context import ExcCodes
 from pymodbus.server import ModbusTcpServer
 
 import structlog
+
+# Plan 45-05 RESTART-01: Maintenance-mode write strategy. "slavebusy"
+# rejects Model 123 writes with Modbus exception 0x06 (DEVICE_BUSY),
+# which is the standard retryable exception that Venus OS is expected
+# to back off on. Flip to "silent_drop" if live testing shows Venus
+# OS disconnects on the exception — see
+# src/pv_inverter_proxy/updater/maintenance.py for the decision record.
+#
+# RESTART-06: pymodbus 3.12 ModbusProtocol passes ``reuse_address=True``
+# to asyncio.loop.create_server() by default (verified via
+# ``inspect.getsource(ModbusProtocol)`` in Plan 45-05 Task 3). No
+# explicit SO_REUSEADDR patch needed on pymodbus 3.8+.
+MAINTENANCE_STRATEGY = "slavebusy"
 
 from pv_inverter_proxy.control import (
     ControlState,
@@ -86,6 +100,14 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
         self._distributor = distributor
         self.last_successful_read: float = 0.0
         self.read_count: int = 0
+        # Plan 45-05 RESTART-02: in-flight counter + drain event used by
+        # updater.maintenance.drain_inflight_modbus. Every async_setValues
+        # invocation increments on entry and decrements on exit; the event
+        # is set whenever the counter hits zero so the drain helper can
+        # wake up as soon as the last write completes.
+        self._inflight_count: int = 0
+        self._inflight_drained: asyncio.Event = asyncio.Event()
+        self._inflight_drained.set()  # initially drained
 
     def getValues(self, fc_as_hex, address, count=1):
         """Override to intercept reads when cache is stale.
@@ -110,44 +132,81 @@ class StalenessAwareSlaveContext(ModbusDeviceContext):
 
         For Model 123 writes, validates and forwards to the inverter plugin.
         Other writes fall through to normal datablock storage.
+
+        Plan 45-05 RESTART-01/02: during ``app_ctx.maintenance_mode``,
+        Model 123 writes are either rejected with ``ExcCodes.DEVICE_BUSY``
+        (slavebusy strategy) or silently dropped (silent_drop strategy).
+        Reads are unaffected — Venus OS keeps displaying cached values.
+        The in-flight counter is incremented on entry and decremented on
+        exit so ``drain_inflight_modbus`` can wait for quiescence.
         """
-        # Address from pymodbus is the SunSpec address directly
-        abs_addr = address
+        self._inflight_count += 1
+        self._inflight_drained.clear()
+        try:
+            # Address from pymodbus is the SunSpec address directly
+            abs_addr = address
 
-        # Flag Venus OS detection on any Model 123 write (one-shot)
-        if (
-            self._app_ctx is not None
-            and self._control is not None
-            and self._control.is_model_123_address(abs_addr, len(values))
-            and not self._app_ctx.venus_os_detected
-        ):
-            self._app_ctx.venus_os_detected = True
-            self._app_ctx.venus_os_detected_ts = time.time()
-            # Promote tracked client IP as Venus OS IP
-            candidate_ip = self._app_ctx._last_modbus_client_ip
-            if candidate_ip:
-                self._app_ctx.venus_os_client_ip = candidate_ip
-                logger.info("Venus OS detected: first Modbus write to Model 123 from %s", candidate_ip)
-            else:
-                logger.info("Venus OS detected: first Modbus write to Model 123")
+            # Flag Venus OS detection on any Model 123 write (one-shot)
+            if (
+                self._app_ctx is not None
+                and self._control is not None
+                and self._control.is_model_123_address(abs_addr, len(values))
+                and not self._app_ctx.venus_os_detected
+            ):
+                self._app_ctx.venus_os_detected = True
+                self._app_ctx.venus_os_detected_ts = time.time()
+                # Promote tracked client IP as Venus OS IP
+                candidate_ip = self._app_ctx._last_modbus_client_ip
+                if candidate_ip:
+                    self._app_ctx.venus_os_client_ip = candidate_ip
+                    logger.info("Venus OS detected: first Modbus write to Model 123 from %s", candidate_ip)
+                else:
+                    logger.info("Venus OS detected: first Modbus write to Model 123")
 
-        if (
-            self._control is not None
-            and self._control.is_model_123_address(abs_addr, len(values))
-        ):
-            # Always update local ControlState first (readback for Venus OS)
-            self._handle_local_control_write(abs_addr, values)
-
-            # Distribute to all devices via PowerLimitDistributor
-            if self._distributor is not None:
-                await self._distributor.distribute(
-                    self._control.wmaxlimpct_float,
-                    self._control.is_enabled,
+            # Plan 45-05 RESTART-01: maintenance-mode gate. Only gate
+            # Model 123 writes — other writes (if any) go straight through
+            # the datablock with no side effect on the inverter.
+            if (
+                self._app_ctx is not None
+                and getattr(self._app_ctx, "maintenance_mode", False)
+                and self._control is not None
+                and self._control.is_model_123_address(abs_addr, len(values))
+            ):
+                if MAINTENANCE_STRATEGY == "slavebusy":
+                    control_log.info(
+                        "maintenance_mode_write_rejected",
+                        addr=abs_addr, strategy="slavebusy",
+                    )
+                    return ExcCodes.DEVICE_BUSY
+                # silent_drop
+                control_log.info(
+                    "maintenance_mode_write_dropped",
+                    addr=abs_addr, strategy="silent_drop",
                 )
-            return
+                return None
 
-        # Default: store in datablock via normal setValues
-        self.setValues(fc_as_hex, address, values)
+            if (
+                self._control is not None
+                and self._control.is_model_123_address(abs_addr, len(values))
+            ):
+                # Always update local ControlState first (readback for Venus OS)
+                self._handle_local_control_write(abs_addr, values)
+
+                # Distribute to all devices via PowerLimitDistributor
+                if self._distributor is not None:
+                    await self._distributor.distribute(
+                        self._control.wmaxlimpct_float,
+                        self._control.is_enabled,
+                    )
+                return
+
+            # Default: store in datablock via normal setValues
+            self.setValues(fc_as_hex, address, values)
+        finally:
+            self._inflight_count -= 1
+            if self._inflight_count <= 0:
+                self._inflight_count = 0
+                self._inflight_drained.set()
 
     def _handle_local_control_write(self, abs_addr: int, values: list[int]) -> None:
         """Accept Model 123 write locally without forwarding to a plugin.
@@ -299,6 +358,10 @@ async def run_modbus_server(
     if app_ctx is not None:
         app_ctx.cache = cache
         app_ctx.control_state = control_state
+        # Plan 45-05 RESTART-02: expose the slave context so
+        # updater.maintenance.drain_inflight_modbus can inspect its
+        # in-flight counter during graceful shutdown.
+        app_ctx._slave_ctx = slave_ctx
 
     # Start server as background task
     server_task = asyncio.create_task(_start_server(server), name="modbus-server")

@@ -73,3 +73,9 @@ class AppContext:
     available_update: dict | None = None       # Parsed GitHub release info when latest > current
     update_last_check_at: float | None = None  # UNIX timestamp of last successful scheduler iteration
     update_last_check_failed_at: float | None = None  # UNIX timestamp of last failed iteration
+
+    # Phase 45 Plan 05: Maintenance mode (RESTART-01/02/03)
+    maintenance_mode: bool = False              # True while an update is draining the Modbus server
+    maintenance_entered_at: float | None = None  # time.time() when the flag was raised
+    _pending_restore_limit_pct: float | None = None  # SAFETY-09 restore pointer set at boot
+    _slave_ctx: object = None                   # StalenessAwareSlaveContext — exposed for drain_inflight
