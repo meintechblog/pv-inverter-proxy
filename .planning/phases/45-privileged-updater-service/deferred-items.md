@@ -56,3 +56,18 @@ in a dedicated debug/fix workflow.
   the handler returns a `name` field the test does not expect.
   Reproduces on main before Plan 45-05 changes (verified via `git stash`).
   Not caused by Plan 45-05. Triage in a future hygiene plan or Phase 46.
+
+- **Modbus write-to-Model-123 latency > 5s** (pre-existing, confirmed during
+  Plan 45-05 LXC testing): when a Venus OS or loopback probe writes to
+  WMaxLimPct, the proxy's PowerLimitDistributor calls each of N inverter
+  plugins sequentially. With N=4 Sungrow/SolarEdge/OpenDTU mixed, end-to-end
+  latency exceeds the pymodbus client default timeout (~5s), causing the
+  client to see "No response received". The server DID accept the write —
+  the distributor log fires — but the client gives up before the response
+  is sent. Venus OS dbus-fronius uses its own retry logic so this is NOT
+  user-visible; but loopback probe scripts see timeouts.
+  - Discovered during: Plan 45-05 Task 5 LXC write probe
+  - Scope: Pre-existing distributor architecture; unrelated to maintenance
+    mode or Plan 45-05 changes. Confirmed by reverting the probe script
+    timeout to 20s — distributor still runs > 5s sometimes.
+  - Action: Parallelize PowerLimitDistributor in a future Phase 46/47 plan.
