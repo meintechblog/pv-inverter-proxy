@@ -177,7 +177,7 @@ Full details: `.planning/milestones/v7.0-ROADMAP.md`
   5. A deliberately broken release triggers a single automatic rollback (symlink flip to previous release + restart + health re-check); a second failure is captured as `phase=rollback_failed` CRITICAL with the status file updated and the symlink left untouched for manual SSH recovery
 **Plans**: 5 plans
 - [ ] 45-01-rich-health-endpoint-PLAN.md — Extend /api/health with per-component schema (HEALTH-01..04)
-- [ ] 45-02-trigger-status-contracts-PLAN.md — updater/trigger.py + status.py + POST /api/update/start + install.sh file perms (EXEC-01, EXEC-02, SEC-07)
+- [x] 45-02-trigger-status-contracts-PLAN.md — updater/trigger.py + status.py + POST /api/update/start + install.sh file perms (EXEC-01, EXEC-02, SEC-07) ✓ 2026-04-10
 - [ ] 45-03-updater-root-primitives-PLAN.md — updater_root package: git_ops, backup, gpg_verify, trigger_reader (EXEC-04, EXEC-05, EXEC-07, EXEC-10, SEC-05, SEC-06)
 - [ ] 45-04-updater-orchestrator-systemd-PLAN.md — runner state machine + healthcheck + systemd path/service units (EXEC-03, EXEC-06, EXEC-08, EXEC-09, RESTART-04, RESTART-05, HEALTH-05..09)
 - [ ] 45-05-maintenance-mode-integration-PLAN.md — Venus OS SlaveBusy spike + maintenance mode + SO_REUSEADDR + SAFETY-09 wiring (RESTART-01, RESTART-02, RESTART-03, RESTART-06)

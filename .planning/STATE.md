@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v8.0
 milestone_name: Auto-Update System
 status: verifying
-stopped_at: Completed 45-01-rich-health-endpoint-PLAN.md
-last_updated: "2026-04-10T20:59:14.131Z"
-last_activity: 2026-04-10 — Completed 44-03 frontend code + LXC deploy; v8.0.0 (79be2a0) live at 192.168.3.191
+stopped_at: Completed 45-02-trigger-status-contracts-PLAN.md
+last_updated: "2026-04-10T21:20:00.000Z"
+last_activity: 2026-04-10 — Completed 45-02 trigger/status contracts + POST /api/update/start; LXC verified HTTP 202 median 2.5ms
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 12
-  completed_plans: 8
-  percent: 67
+  completed_plans: 10
+  percent: 83
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 ## Current Position
 
-Phase: 44 — Passive Version Badge
-Plan: 03 — Frontend display (code-complete, human checkpoint pending)
-Status: Awaiting human-verify checkpoint on Task 3
-Last activity: 2026-04-10 — Completed 44-03 frontend code + LXC deploy; v8.0.0 (79be2a0) live at 192.168.3.191
+Phase: 45 — Privileged Updater Service
+Plan: 02 — Trigger + status file contracts (COMPLETE, LXC-verified)
+Status: Ready for Plan 45-03 (root updater + path unit)
+Last activity: 2026-04-10 — Completed 45-02 trigger/status contracts + POST /api/update/start; LXC verified HTTP 202 median 2.5ms
 
-Progress: [##########] 100% code (1/5 phases, 7/7 plans — Phase 44 awaiting visual approval)
+Progress: [████████░░] 83% (2/5 phases, 10/12 plans)
 
 ## Performance Metrics
 
@@ -73,6 +73,11 @@ Progress: [##########] 100% code (1/5 phases, 7/7 plans — Phase 44 awaiting vi
 - [Phase 44]: Plan 44-03: deploy.sh now writes transient src/pv_inverter_proxy/COMMIT file before rsync (removed via EXIT trap); version.py falls back to reading it when git is unavailable — required because LXC rsync excludes .git/ and CHECK-01 mandates the commit hash in the footer
 - [Phase 44]: Plan 44-03: 2s REST fallback to /api/update/available on page load in case the WS initial push is missed — single-shot, never polls, guards against race with WS handler
 - [Phase 45]: Plan 45-01: grace window exclusive boundary (< 30s); venus_os warn-only; remap only modbus+devices during startup
+- [Phase 45]: Plan 45-02: Trigger schema v1 is closed-set {nonce, op, requested_at, requested_by, nonce} — no schema_version in trigger; consumer re-validates with stricter rules
+- [Phase 45]: Plan 45-02: Producer-side schema validation is defense-in-depth only; Plan 45-03 consumer carries the security weight (SHA reachability, tag regex, audit)
+- [Phase 45]: Plan 45-02: Trigger file ownership drifts to pv-proxy:pv-proxy after first atomic write — inherent to os.replace; SEC-07 security intent preserved (mode 0664 + root bypasses ownership); Plan 45-03 consumer must NOT assert stat().st_uid==0
+- [Phase 45]: Plan 45-02: /etc/pv-inverter-proxy/ directory stays pv-proxy-owned from Phase 43; ownership enforced at file level in install.sh Step 6b (resolves permission research flag)
+- [Phase 45]: Plan 45-02: update_start_handler hardcodes requested_by="webapp" in Phase 45; Phase 46 widens with source IP / audit metadata; op parameter defaults to "update" when missing
 
 ### Sungrow Reference
 
@@ -95,7 +100,7 @@ Progress: [##########] 100% code (1/5 phases, 7/7 plans — Phase 44 awaiting vi
 ### Research Flags (resolve during phase planning)
 
 - Phase 45: Venus OS tolerance of pymodbus exception 0x06 (`SlaveBusy`) during maintenance mode — needs empirical spike on live LXC before implementation
-- Phase 45: `/etc/pv-inverter-proxy/` per-file permissions — trigger file needs pv-proxy writable, status file needs root-only writable
+- ~~Phase 45: `/etc/pv-inverter-proxy/` per-file permissions~~ — RESOLVED in Plan 45-02: file-level chown in install.sh Step 6b, directory stays pv-proxy-owned
 - Phase 47: GPG key distribution strategy — maintainer key publication, Debian toolchain, install.sh integration
 
 ### Phase Summary (v8.0)
@@ -118,6 +123,6 @@ Progress: [##########] 100% code (1/5 phases, 7/7 plans — Phase 44 awaiting vi
 
 ## Session Continuity
 
-Last session: 2026-04-10T20:59:14.129Z
-Stopped at: Completed 45-01-rich-health-endpoint-PLAN.md
-Resume point: Execute 43-03 systemd-hardening-recovery plan
+Last session: 2026-04-10T21:20:00.000Z
+Stopped at: Completed 45-02-trigger-status-contracts-PLAN.md
+Resume point: Execute 45-03 root-updater-path-unit plan

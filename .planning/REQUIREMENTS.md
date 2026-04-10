@@ -42,8 +42,8 @@ Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem 
 
 ### Update Execution (EXEC-xx)
 
-- [ ] **EXEC-01**: `POST /api/update/start` liefert HTTP 202 mit `{update_id, status_url}` innerhalb <100ms und schreibt Trigger-File atomar (tempfile + `os.replace`) nach `/etc/pv-inverter-proxy/update-trigger.json`
-- [ ] **EXEC-02**: Trigger-File-Schema enthaelt `{op, target_sha, requested_at, requested_by, nonce}`; nonce wird vom Updater gegen `/var/lib/pv-inverter-proxy/processed-nonces.json` (letzte 50) geprueft, Duplikate werden ignoriert
+- [x] **EXEC-01**: `POST /api/update/start` liefert HTTP 202 mit `{update_id, status_url}` innerhalb <100ms und schreibt Trigger-File atomar (tempfile + `os.replace`) nach `/etc/pv-inverter-proxy/update-trigger.json`
+- [x] **EXEC-02**: Trigger-File-Schema enthaelt `{op, target_sha, requested_at, requested_by, nonce}`; nonce wird vom Updater gegen `/var/lib/pv-inverter-proxy/processed-nonces.json` (letzte 50) geprueft, Duplikate werden ignoriert
 - [ ] **EXEC-03**: Privilegierter Updater (`pv-inverter-proxy-updater.service`, `Type=oneshot`, `User=root`) wird via Path-Unit (`pv-inverter-proxy-updater.path`, `PathModified=/etc/.../update-trigger.json`) getriggert
 - [ ] **EXEC-04**: Updater validiert `target_sha` gegen `refs/remotes/origin/main` via `git merge-base --is-ancestor`; SHAs ausserhalb der main-History werden abgelehnt (Security Root of Trust)
 - [ ] **EXEC-05**: Updater erstellt Backup vor Update: venv-Tarball nach `/var/lib/pv-inverter-proxy/backups/venv-<timestamp>.tar.gz`, Kopie von `config.yaml`, Snapshot von `pyproject.toml`
@@ -94,7 +94,7 @@ Professionelle In-Webapp Update-Experience — User kann neue Versionen aus dem 
 - [ ] **SEC-04**: Update-Audit-Log in `/var/lib/pv-inverter-proxy/update-audit.log`: jede Anfrage mit Timestamp, Source-IP, User-Agent, Outcome (accepted / rejected / failed)
 - [ ] **SEC-05**: Optional GPG-Signatur-Pruefung: wenn `updates.allow_unsigned: false` (Default in v8.0: true), lehnt Updater Releases ohne gueltige `SHA256SUMS.asc`-Signatur ab
 - [ ] **SEC-06**: Updater akzeptiert ausschliesslich Releases mit `tag_name` matching `^v\d+\.\d+(\.\d+)?$`; main branch / unreleased commits werden nie installiert
-- [ ] **SEC-07**: Trigger-File-Verzeichnis-Permissions: `/etc/pv-inverter-proxy/update-trigger.json` mode 0664 owner `root:pv-proxy` (pv-proxy kann schreiben, Updater liest); `update-status.json` mode 0644 owner `root:root` (nur Updater schreibt)
+- [x] **SEC-07**: Trigger-File-Verzeichnis-Permissions: `/etc/pv-inverter-proxy/update-trigger.json` mode 0664 owner `root:pv-proxy` (pv-proxy kann schreiben, Updater liest); `update-status.json` mode 0644 owner `root:root` (nur Updater schreibt)
 
 ### Helper Service & Monitoring (HELPER-xx)
 
@@ -171,8 +171,8 @@ Requirements werden in Phasen gemappt vom gsd-roadmapper (ROADMAP.md).
 | CHECK-05 | Phase 44 | Complete |
 | CHECK-06 | Phase 44 | Complete |
 | CHECK-07 | Phase 44 | Complete |
-| EXEC-01 | Phase 45 | Pending |
-| EXEC-02 | Phase 45 | Pending |
+| EXEC-01 | Phase 45 | Complete (45-02) |
+| EXEC-02 | Phase 45 | Complete (45-02) |
 | EXEC-03 | Phase 45 | Pending |
 | EXEC-04 | Phase 45 | Pending |
 | EXEC-05 | Phase 45 | Pending |
@@ -195,10 +195,10 @@ Requirements werden in Phasen gemappt vom gsd-roadmapper (ROADMAP.md).
 | HEALTH-06 | Phase 45 | Pending |
 | HEALTH-07 | Phase 45 | Pending |
 | HEALTH-08 | Phase 45 | Pending |
-| HEALTH-09 | Phase 45 | Pending |
+| HEALTH-09 | Phase 45 | Partial — reader shipped (45-02), writer ships in 45-03/04 |
 | SEC-05 | Phase 45 | Pending |
 | SEC-06 | Phase 45 | Pending |
-| SEC-07 | Phase 45 | Pending |
+| SEC-07 | Phase 45 | Complete (45-02) |
 | UI-01 | Phase 46 | Pending |
 | UI-02 | Phase 46 | Pending |
 | UI-03 | Phase 46 | Pending |
