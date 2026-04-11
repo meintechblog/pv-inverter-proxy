@@ -368,10 +368,18 @@ async def test_config_get_returns_venus(client):
 
 
 async def test_config_get_venus_defaults(client):
-    """With default Config(), venus section has host='', port=1883, portal_id=''."""
+    """With default Config(), venus section has host='', port=1883, portal_id='', name=''."""
     resp = await client.get("/api/config")
     data = await resp.json()
-    assert data["venus"] == {"host": "", "port": 1883, "portal_id": ""}
+    # Note: ``name`` field was added to VenusConfig in a later phase for
+    # sidebar display-name support; this test now asserts the full default
+    # shape rather than a 3-key subset.
+    assert data["venus"] == {
+        "host": "",
+        "port": 1883,
+        "portal_id": "",
+        "name": "",
+    }
 
 
 async def test_config_save_venus(client):
