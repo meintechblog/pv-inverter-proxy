@@ -599,17 +599,22 @@ async def broadcast_update_progress(app: web.Application, entry: dict) -> None:
 | A11 | A 500ms poll of `update-status.json` is an acceptable load during an active update | § F | LOW — update runs for ~30s, so ~60 reads of a <1KB file. Trivial. |
 | A12 | Phase 46 does NOT need to rotate the audit log | Pattern 5 | LOW — Phase 47 adds systemd rate limiting; logrotate is a deploy concern |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Rollback window duration (UI-07)** — 1 hour? Until next update check? Until page reload? **Recommendation:** default to 1 hour from `current.started_at + duration` to match REQUIREMENTS.md's "Rollback nach mehr als 1 Stunde" out-of-scope wording. Surfaces in discuss-phase.
+   **RESOLVED:** 46-CONTEXT.md D-02 — 1 hour fixed, client-side timer using `sessionStorage.lastUpdateSuccessAt`; button hides when `now - lastUpdateSuccessAt > 3600000ms`.
 
 2. **CFG-02 source fields without CFG-01** — Is CFG-01 promoted to a Phase 46 prerequisite, or is CFG-02 scoped to "panel skeleton, fields populated from Phase 47"? **Recommendation:** promote just enough of CFG-01 — specifically `update.github_repo`, `update.check_interval_hours`, `update.auto_install` — into Phase 46 as a 20-line config dataclass, so the webapp has real fields to edit. This is cheap and resolves the sequencing gap. The hot-reload piece (CFG-03) stays in Phase 47.
+   **RESOLVED:** 46-CONTEXT.md D-04 and D-05 — minimal 3-field `UpdateConfig` dataclass (`github_repo`, `check_interval_hours`, `auto_install`) wired into existing dirty-tracking pattern; full CFG-01 schema deferred to Phase 47.
 
 3. **Rollback from history entry** — HIST-01 (dedicated history file) is Phase 47. In Phase 46, "from any history entry" must mean "from the last successful update's record in `update-status.json`" (which holds at most one N-1 rollback candidate). **Recommendation:** Phase 46 rollback button operates on `target_sha="previous"` only (the Phase 45 rollback sentinel, trigger.py:67); history browsing ships in Phase 47.
+   **RESOLVED:** 46-CONTEXT.md D-03 — rollback endpoint accepts `target_sha="previous"` sentinel ONLY, reading from `update-status.json`; per-entry rollback buttons deferred to Phase 47 HIST-01.
 
 4. **Audit log permissions** — mode 0640 root:pv-proxy means `pv-proxy` group can read but only owner writes. Since the webapp runs as `pv-proxy`, we actually need the webapp to _write_. Correct mode: **`0640 pv-proxy:pv-proxy`** (owner write, group read). Updater root can read everything so no root:write needed here.
+   **RESOLVED:** 46-CONTEXT.md D-16 — `0o640 pv-proxy:pv-proxy` confirmed; Plan 46-01 Task 2 implements lazy `os.chmod` to `AUDIT_LOG_FILE_MODE = 0o640` and parent dir `AUDIT_LOG_DIR_MODE = 0o750`.
 
 5. **Does `/api/update/status` return only `current` or also the full `history[]` array?** **Recommendation:** return the full UpdateStatus (current + history + schema_version) — client uses history for replay after WS reconnect, and the response is <10KB.
+   **RESOLVED:** Plan 46-04 `update_status_handler` returns the full `UpdateStatus` (current + history + schema_version); client-side WS reconnect logic in Plan 46-03 Task 2 consumes `history[]` for sequence-based replay per D-25.
 
 ## Environment Availability
 
