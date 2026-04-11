@@ -33,7 +33,8 @@
         <span class="sidebar-title">PV-Inverter-Master</span>
       </div>
 
-      <!-- Dynamic device list (rendered by JS) -->
+      <!-- Dynamic device list (rendered by JS; SYSTEM > Software entry
+           is appended by renderSidebar and hash-routes to #system/software) -->
       <div id="device-sidebar"></div>
 
       <!-- Config export/import footer -->
@@ -71,11 +72,20 @@
 
       <!-- Device content (JS renders everything here) -->
       <div id="device-content" class="page active"></div>
+
+      <!-- Phase 46-03: SYSTEM > Software page mount point (hash-routed to #system/software) -->
+      <div id="software-root" class="ve-software-root" style="display:none"></div>
     </main>
   </div>
 
   <div id="toast-container" class="ve-toast-container" aria-live="polite"></div>
 
+  <!-- Load order contract: "app.js" MUST come before "software_page.js"
+       so window.showToast is defined when the software page initializes. -->
   <script src="/static/app.js" defer></script>
+  <!-- Phase 46-03: software_markdown.js MUST load before software_page.js
+       because software_page.js calls window.renderSoftwareMarkdown. -->
+  <script src="/static/software_markdown.js" defer></script>
+  <script src="/static/software_page.js" defer></script>
 </body>
 </html>
