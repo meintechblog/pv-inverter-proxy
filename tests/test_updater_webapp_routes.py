@@ -181,3 +181,694 @@ async def test_broadcast_available_update_missing_app_ctx(app_with_ctx):
     app["ws_clients"] = {ws}
     await broadcast_available_update(app)
     assert ws.sent == []
+
+
+# ===========================================================================
+# Phase 46 Plan 04: Route wiring tests (D-20, D-21, D-27, D-41)
+# ---------------------------------------------------------------------------
+# These tests pin the integration between Plan 46-01 (security belt) and
+# Plan 46-02 (progress broadcaster) with webapp.py's new route table +
+# hardened update_start_handler. They must all hold together in one test
+# file so the <100ms latency regression stays adjacent to the CSRF / rate
+# limit / audit-log coverage.
+# ===========================================================================
+import re as _re  # noqa: E402
+import time as _time  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+import pytest as _pytest  # noqa: E402
+from aiohttp.test_utils import TestClient, TestServer  # noqa: E402
+
+from pv_inverter_proxy.updater import security as _security_mod  # noqa: E402
+from pv_inverter_proxy.updater import trigger as _trigger_mod  # noqa: E402
+
+FULL_SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers / fixtures
+# ---------------------------------------------------------------------------
+
+
+class _FakeClock:
+    """Monotonic clock used by the rate limiter under test."""
+
+    def __init__(self, start: float = 1_000.0) -> None:
+        self._now = float(start)
+
+    def __call__(self) -> float:
+        return self._now
+
+    def advance(self, seconds: float) -> None:
+        self._now += seconds
+
+
+class _FakeScheduler:
+    """Minimal UpdateCheckScheduler stand-in exposing ``check_once``."""
+
+    def __init__(self, result=None, raise_exc: Exception | None = None) -> None:
+        self.result = result
+        self.raise_exc = raise_exc
+        self.calls = 0
+
+    async def check_once(self):
+        self.calls += 1
+        if self.raise_exc is not None:
+            raise self.raise_exc
+        return self.result
+
+
+class _FakeReleaseInfo:
+    """Minimal duck-typed ReleaseInfo for the check endpoint tests."""
+
+    def __init__(self, *, available: bool, latest_version: str | None) -> None:
+        self.available = available
+        self.latest_version = latest_version
+
+
+class _StubAppCtx:
+    """Tiny AppContext stand-in for handlers that read current_version."""
+
+    def __init__(
+        self,
+        *,
+        current_version: str | None = "8.0.0",
+        current_commit: str | None = "deadbeef",
+    ) -> None:
+        self.current_version = current_version
+        self.current_commit = current_commit
+        # Maintenance-mode entry requires these attrs on the real path;
+        # None/default values short-circuit it without crashing.
+        self.maintenance_mode = False
+        self.maintenance_entered_at = None
+        self._slave_ctx = None
+
+
+@_pytest.fixture
+def tmp_trigger_path(tmp_path, monkeypatch):
+    """Redirect TRIGGER_FILE_PATH to a tmp file."""
+    p = tmp_path / "update-trigger.json"
+    monkeypatch.setattr(_trigger_mod, "TRIGGER_FILE_PATH", p)
+    return p
+
+
+@_pytest.fixture
+def tmp_audit_path(tmp_path, monkeypatch):
+    """Redirect AUDIT_LOG_PATH to a tmp file."""
+    p = tmp_path / "audit.log"
+    monkeypatch.setattr(_security_mod, "AUDIT_LOG_PATH", p)
+    return p
+
+
+@_pytest.fixture
+def fresh_rate_limiter(monkeypatch):
+    """Swap the module-level rate limiter for a fresh FakeClock-backed one."""
+    import pv_inverter_proxy.webapp as _webapp_mod
+
+    clock = _FakeClock()
+    limiter = _security_mod.RateLimiter(clock=clock)
+    monkeypatch.setattr(_webapp_mod, "_update_rate_limiter", limiter)
+    return limiter, clock
+
+
+@_pytest.fixture
+def force_idle(monkeypatch):
+    """Force is_update_running() to return (False, 'idle')."""
+    import pv_inverter_proxy.webapp as _webapp_mod
+
+    monkeypatch.setattr(
+        _webapp_mod,
+        "is_update_running",
+        lambda *a, **k: (False, "idle"),
+    )
+
+
+@_pytest.fixture
+async def webapp_client(
+    tmp_trigger_path,
+    tmp_audit_path,
+    fresh_rate_limiter,
+    force_idle,
+    monkeypatch,
+):
+    """Full in-process aiohttp client built via create_webapp.
+
+    Uses a stub AppContext so no Venus/Modbus infra is spun up. The
+    csrf middleware is registered, so GET / seeds the cookie.
+    """
+    import pv_inverter_proxy.webapp as _webapp_mod
+    from pv_inverter_proxy.config import Config
+
+    # Fast no-op for maintenance mode entry so update_start_handler stays
+    # focused on the guard pipeline during tests.
+    async def _noop_enter_maintenance(ctx, reason=""):
+        return None
+
+    # Patch the maintenance import target used in update_start_handler.
+    import pv_inverter_proxy.updater.maintenance as _maint_mod
+
+    monkeypatch.setattr(
+        _maint_mod, "enter_maintenance_mode", _noop_enter_maintenance
+    )
+
+    ctx = _StubAppCtx()
+    runner = await _webapp_mod.create_webapp(ctx, Config(), "")
+    app = runner.app
+    # Inject the fake scheduler so update_check_handler has a target.
+    app["update_scheduler"] = _FakeScheduler(
+        result=_FakeReleaseInfo(available=False, latest_version=None)
+    )
+    server = TestServer(app)
+    async with TestClient(server) as client:
+        # Hit a GET so the CSRF cookie is seeded.
+        await client.get("/api/update/available")
+        yield client
+    await runner.cleanup()
+
+
+def _csrf_headers(client: TestClient) -> dict:
+    """Pull the pvim_csrf cookie off the client jar and build the header."""
+    jar = client.session.cookie_jar
+    token = None
+    for cookie in jar:
+        if cookie.key == _security_mod.CSRF_COOKIE_NAME:
+            token = cookie.value
+            break
+    assert token, "CSRF cookie was not seeded by GET request"
+    return {_security_mod.CSRF_HEADER_NAME: token}
+
+
+# ---------------------------------------------------------------------------
+# Middleware + broadcaster registration (D-41)
+# ---------------------------------------------------------------------------
+
+
+async def test_csrf_middleware_registered_on_app(
+    tmp_audit_path, force_idle, monkeypatch
+):
+    import pv_inverter_proxy.webapp as _webapp_mod
+    from pv_inverter_proxy.config import Config
+
+    ctx = _StubAppCtx()
+    runner = await _webapp_mod.create_webapp(ctx, Config(), "")
+    try:
+        app = runner.app
+        names = [getattr(m, "__name__", str(m)) for m in app.middlewares]
+        assert any("csrf_middleware" in n for n in names), (
+            f"csrf_middleware not registered; middlewares={names}"
+        )
+    finally:
+        await runner.cleanup()
+
+
+async def test_progress_broadcaster_started_on_app_startup(
+    tmp_audit_path, force_idle, monkeypatch
+):
+    import pv_inverter_proxy.webapp as _webapp_mod
+    from pv_inverter_proxy.config import Config
+    from pv_inverter_proxy.updater.progress import APP_KEY
+
+    ctx = _StubAppCtx()
+    runner = await _webapp_mod.create_webapp(ctx, Config(), "")
+    try:
+        app = runner.app
+        assert app.get(APP_KEY) is not None, (
+            "progress broadcaster not stashed under APP_KEY on startup"
+        )
+    finally:
+        await runner.cleanup()
+
+
+# ---------------------------------------------------------------------------
+# /api/version (D-27)
+# ---------------------------------------------------------------------------
+
+
+async def test_version_endpoint_returns_version_and_commit(webapp_client):
+    resp = await webapp_client.get("/api/version")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data == {"version": "8.0.0", "commit": "deadbeef"}
+
+
+async def test_version_endpoint_no_csrf_needed(webapp_client):
+    # GET bypasses csrf_middleware — fresh client without header must work.
+    resp = await webapp_client.get("/api/version")
+    assert resp.status == 200
+
+
+# ---------------------------------------------------------------------------
+# /api/update/status
+# ---------------------------------------------------------------------------
+
+
+async def test_update_status_endpoint_returns_current_and_history(
+    webapp_client, monkeypatch
+):
+    from pv_inverter_proxy.updater.status import UpdateStatus
+    import pv_inverter_proxy.webapp as _webapp_mod
+
+    fake_status = UpdateStatus(
+        current={"phase": "idle", "nonce": "n1"},
+        history=[{"phase": "idle", "at": "2026-04-11T00:00:00Z"}],
+    )
+    monkeypatch.setattr(_webapp_mod, "load_status", lambda *a, **k: fake_status)
+    resp = await webapp_client.get("/api/update/status")
+    assert resp.status == 200
+    data = await resp.json()
+    assert "current" in data and "history" in data
+    assert data["current"]["phase"] == "idle"
+    assert len(data["history"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# /api/update/check
+# ---------------------------------------------------------------------------
+
+
+async def test_update_check_endpoint_calls_scheduler_check_once(webapp_client):
+    headers = _csrf_headers(webapp_client)
+    sched = webapp_client.server.app["update_scheduler"]
+    resp = await webapp_client.post("/api/update/check", headers=headers)
+    assert resp.status == 200
+    assert sched.calls == 1
+
+
+async def test_update_check_endpoint_returns_available_flag(webapp_client):
+    headers = _csrf_headers(webapp_client)
+    webapp_client.server.app["update_scheduler"] = _FakeScheduler(
+        result=_FakeReleaseInfo(available=True, latest_version="v8.1.0")
+    )
+    resp = await webapp_client.post("/api/update/check", headers=headers)
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["checked"] is True
+    assert data["available"] is True
+    assert data["latest_version"] == "v8.1.0"
+
+
+# ---------------------------------------------------------------------------
+# /api/update/start happy path + <100ms latency (D-20, D-21)
+# ---------------------------------------------------------------------------
+
+
+async def test_update_start_returns_202_under_100ms(
+    webapp_client, tmp_trigger_path, fresh_rate_limiter
+):
+    headers = _csrf_headers(webapp_client)
+    # Warm-up so first-call import costs don't contaminate the budget.
+    await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    # After warm-up, reset the limiter so the next call is accepted.
+    _limiter, clock = fresh_rate_limiter
+    clock.advance(61)
+
+    t0 = _time.monotonic()
+    resp = await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    dt = _time.monotonic() - t0
+    assert resp.status == 202, await resp.text()
+    assert dt < 0.1, f"start latency {dt * 1000:.1f}ms exceeds 100ms budget (D-20)"
+
+
+async def test_update_start_with_valid_csrf_returns_202(
+    webapp_client, tmp_trigger_path
+):
+    headers = _csrf_headers(webapp_client)
+    resp = await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    assert resp.status == 202
+
+
+async def test_update_start_without_csrf_cookie_returns_422(
+    tmp_trigger_path, tmp_audit_path, fresh_rate_limiter, force_idle, monkeypatch
+):
+    """POST without seeding the CSRF cookie must be 422 csrf_missing."""
+    import pv_inverter_proxy.webapp as _webapp_mod
+    from pv_inverter_proxy.config import Config
+    import pv_inverter_proxy.updater.maintenance as _maint_mod
+
+    async def _noop(ctx, reason=""):
+        return None
+
+    monkeypatch.setattr(_maint_mod, "enter_maintenance_mode", _noop)
+
+    ctx = _StubAppCtx()
+    runner = await _webapp_mod.create_webapp(ctx, Config(), "")
+    try:
+        server = TestServer(runner.app)
+        async with TestClient(server) as client:
+            # NO prior GET → no cookie → middleware returns 422 csrf_missing.
+            resp = await client.post(
+                "/api/update/start",
+                json={"op": "update", "target_sha": FULL_SHA},
+            )
+            assert resp.status == 422
+            data = await resp.json()
+            assert data["error"] == "csrf_missing"
+    finally:
+        await runner.cleanup()
+
+
+async def test_update_start_with_mismatched_csrf_returns_422(webapp_client):
+    headers = {_security_mod.CSRF_HEADER_NAME: "wrong-token-value"}
+    resp = await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    assert resp.status == 422
+    data = await resp.json()
+    assert data["error"] == "csrf_mismatch"
+
+
+async def test_update_start_writes_trigger_file_atomically(
+    webapp_client, tmp_trigger_path
+):
+    headers = _csrf_headers(webapp_client)
+    resp = await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    assert resp.status == 202
+    assert tmp_trigger_path.exists()
+    import json as _json
+
+    written = _json.loads(tmp_trigger_path.read_text())
+    assert written["op"] == "update"
+    assert written["target_sha"] == FULL_SHA
+    assert written["requested_at"].endswith("Z")
+    assert written["nonce"]
+
+
+# ---------------------------------------------------------------------------
+# Rate-limit (D-12/D-13/D-14)
+# ---------------------------------------------------------------------------
+
+
+async def test_update_start_second_attempt_within_60s_returns_429(
+    webapp_client, tmp_trigger_path
+):
+    headers = _csrf_headers(webapp_client)
+    r1 = await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    assert r1.status == 202
+    r2 = await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    assert r2.status == 429
+
+
+async def test_update_start_429_includes_retry_after_header(
+    webapp_client, tmp_trigger_path
+):
+    headers = _csrf_headers(webapp_client)
+    await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    r2 = await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    assert r2.status == 429
+    assert "Retry-After" in r2.headers
+    assert int(r2.headers["Retry-After"]) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Concurrent guard (D-10, D-11)
+# ---------------------------------------------------------------------------
+
+
+async def test_update_start_when_phase_running_returns_409(
+    webapp_client, tmp_trigger_path, monkeypatch
+):
+    import pv_inverter_proxy.webapp as _webapp_mod
+
+    monkeypatch.setattr(
+        _webapp_mod,
+        "is_update_running",
+        lambda *a, **k: (True, "backup"),
+    )
+    headers = _csrf_headers(webapp_client)
+    resp = await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    assert resp.status == 409
+    data = await resp.json()
+    assert data["error"] == "update_in_progress"
+    assert data["phase"] == "backup"
+
+
+# ---------------------------------------------------------------------------
+# Audit log (D-15..D-19)
+# ---------------------------------------------------------------------------
+
+
+def _read_audit_lines(path: _Path) -> list[dict]:
+    import json as _json
+
+    if not path.exists():
+        return []
+    return [
+        _json.loads(line)
+        for line in path.read_text().splitlines()
+        if line.strip()
+    ]
+
+
+async def test_update_start_audit_log_accepted_outcome(
+    webapp_client, tmp_audit_path, tmp_trigger_path
+):
+    headers = _csrf_headers(webapp_client)
+    resp = await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    assert resp.status == 202
+    lines = _read_audit_lines(tmp_audit_path)
+    outcomes = [line["outcome"] for line in lines]
+    assert "accepted" in outcomes
+
+
+async def test_update_start_audit_log_429_outcome(
+    webapp_client, tmp_audit_path, tmp_trigger_path
+):
+    headers = _csrf_headers(webapp_client)
+    await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    lines = _read_audit_lines(tmp_audit_path)
+    outcomes = [line["outcome"] for line in lines]
+    assert "429_rate_limited" in outcomes
+
+
+async def test_update_start_audit_log_409_outcome(
+    webapp_client, tmp_audit_path, tmp_trigger_path, monkeypatch
+):
+    import pv_inverter_proxy.webapp as _webapp_mod
+
+    monkeypatch.setattr(
+        _webapp_mod,
+        "is_update_running",
+        lambda *a, **k: (True, "backup"),
+    )
+    headers = _csrf_headers(webapp_client)
+    await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    lines = _read_audit_lines(tmp_audit_path)
+    outcomes = [line["outcome"] for line in lines]
+    assert "409_conflict" in outcomes
+
+
+async def test_update_start_audit_log_422_outcome(
+    webapp_client, tmp_audit_path, tmp_trigger_path
+):
+    # Mismatched CSRF produces csrf_mismatch via the middleware, which
+    # logs 422_invalid_csrf through audit_log_append.
+    headers = {_security_mod.CSRF_HEADER_NAME: "mismatch-value"}
+    resp = await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    assert resp.status == 422
+    lines = _read_audit_lines(tmp_audit_path)
+    outcomes = [line["outcome"] for line in lines]
+    assert "422_invalid_csrf" in outcomes
+
+
+# ---------------------------------------------------------------------------
+# /api/update/rollback (D-03)
+# ---------------------------------------------------------------------------
+
+
+async def test_update_rollback_writes_previous_sentinel_trigger(
+    webapp_client, tmp_trigger_path
+):
+    headers = _csrf_headers(webapp_client)
+    resp = await webapp_client.post(
+        "/api/update/rollback",
+        headers=headers,
+    )
+    assert resp.status == 202, await resp.text()
+    assert tmp_trigger_path.exists()
+    import json as _json
+
+    written = _json.loads(tmp_trigger_path.read_text())
+    assert written["op"] == "rollback"
+    assert written["target_sha"] == "previous"
+
+
+async def test_update_rollback_requires_csrf(
+    tmp_trigger_path, tmp_audit_path, fresh_rate_limiter, force_idle, monkeypatch
+):
+    """POST /api/update/rollback without CSRF → 422."""
+    import pv_inverter_proxy.webapp as _webapp_mod
+    from pv_inverter_proxy.config import Config
+    import pv_inverter_proxy.updater.maintenance as _maint_mod
+
+    async def _noop(ctx, reason=""):
+        return None
+
+    monkeypatch.setattr(_maint_mod, "enter_maintenance_mode", _noop)
+
+    ctx = _StubAppCtx()
+    runner = await _webapp_mod.create_webapp(ctx, Config(), "")
+    try:
+        async with TestClient(TestServer(runner.app)) as client:
+            resp = await client.post("/api/update/rollback")
+            assert resp.status == 422
+    finally:
+        await runner.cleanup()
+
+
+async def test_update_rollback_when_phase_running_returns_409(
+    webapp_client, tmp_trigger_path, monkeypatch
+):
+    import pv_inverter_proxy.webapp as _webapp_mod
+
+    monkeypatch.setattr(
+        _webapp_mod,
+        "is_update_running",
+        lambda *a, **k: (True, "healthcheck"),
+    )
+    headers = _csrf_headers(webapp_client)
+    resp = await webapp_client.post("/api/update/rollback", headers=headers)
+    assert resp.status == 409
+    data = await resp.json()
+    assert data["error"] == "update_in_progress"
+    assert data["phase"] == "healthcheck"
+
+
+async def test_update_rollback_rate_limited_with_start(
+    webapp_client, tmp_trigger_path
+):
+    """Start + rollback share the same module-level rate limiter bucket."""
+    headers = _csrf_headers(webapp_client)
+    r1 = await webapp_client.post(
+        "/api/update/start",
+        json={"op": "update", "target_sha": FULL_SHA},
+        headers=headers,
+    )
+    assert r1.status == 202
+    r2 = await webapp_client.post("/api/update/rollback", headers=headers)
+    assert r2.status == 429
+
+
+# ---------------------------------------------------------------------------
+# Regression: existing /api/update/start route still exposed
+# ---------------------------------------------------------------------------
+
+
+async def test_existing_update_start_endpoint_still_exposed(webapp_client):
+    """Sanity check: route table still contains POST /api/update/start."""
+    app = webapp_client.server.app
+    routes = [
+        (r.method, r.resource.canonical if r.resource else "")
+        for r in app.router.routes()
+    ]
+    assert ("POST", "/api/update/start") in routes
+    assert ("POST", "/api/update/rollback") in routes
+    assert ("GET", "/api/version") in routes
+    assert ("GET", "/api/update/status") in routes
+    assert ("POST", "/api/update/check") in routes
+
+
+# ---------------------------------------------------------------------------
+# JS / Python phase-name drift guard
+# ---------------------------------------------------------------------------
+
+
+def test_phase_order_js_matches_python_phases():
+    """Assert PHASE_ORDER in software_page.js == PHASES frozenset.
+
+    Plan 46-03 creates software_page.js; when this test runs before
+    that plan lands, the JS file is absent and we skip rather than
+    fail (the test's purpose is drift detection once both exist).
+    """
+    js_path = (
+        _Path(__file__).parent.parent
+        / "src"
+        / "pv_inverter_proxy"
+        / "static"
+        / "software_page.js"
+    )
+    if not js_path.exists():
+        _pytest.skip("software_page.js not yet created (Plan 46-03)")
+
+    content = js_path.read_text(encoding="utf-8")
+    # Expect: const PHASE_ORDER = [ "trigger_received", ... ];
+    match = _re.search(
+        r"PHASE_ORDER\s*=\s*(\[[^\]]*\])",
+        content,
+        _re.DOTALL,
+    )
+    assert match, "PHASE_ORDER constant not found in software_page.js"
+    import json as _json
+
+    raw = match.group(1)
+    # JS single/double quotes → JSON parser accepts double quotes only.
+    raw_json = raw.replace("'", '"')
+    # Strip trailing commas (legal in JS, illegal in JSON).
+    raw_json = _re.sub(r",\s*]", "]", raw_json)
+    js_phases = _json.loads(raw_json)
+
+    from pv_inverter_proxy.updater_root.status_writer import PHASES
+
+    assert sorted(js_phases) == sorted(PHASES), (
+        f"JS PHASE_ORDER drift from Python PHASES\n"
+        f"  JS only:    {sorted(set(js_phases) - PHASES)}\n"
+        f"  Python only: {sorted(PHASES - set(js_phases))}"
+    )
