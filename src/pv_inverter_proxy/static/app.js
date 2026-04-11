@@ -54,6 +54,9 @@ function parseRoute() {
     if (parts[0] === 'device' && parts.length >= 3) {
         return { type: 'device', id: parts[1], tab: parts[2] };
     }
+    if (parts[0] === 'system' && parts[1] === 'software') {
+        return { type: 'system-software' };
+    }
     // Legacy redirects
     if (hash === 'dashboard' || hash === '') return { type: 'device', id: 'virtual', tab: 'dashboard' };
     if (hash === 'config') return { type: 'device', id: _firstInverterId(), tab: 'config' };
@@ -65,10 +68,25 @@ function navigateTo(deviceId, tab) {
     window.location.hash = 'device/' + deviceId + '/' + (tab || 'dashboard');
 }
 
-window.addEventListener('hashchange', function() {
+// Phase 46-03: dispatch #system/software to the softwarePage controller and
+// swap visibility of the dedicated #software-root div vs the device content.
+function routeDispatch() {
     var route = parseRoute();
+    var softwareRoot = document.getElementById('software-root');
+    var deviceContent = document.getElementById('device-content');
+    if (route.type === 'system-software') {
+        if (deviceContent) deviceContent.style.display = 'none';
+        if (softwareRoot) softwareRoot.style.display = '';
+        if (window.softwarePage) window.softwarePage.onRouteEnter();
+        return;
+    }
+    if (softwareRoot) softwareRoot.style.display = 'none';
+    if (deviceContent) deviceContent.style.display = '';
+    if (window.softwarePage) window.softwarePage.onRouteLeave();
     showDevicePage(route.id, route.tab);
-});
+}
+
+window.addEventListener('hashchange', routeDispatch);
 
 function esc(s) {
     if (!s) return '';
@@ -126,10 +144,14 @@ function renderSidebar(devices) {
         container.appendChild(createSidebarGroup('MQTT PUBLISH', [mqttPubDevice]));
     }
 
-    // Phase 44 CHECK-04: SYSTEM group with Software entry (only when update available)
-    if (_availableUpdateState && _availableUpdateState.available_update) {
-        container.appendChild(createSystemSidebarGroup(_availableUpdateState.available_update));
-    }
+    // Phase 46-03 UI-01: SYSTEM group with Software entry ALWAYS visible
+    // (routes to #system/software). Phase 44 CHECK-04 still adorns the entry
+    // with an update badge when _availableUpdateState.available_update is set.
+    container.appendChild(
+        createSystemSidebarGroup(
+            (_availableUpdateState && _availableUpdateState.available_update) || null
+        )
+    );
 
     // Update active highlight
     highlightActiveSidebar();
@@ -213,21 +235,33 @@ function createSystemSidebarGroup(availableUpdate) {
 }
 
 function createSoftwareSidebarEntry(availableUpdate) {
-    var entry = document.createElement('div');
-    entry.className = 've-sidebar-device ve-sidebar-device--system-with-update';
+    // Phase 46-03 UI-01: this entry is ALWAYS rendered (availableUpdate may
+    // be null); clicking it navigates to #system/software.
+    var entry = document.createElement('a');
+    entry.href = '#system/software';
+    entry.setAttribute('data-nav', 'system-software');
+    var entryClass = 've-sidebar-device';
+    if (availableUpdate) {
+        entryClass += ' ve-sidebar-device--system-with-update';
+    }
+    entry.className = entryClass;
 
-    var tagName = availableUpdate.tag_name || availableUpdate.latest_version || '';
-    var publishedAt = availableUpdate.published_at || '';
-    var titleParts = ['Update available'];
-    if (tagName) titleParts.push(tagName);
-    if (publishedAt) titleParts.push(publishedAt);
-    entry.title = titleParts.join(' — ');
+    if (availableUpdate) {
+        var tagName = availableUpdate.tag_name || availableUpdate.latest_version || '';
+        var publishedAt = availableUpdate.published_at || '';
+        var titleParts = ['Update available'];
+        if (tagName) titleParts.push(tagName);
+        if (publishedAt) titleParts.push(publishedAt);
+        entry.title = titleParts.join(' — ');
+    } else {
+        entry.title = 'System software settings';
+    }
 
     // Badge dot uses existing --ve-orange token via the CSS class selector above
     var dotHtml = '<span class="ve-dot"></span>';
 
     var linkHtml = '';
-    if (availableUpdate.html_url) {
+    if (availableUpdate && availableUpdate.html_url) {
         linkHtml = '<a class="ve-sidebar-device-github-link" href="' + esc(availableUpdate.html_url) + '" target="_blank" rel="noopener">GitHub &rarr;</a>';
     }
 
@@ -235,6 +269,17 @@ function createSoftwareSidebarEntry(availableUpdate) {
         dotHtml +
         '<span class="ve-sidebar-device-name">' + esc('Software') + '</span>' +
         linkHtml;
+
+    entry.addEventListener('click', function(e) {
+        // Allow the inner GitHub link to navigate externally.
+        if (e.target && e.target.closest && e.target.closest('.ve-sidebar-device-github-link')) return;
+        e.preventDefault();
+        window.location.hash = 'system/software';
+        var sidebar = document.getElementById('sidebar');
+        if (sidebar) sidebar.classList.remove('open');
+        var overlay = document.getElementById('sidebar-overlay');
+        if (overlay) overlay.classList.remove('active');
+    });
 
     return entry;
 }
@@ -431,6 +476,9 @@ function connectWebSocket() {
 
     ws.onopen = function() {
         reconnectDelay = 1000;
+        // Phase 46-03: notify software page so it can re-fetch /api/version
+        // (stale-tab detection) and replay missed update_progress history.
+        if (window.softwarePage) window.softwarePage.onWsReconnect();
     };
 
     ws.onmessage = function(event) {
@@ -439,6 +487,9 @@ function connectWebSocket() {
             if (msg.type === 'snapshot') handleSnapshot(msg.data);
             if (msg.type === 'device_snapshot') handleDeviceSnapshot(msg);
             if (msg.type === 'virtual_snapshot') handleVirtualSnapshot(msg.data);
+            if (msg.type === 'update_progress' && window.softwarePage) {
+                window.softwarePage.handleWsMessage(msg);
+            }
             if (msg.type === 'device_list') {
                 _lastDeviceList = msg.data.devices || [];
                 // Extract mqtt_pub connection state + stats from device list
@@ -3133,15 +3184,13 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(function(res) { return res.json(); })
         .then(function(data) {
             renderSidebar(data.devices || []);
-            // Parse route and show page
-            var route = parseRoute();
-            showDevicePage(route.id, route.tab);
+            // Phase 46-03: use routeDispatch so #system/software is honored on first load.
+            routeDispatch();
         })
         .catch(function() {
             // No devices yet -- show virtual
             renderSidebar([]);
-            var route = parseRoute();
-            showDevicePage(route.id, route.tab);
+            routeDispatch();
         });
 
     // Start WebSocket
