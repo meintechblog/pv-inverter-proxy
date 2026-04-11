@@ -426,6 +426,44 @@ async def test_dead_ws_clients_are_discarded_from_set(
     assert len(alive.sent) == 1
 
 
+async def test_poll_once_falls_back_to_index_when_sequence_field_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Phase 45 status_writer.py does NOT write a `sequence` field on
+    history entries (verified in updater_root/status_writer.py:126). The
+    broadcaster must fall back to the entry's index in history[] so real
+    Phase 45 output is broadcastable without a status-writer bump.
+
+    Per RESEARCH.md Pattern 4 line 239: `sequence` is the index of the
+    entry in history[].
+    """
+    history = [
+        {"phase": "trigger_received", "at": "t0"},  # NO sequence field
+        {"phase": "backup", "at": "t1"},
+    ]
+    status = FakeStatus(current={"phase": "backup"}, history=history)
+    _patch_status(monkeypatch, lambda: FakeStatus(
+        current=status.current, history=list(history)
+    ))
+    _patch_current_phase(monkeypatch, "backup")
+
+    app = _make_app(num_clients=1)
+    b = ProgressBroadcaster(app)
+    await b._poll_once()
+
+    only_ws = next(iter(app["ws_clients"]))
+    assert len(only_ws.sent) == 2
+    # Appended entry must be broadcast as the next index.
+    history.append({"phase": "extract", "at": "t2"})
+    await b._poll_once()
+    assert len(only_ws.sent) == 3
+    last = json.loads(only_ws.sent[-1])
+    assert last["data"]["phase"] == "extract"
+    # Dedupe must still work with index-based fallback.
+    await b._poll_once()
+    assert len(only_ws.sent) == 3
+
+
 async def test_sequence_tracking_is_per_broadcaster_instance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
