@@ -2582,3 +2582,228 @@ body {
     color: var(--ve-blue-light);
     text-decoration: underline;
 }
+
+/* ============ Phase 46: Software Update Page ============ */
+
+/* Global disable rule for buttons during active update (D-35, D-36) */
+.ve-update-busy .ve-update-action {
+    pointer-events: none;
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Software page layout */
+.ve-software-root {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.ve-software-card {
+    background: var(--ve-bg-surface);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid var(--ve-border);
+}
+
+.ve-software-card-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ve-text);
+    margin: 0 0 12px 0;
+}
+
+.ve-software-version-line {
+    font-family: var(--ve-mono);
+    color: var(--ve-text-dim);
+    font-size: 0.85rem;
+    margin: 0 0 12px 0;
+}
+
+.ve-software-delta {
+    color: var(--ve-blue);
+    font-weight: 600;
+}
+
+.ve-software-notes {
+    max-height: 320px;
+    overflow-y: auto;
+    color: var(--ve-text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+/* Progress checklist (D-26: 19-phase vocabulary) */
+.ve-update-progress {
+    list-style: none;
+    padding: 0;
+    margin: 16px 0 0 0;
+}
+
+.ve-update-progress li {
+    padding: 8px 12px;
+    border-left: 3px solid var(--ve-border);
+    color: var(--ve-text-dim);
+    transition: color var(--ve-duration-normal) var(--ve-easing-default),
+                border-left-color var(--ve-duration-normal) var(--ve-easing-default);
+    font-size: 0.9rem;
+    margin: 4px 0;
+}
+
+.ve-update-progress li.ve-progress--running {
+    border-left-color: var(--ve-blue);
+    color: var(--ve-text);
+    font-weight: 500;
+}
+
+.ve-update-progress li.ve-progress--done {
+    border-left-color: var(--ve-green);
+    color: var(--ve-text-dim);
+}
+
+.ve-update-progress li.ve-progress--failed {
+    border-left-color: var(--ve-red);
+    color: var(--ve-red);
+}
+
+/* Native <dialog> for Install + Rollback confirmation (D-31, D-32, D-33) */
+.ve-dialog {
+    background: var(--ve-bg-surface);
+    color: var(--ve-text);
+    border: 1px solid var(--ve-border);
+    border-radius: 12px;
+    padding: 0;
+    max-width: 480px;
+    width: calc(100% - 32px);
+}
+
+.ve-dialog::backdrop {
+    background: rgba(20, 20, 20, 0.82);
+}
+
+.ve-dialog-title {
+    padding: 24px 24px 0;
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ve-text);
+}
+
+.ve-dialog-version {
+    padding: 12px 24px;
+    font-family: var(--ve-mono);
+    color: var(--ve-text-dim);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.ve-dialog-notes {
+    padding: 0 24px;
+    max-height: 240px;
+    overflow-y: auto;
+    color: var(--ve-text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.ve-dialog-warn {
+    padding: 12px 24px;
+    color: var(--ve-orange);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+.ve-dialog-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 16px 24px 24px;
+}
+
+.ve-dialog-actions .ve-btn:focus-visible {
+    outline: 2px solid var(--ve-blue);
+    outline-offset: 2px;
+}
+
+/* Destructive rollback button (same structure as ve-btn--cancel but red) */
+.ve-btn--danger {
+    background: var(--ve-red);
+    color: var(--ve-text);
+    border: 1px solid var(--ve-red);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity var(--ve-duration-fast) var(--ve-easing-default);
+}
+
+.ve-btn--danger:hover {
+    opacity: 0.85;
+}
+
+/* Minimal Markdown elements (D-28) */
+.ve-md-h1 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ve-text);
+    margin: 12px 0 8px 0;
+}
+
+.ve-md-h2 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ve-text);
+    margin: 10px 0 8px 0;
+}
+
+.ve-md-h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--ve-text-secondary);
+    margin: 8px 0 4px 0;
+}
+
+.ve-md-p {
+    margin: 8px 0;
+    color: var(--ve-text-secondary);
+}
+
+.ve-md-list {
+    margin: 8px 0;
+    padding-left: 24px;
+    color: var(--ve-text-secondary);
+}
+
+.ve-md-list li {
+    margin: 4px 0;
+}
+
+.ve-md-p code,
+.ve-md-list code {
+    background: var(--ve-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--ve-mono);
+    font-size: 0.85em;
+    color: var(--ve-blue-light);
+}
+
+/* Update-config panel skeleton — populated by Plan 46-05 */
+.ve-software-config-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+.ve-software-config-grid .ve-form-group {
+    margin: 0;
+}
+
+/* Rollback card: hidden by default; shown for 1h after a successful update (D-02) */
+.ve-rollback-card {
+    display: none;
+}
+
+.ve-rollback-card.ve-rollback-card--visible {
+    display: block;
+}
