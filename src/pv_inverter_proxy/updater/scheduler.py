@@ -167,6 +167,38 @@ class UpdateCheckScheduler:
             log.info("update_scheduler_cancelled")
             raise
 
+    async def check_once(self) -> Optional[ReleaseInfo]:
+        """Force a single check cycle without waiting for the loop timer.
+
+        Phase 46 UI-02: wired into ``POST /api/update/check`` so the user
+        can click "Check for updates" and get an immediate answer rather
+        than waiting up to an hour for the next scheduler tick.
+
+        This bypasses the active-user probe (the user is clearly active
+        if they just clicked the button) but still runs through the real
+        GitHub client + callback so the result flows back into
+        ``app_ctx.available_update`` via the normal Phase 44 pipeline.
+
+        Returns the :class:`ReleaseInfo` if a release is surfaced, or
+        ``None`` when the repo has no releases / the latest matches the
+        current version. Exceptions from the GitHub client or the callback
+        propagate to the caller — the webapp handler translates them into
+        a 500 response.
+        """
+        release = await self._client.fetch_latest_release()
+        try:
+            await self._invoke_callback(release)
+        except Exception as exc:
+            log.warning(
+                "update_check_once_callback_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            self._last_check_failed_at = time.time()
+            raise
+        self._last_check_at = time.time()
+        return release
+
     async def _run_one_iteration(self) -> None:
         """Execute one poll iteration.
 

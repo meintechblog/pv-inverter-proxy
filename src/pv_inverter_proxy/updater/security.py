@@ -138,6 +138,25 @@ def _normalize_ip(raw: str | None) -> str:
 # ---------------------------------------------------------------------------
 
 
+async def _audit_csrf_reject(request: web.Request) -> None:
+    """Best-effort audit log for a CSRF rejection (D-19).
+
+    Isolated helper so csrf failures produce an audit line without
+    polluting every csrf_middleware branch with try/except. Any error
+    (PermissionError on the canonical path during tests, disk full,
+    interrupted I/O, ...) is swallowed — the rejection response itself
+    is the authoritative signal to the client.
+    """
+    try:
+        await audit_log_append(
+            ip=request.remote or "unknown",
+            user_agent=request.headers.get("User-Agent", ""),
+            outcome="422_invalid_csrf",
+        )
+    except Exception:  # pragma: no cover - best-effort
+        pass
+
+
 @web.middleware
 async def csrf_middleware(
     request: web.Request,
@@ -150,6 +169,12 @@ async def csrf_middleware(
            present. Missing either → 422 ``csrf_missing``.
         2. Compare with :func:`secrets.compare_digest` (timing-safe).
            Mismatch → 422 ``csrf_mismatch``.
+
+    On every 422 rejection the middleware emits one ``422_invalid_csrf``
+    line through :func:`audit_log_append` (D-19 — every outcome in the
+    closed enum is logged, including CSRF violations that never reach
+    the downstream handler). Audit failures are swallowed so a broken
+    audit log cannot wedge the CSRF gate.
 
     Outgoing cookie seeding (all request methods, all paths):
         If the request arrived **without** the ``pvim_csrf`` cookie,
@@ -170,6 +195,7 @@ async def csrf_middleware(
         cookie_tok = request.cookies.get(CSRF_COOKIE_NAME)
         header_tok = request.headers.get(CSRF_HEADER_NAME)
         if not cookie_tok or not header_tok:
+            await _audit_csrf_reject(request)
             response: web.StreamResponse = web.json_response(
                 {"error": "csrf_missing"}, status=422
             )
@@ -177,6 +203,7 @@ async def csrf_middleware(
             return response
         # Timing-safe comparison — never use `==` on secrets.
         if not secrets.compare_digest(cookie_tok, header_tok):
+            await _audit_csrf_reject(request)
             response = web.json_response(
                 {"error": "csrf_mismatch"}, status=422
             )

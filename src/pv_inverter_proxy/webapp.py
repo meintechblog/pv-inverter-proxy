@@ -44,7 +44,25 @@ from pv_inverter_proxy.venus_reader import venus_mqtt_loop
 # Phase 44: Passive Version Badge
 from pv_inverter_proxy.updater.version import Version
 
+# Phase 46: Security belt (Plan 46-01) + progress broadcaster (Plan 46-02)
+from pv_inverter_proxy.updater.security import (
+    IDLE_PHASES,
+    RateLimiter,
+    audit_log_append,
+    csrf_middleware,
+    is_update_running,
+)
+from pv_inverter_proxy.updater.progress import start_broadcaster, stop_broadcaster
+from pv_inverter_proxy.updater.status import load_status
+
 log = structlog.get_logger()
+
+# Phase 46 D-12/D-13/D-14: single module-level sliding-window rate limiter
+# shared by POST /api/update/start and POST /api/update/rollback. A second
+# attempt from the same source IP within 60s of any prior call (accepted or
+# rejected) yields 429 + Retry-After. Tests can monkeypatch this attribute
+# to a fresh RateLimiter(clock=FakeClock()) for deterministic behavior.
+_update_rate_limiter = RateLimiter()  # type: RateLimiter
 
 
 # SunSpec register layout for the register viewer.
@@ -394,21 +412,58 @@ async def broadcast_update_in_progress(app) -> None:
             log.warning("ws_broadcast_update_in_progress_unexpected", error=str(exc))
 
 
+async def _log_and_respond(
+    request: web.Request,
+    outcome: str | None,
+    status: int,
+    body: dict,
+    *,
+    extra_headers: dict | None = None,
+) -> web.Response:
+    """Emit one audit line (unless ``outcome`` is None) and return ``body``.
+
+    Phase 46 D-15/D-19: every /api/update/{start,rollback,check} decision
+    that falls into the closed outcome enum — ``accepted``, ``409_conflict``,
+    ``429_rate_limited``, ``422_invalid_csrf`` — is recorded via
+    :func:`audit_log_append`. Outcomes outside this set (e.g. malformed JSON
+    body yielding 400) pass ``outcome=None`` to skip audit entirely rather
+    than synthesizing a fake code. Audit failures never block the response
+    so a disk-full condition on the audit log cannot wedge the UI path.
+    """
+    if outcome is not None:
+        try:
+            await audit_log_append(
+                ip=request.remote or "unknown",
+                user_agent=request.headers.get("User-Agent", ""),
+                outcome=outcome,  # type: ignore[arg-type]
+            )
+        except Exception as exc:  # pragma: no cover - best-effort
+            log.warning("audit_log_append_failed", error=str(exc))
+    headers = extra_headers or {}
+    return web.json_response(body, status=status, headers=headers)
+
+
 async def update_start_handler(request: web.Request) -> web.Response:
-    """POST /api/update/start -- EXEC-01, EXEC-02, SEC-07.
+    """POST /api/update/start -- EXEC-01, EXEC-02, SEC-07 + Phase 46 guards.
 
     Writes a trigger file atomically to ``/etc/pv-inverter-proxy/update-trigger.json``
     and returns HTTP 202. The actual update work happens in the root helper
     (``pv-inverter-proxy-updater.service``) triggered by a ``.path`` unit
-    on ``PathModified``. Plan 45-02 only provides the producer half; the
-    consumer ships in Plan 45-03/04.
+    on ``PathModified``. Plan 45-02 shipped the producer half; Plan 46-04
+    hardens this handler with the full guard belt (rate limit, concurrent
+    guard, audit log) and expects CSRF to be enforced upstream by
+    :func:`pv_inverter_proxy.updater.security.csrf_middleware`.
 
-    Phase 45 scope deliberately omits auth / CSRF / rate limiting — those
-    ship in Phase 46 **before** the UI surfaces an Install button. The
-    risk window is the interval between Plan 45-04 (updater runs) and
-    Phase 46 (hardening); during that window the only consumers are the
-    CLI self-tests described in the phase plan. See 45-02 threat register
-    T-45-02-02 for the acceptance record.
+    Phase 46 pipeline order (D-20 — mandatory for <100ms latency):
+
+        1. CSRF — enforced by middleware BEFORE reaching this handler.
+        2. Rate limit (module-level sliding 60s window per IP).
+        3. Concurrent-update guard (reads update-status.json).
+        4. Parse + validate JSON body (existing Phase 45 validation).
+        5. Enter maintenance mode + ``update_in_progress`` WS broadcast
+           (Phase 45 SAFETY-09 / RESTART-01/03) BEFORE the write.
+        6. Atomic trigger write (Phase 45 ``write_trigger``).
+        7. Audit-log ``accepted`` and return 202.
 
     Request body (JSON):
 
@@ -427,11 +482,12 @@ async def update_start_handler(request: web.Request) -> web.Response:
         500 — disk write failed (ENOSPC, EACCES, ...):
             {"error": "trigger_write_failed: <detail>"}
 
-    Latency budget (EXEC-01): the handler must complete in <100ms. The
-    write path is sync and tiny — tempfile create, 5-field json.dumps,
+    Latency budget (EXEC-01 / D-20): the handler must complete in <100ms.
+    The write path is sync and tiny — tempfile create, 5-field json.dumps,
     os.replace, chmod — all within the same filesystem as the target.
-    No network I/O, no subprocess, no await-on-blocking. The only await
-    is ``request.json()`` which reads an already-buffered body.
+    The guard prefix is also hot: rate limit is an in-memory dict lookup,
+    the concurrent guard is a single file read, and the audit log write
+    runs in the thread pool executor. No network I/O, no subprocess.
     """
     # Local import keeps module-load time flat for webapp.py and avoids a
     # circular-import risk if the updater package ever pulls webapp types.
@@ -442,27 +498,53 @@ async def update_start_handler(request: web.Request) -> web.Response:
         write_trigger,
     )
 
+    # (a) Rate limit — 60s sliding window per source IP (D-12/D-13/D-14).
+    accepted, retry_after = _update_rate_limiter.check(request.remote or "unknown")
+    if not accepted:
+        return await _log_and_respond(
+            request,
+            "429_rate_limited",
+            429,
+            {"error": "rate_limited", "retry_after": retry_after},
+            extra_headers={"Retry-After": str(retry_after)},
+        )
+
+    # (b) Concurrent-update guard — status file is source of truth
+    # (D-10/D-11). The webapp process never writes update-status.json, so
+    # asyncio.Lock would be a false source of authority after a webapp
+    # restart during an update.
+    running, phase = is_update_running()
+    if running:
+        return await _log_and_respond(
+            request,
+            "409_conflict",
+            409,
+            {"error": "update_in_progress", "phase": phase},
+        )
+
+    # (c) Parse body. Malformed JSON is a client bug; not an auditable
+    # outcome per the closed D-15 enum, so we skip the audit write.
     try:
         body = await request.json()
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
-        return web.json_response(
-            {"error": f"invalid_json: {exc}"},
-            status=400,
+        return await _log_and_respond(
+            request, None, 400, {"error": f"invalid_json: {exc}"}
         )
 
     if not isinstance(body, dict):
-        return web.json_response(
-            {"error": "body_must_be_json_object"},
-            status=400,
+        return await _log_and_respond(
+            request, None, 400, {"error": "body_must_be_json_object"}
         )
 
     op = body.get("op", "update")
     target_sha = body.get("target_sha")
 
     if not isinstance(op, str) or not isinstance(target_sha, str):
-        return web.json_response(
+        return await _log_and_respond(
+            request,
+            None,
+            400,
             {"error": "op and target_sha required as strings"},
-            status=400,
         )
 
     payload = TriggerPayload(
@@ -476,9 +558,8 @@ async def update_start_handler(request: web.Request) -> web.Response:
     try:
         payload.validate()
     except ValueError as exc:
-        return web.json_response(
-            {"error": f"invalid_payload: {exc}"},
-            status=400,
+        return await _log_and_respond(
+            request, None, 400, {"error": f"invalid_payload: {exc}"}
         )
 
     # Plan 45-05 RESTART-01/03: enter maintenance mode + broadcast
@@ -503,9 +584,8 @@ async def update_start_handler(request: web.Request) -> web.Response:
         write_trigger(payload)
     except OSError as exc:
         log.error("update_start_write_failed", error=str(exc))
-        return web.json_response(
-            {"error": f"trigger_write_failed: {exc}"},
-            status=500,
+        return await _log_and_respond(
+            request, None, 500, {"error": f"trigger_write_failed: {exc}"}
         )
 
     log.info(
@@ -514,12 +594,174 @@ async def update_start_handler(request: web.Request) -> web.Response:
         target_sha=payload.target_sha,
         nonce=payload.nonce,
     )
-    return web.json_response(
+    return await _log_and_respond(
+        request,
+        "accepted",
+        202,
         {
             "update_id": payload.nonce,
             "status_url": "/api/update/status",
         },
-        status=202,
+    )
+
+
+async def update_rollback_handler(request: web.Request) -> web.Response:
+    """POST /api/update/rollback — Plan 46-04 UI-07, D-03.
+
+    Writes a rollback trigger with the sentinel ``target_sha="previous"``.
+    The root updater (Plan 45-04) resolves "previous" against the
+    update-status.json history to find the prior version. Same 3-guard
+    pipeline as :func:`update_start_handler`; CSRF is enforced by
+    :func:`csrf_middleware`.
+    """
+    from pv_inverter_proxy.updater.trigger import (
+        TriggerPayload,
+        generate_nonce,
+        now_iso_utc,
+        write_trigger,
+    )
+
+    accepted, retry_after = _update_rate_limiter.check(request.remote or "unknown")
+    if not accepted:
+        return await _log_and_respond(
+            request,
+            "429_rate_limited",
+            429,
+            {"error": "rate_limited", "retry_after": retry_after},
+            extra_headers={"Retry-After": str(retry_after)},
+        )
+
+    running, phase = is_update_running()
+    if running:
+        return await _log_and_respond(
+            request,
+            "409_conflict",
+            409,
+            {"error": "update_in_progress", "phase": phase},
+        )
+
+    payload = TriggerPayload(
+        op="rollback",
+        target_sha="previous",  # D-03 sentinel
+        requested_at=now_iso_utc(),
+        requested_by="webapp",
+        nonce=generate_nonce(),
+    )
+
+    # Best-effort maintenance entry mirrors update_start_handler so the
+    # Modbus server enters DEVICE_BUSY before the root updater starts
+    # ripping files.
+    try:
+        from pv_inverter_proxy.updater.maintenance import enter_maintenance_mode
+
+        app_ctx = request.app.get("app_ctx") if hasattr(request.app, "get") else None
+        if app_ctx is not None:
+            await enter_maintenance_mode(app_ctx, reason="rollback_requested")
+    except Exception as exc:  # pragma: no cover - best effort
+        log.warning("maintenance_mode_enter_failed_rollback", error=str(exc))
+
+    try:
+        await broadcast_update_in_progress(request.app)
+    except Exception as exc:  # pragma: no cover - best effort
+        log.warning("ws_broadcast_update_in_progress_failed", error=str(exc))
+
+    try:
+        write_trigger(payload)
+    except OSError as exc:
+        log.error("rollback_write_failed", error=str(exc))
+        return await _log_and_respond(
+            request, None, 500, {"error": f"trigger_write_failed: {exc}"}
+        )
+
+    log.info("update_rollback_accepted", nonce=payload.nonce)
+    return await _log_and_respond(
+        request,
+        "accepted",
+        202,
+        {"update_id": payload.nonce, "status_url": "/api/update/status"},
+    )
+
+
+async def version_handler(request: web.Request) -> web.Response:
+    """GET /api/version — D-27.
+
+    Returns ``{version, commit}`` from the AppContext populated at startup
+    by ``__main__`` via :func:`get_current_version` + :func:`get_commit_hash`.
+    Frontend (Plan 46-03) stores this on first load and re-fetches on WS
+    reconnect to detect a post-update restart and trigger ``location.reload()``.
+    """
+    app_ctx = request.app.get("app_ctx") if hasattr(request.app, "get") else None
+    if app_ctx is None:
+        return web.json_response({"version": None, "commit": None})
+    return web.json_response(
+        {
+            "version": getattr(app_ctx, "current_version", None),
+            "commit": getattr(app_ctx, "current_commit", None),
+        }
+    )
+
+
+async def update_status_handler(request: web.Request) -> web.Response:
+    """GET /api/update/status — Plan 46-04.
+
+    Returns the full ``{current, history, schema_version}`` payload from
+    the defensive status reader. Never raises: :func:`load_status` swallows
+    all read errors and returns an empty :class:`UpdateStatus`.
+    """
+    try:
+        status = load_status()
+    except Exception as exc:  # pragma: no cover - load_status never raises
+        log.warning("update_status_handler_load_failed", error=str(exc))
+        return web.json_response({"current": None, "history": [], "schema_version": 1})
+
+    if dataclasses.is_dataclass(status):
+        return web.json_response(dataclasses.asdict(status))
+    if hasattr(status, "to_dict"):
+        return web.json_response(status.to_dict())
+    return web.json_response(status)
+
+
+async def update_check_handler(request: web.Request) -> web.Response:
+    """POST /api/update/check — Plan 46-04 UI-02 Check-now button.
+
+    Invokes the Phase 44 :class:`UpdateCheckScheduler.check_once` helper
+    to force an immediate GitHub Releases poll. Returns
+    ``{checked, available, latest_version}``. Rate-limited together with
+    /api/update/start and /api/update/rollback via the shared module-level
+    limiter to avoid GitHub API thrash.
+    """
+    accepted, retry_after = _update_rate_limiter.check(request.remote or "unknown")
+    if not accepted:
+        return await _log_and_respond(
+            request,
+            "429_rate_limited",
+            429,
+            {"error": "rate_limited", "retry_after": retry_after},
+            extra_headers={"Retry-After": str(retry_after)},
+        )
+
+    scheduler = (
+        request.app.get("update_scheduler") if hasattr(request.app, "get") else None
+    )
+    if scheduler is None:
+        return web.json_response({"error": "scheduler_not_running"}, status=503)
+
+    try:
+        result = await scheduler.check_once()
+    except Exception as exc:
+        log.warning("update_check_once_failed", error=str(exc))
+        return web.json_response(
+            {"error": "check_failed", "detail": str(exc)}, status=500
+        )
+
+    if result is None:
+        return web.json_response(
+            {"checked": True, "available": False, "latest_version": None}
+        )
+    available = bool(getattr(result, "available", False))
+    latest = getattr(result, "latest_version", None)
+    return web.json_response(
+        {"checked": True, "available": available, "latest_version": latest}
     )
 
 
@@ -2335,7 +2577,10 @@ async def create_webapp(
 
     Returns an AppRunner (caller manages site creation and lifecycle).
     """
-    app = web.Application()
+    # Phase 46 D-07..D-09, D-41: csrf_middleware MUST be first so it runs
+    # before any body parsing and can reject CSRF violations with an audit
+    # trail regardless of the downstream handler's guard pipeline.
+    app = web.Application(middlewares=[csrf_middleware])
     app["app_ctx"] = app_ctx
     app["config"] = config
     app["config_path"] = config_path
@@ -2343,6 +2588,12 @@ async def create_webapp(
     app["reconfiguring"] = False
     app["_scan_running"] = False
     app["ws_clients"] = weakref.WeakSet()
+
+    # Phase 46 D-22/D-23: start the update-status.json poll + WS broadcaster
+    # on startup and stop it on cleanup. Stores the singleton under
+    # app["progress_broadcaster"].
+    app.on_startup.append(start_broadcaster)
+    app.on_cleanup.append(stop_broadcaster)
 
     app.router.add_get("/ws", ws_handler)
     app.router.add_get("/", index_handler)
@@ -2352,6 +2603,11 @@ async def create_webapp(
     app.router.add_get("/api/update/available", update_available_handler)
     # Phase 45-02: EXEC-01, EXEC-02 — update trigger producer
     app.router.add_post("/api/update/start", update_start_handler)
+    # Phase 46 Plan 04 (D-27, D-41): new update routes
+    app.router.add_get("/api/version", version_handler)
+    app.router.add_get("/api/update/status", update_status_handler)
+    app.router.add_post("/api/update/rollback", update_rollback_handler)
+    app.router.add_post("/api/update/check", update_check_handler)
     app.router.add_get("/api/config", config_get_handler)
     app.router.add_post("/api/config", config_save_handler)
     app.router.add_post("/api/config/test", config_test_handler)

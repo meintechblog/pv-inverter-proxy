@@ -257,6 +257,10 @@ class _StubAppCtx:
     ) -> None:
         self.current_version = current_version
         self.current_commit = current_commit
+        # Phase 44 fields surfaced by /api/update/available.
+        self.available_update = None
+        self.update_last_check_at = None
+        self.update_last_check_failed_at = None
         # Maintenance-mode entry requires these attrs on the real path;
         # None/default values short-circuit it without crashing.
         self.maintenance_mode = False

@@ -25,6 +25,48 @@ FULL_SHA = "0123456789abcdef0123456789abcdef01234567"
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _reset_phase46_guards(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Phase 46 regression shim: isolate module-level guard state.
+
+    ``update_start_handler`` now consults a module-level ``RateLimiter``
+    and :func:`is_update_running` before writing the trigger (Plan 46-04
+    D-10/D-12). The pre-existing tests in this file exercise the happy
+    path multiple times per run from ``127.0.0.1`` which would otherwise
+    collide with the 60s rate window and the real status file on disk.
+
+    This fixture runs for every test to swap both guards for test-local
+    no-ops:
+
+    * Rate limiter → fresh ``RateLimiter`` (empty dict, always accepts).
+    * ``is_update_running`` → lambda returning ``(False, "idle")``.
+    * ``audit_log_append`` → coroutine no-op so tests never touch the
+      real ``/var/lib/pv-inverter-proxy/update-audit.log``.
+
+    Phase 46 routing behavior is covered in detail by
+    ``test_updater_webapp_routes.py``.
+    """
+    from pv_inverter_proxy import webapp as _webapp_mod
+
+    class _AlwaysAcceptLimiter:
+        """Permissive stand-in so same-test multi-POST loops stay green."""
+
+        def check(self, ip: str):
+            return True, 0
+
+    monkeypatch.setattr(
+        _webapp_mod, "_update_rate_limiter", _AlwaysAcceptLimiter()
+    )
+    monkeypatch.setattr(
+        _webapp_mod, "is_update_running", lambda *a, **k: (False, "idle")
+    )
+
+    async def _noop_audit(*, ip: str, user_agent: str, outcome, **kwargs):
+        return None
+
+    monkeypatch.setattr(_webapp_mod, "audit_log_append", _noop_audit)
+
+
 @pytest.fixture
 def trigger_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Redirect TRIGGER_FILE_PATH to a tmp file for the duration of the test."""
