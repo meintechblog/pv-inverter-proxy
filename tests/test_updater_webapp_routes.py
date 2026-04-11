@@ -876,3 +876,299 @@ def test_phase_order_js_matches_python_phases():
         f"  JS only:    {sorted(set(js_phases) - PHASES)}\n"
         f"  Python only: {sorted(PHASES - set(js_phases))}"
     )
+
+
+# ===========================================================================
+# Phase 46 Plan 05: GET/PATCH /api/update/config (CFG-02 / D-04 / D-06)
+# ---------------------------------------------------------------------------
+# These tests pin the minimal UpdateConfig contract end-to-end through
+# create_webapp + csrf_middleware. They use the existing webapp_client
+# fixture and write a tmp config.yaml that the handlers read/write.
+# ===========================================================================
+
+
+@_pytest.fixture
+def update_config_path(tmp_path, monkeypatch):
+    """Point ``app["config_path"]`` at a tmp YAML file for the update tests.
+
+    Returns the :class:`Path` so tests can assert persisted values.
+    """
+    cfg = tmp_path / "config.yaml"
+    # Seed with an unrelated sibling key to exercise the preserve-siblings
+    # contract of save_update_config.
+    cfg.write_text(
+        "log_level: INFO\n"
+        "proxy:\n"
+        "  port: 502\n"
+    )
+    return cfg
+
+
+@_pytest.fixture
+async def webapp_client_with_cfg(
+    tmp_trigger_path,
+    tmp_audit_path,
+    fresh_rate_limiter,
+    force_idle,
+    monkeypatch,
+    update_config_path,
+):
+    """Same as :func:`webapp_client` but with a real tmp config path.
+
+    The baseline fixture passes ``""`` as ``config_path`` which is fine
+    for the other route tests but breaks the update-config tests that
+    need a writable YAML file.
+    """
+    import pv_inverter_proxy.webapp as _webapp_mod
+    from pv_inverter_proxy.config import Config
+
+    async def _noop_enter_maintenance(ctx, reason=""):
+        return None
+
+    import pv_inverter_proxy.updater.maintenance as _maint_mod
+
+    monkeypatch.setattr(
+        _maint_mod, "enter_maintenance_mode", _noop_enter_maintenance
+    )
+
+    ctx = _StubAppCtx()
+    runner = await _webapp_mod.create_webapp(
+        ctx, Config(), str(update_config_path)
+    )
+    app = runner.app
+    app["update_scheduler"] = _FakeScheduler(
+        result=_FakeReleaseInfo(available=False, latest_version=None)
+    )
+    server = TestServer(app)
+    async with TestClient(server) as client:
+        await client.get("/api/update/available")
+        yield client, update_config_path
+    await runner.cleanup()
+
+
+# ---- GET /api/update/config ----------------------------------------------
+
+
+async def test_update_config_get_returns_three_fields(webapp_client_with_cfg):
+    client, _cfg = webapp_client_with_cfg
+    resp = await client.get("/api/update/config")
+    assert resp.status == 200
+    data = await resp.json()
+    # Defaults are returned when no 'update:' section exists yet.
+    assert set(data.keys()) == {
+        "github_repo",
+        "check_interval_hours",
+        "auto_install",
+    }
+    assert data["github_repo"] == "hulki/pv-inverter-proxy"
+    assert data["check_interval_hours"] == 24
+    assert data["auto_install"] is False
+
+
+async def test_update_config_get_does_not_require_csrf(webapp_client_with_cfg):
+    """GET is unauthenticated — no CSRF header needed."""
+    client, _cfg = webapp_client_with_cfg
+    # Hit GET without csrf headers (just the cookie jar from fixture).
+    resp = await client.get("/api/update/config")
+    assert resp.status == 200
+
+
+async def test_update_config_get_reads_existing_section(
+    webapp_client_with_cfg,
+):
+    """GET reflects a pre-seeded update: section from the YAML file."""
+    client, cfg = webapp_client_with_cfg
+    import yaml as _yaml
+
+    existing = _yaml.safe_load(cfg.read_text()) or {}
+    existing["update"] = {
+        "github_repo": "forked/pv-inverter-proxy",
+        "check_interval_hours": 12,
+        "auto_install": True,
+    }
+    cfg.write_text(_yaml.safe_dump(existing))
+    resp = await client.get("/api/update/config")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["github_repo"] == "forked/pv-inverter-proxy"
+    assert data["check_interval_hours"] == 12
+    assert data["auto_install"] is True
+
+
+# ---- PATCH /api/update/config: CSRF -------------------------------------
+
+
+async def test_update_config_patch_requires_csrf(webapp_client_with_cfg):
+    """PATCH without X-CSRF-Token → 422 csrf_missing (no save)."""
+    client, cfg = webapp_client_with_cfg
+    resp = await client.patch(
+        "/api/update/config",
+        json={"check_interval_hours": 6},
+    )
+    assert resp.status == 422
+    body = await resp.json()
+    assert body.get("error") == "csrf_missing"
+
+
+async def test_update_config_patch_rejects_csrf_mismatch(
+    webapp_client_with_cfg,
+):
+    """PATCH with a bogus header token → 422 csrf_mismatch."""
+    client, _cfg = webapp_client_with_cfg
+    # The jar already has a seeded cookie from the fixture's GET call.
+    resp = await client.patch(
+        "/api/update/config",
+        json={"check_interval_hours": 6},
+        headers={"X-CSRF-Token": "NOT-THE-REAL-TOKEN"},
+    )
+    assert resp.status == 422
+    body = await resp.json()
+    assert body.get("error") == "csrf_mismatch"
+
+
+# ---- PATCH /api/update/config: happy path -------------------------------
+
+
+async def test_update_config_patch_accepts_single_field(
+    webapp_client_with_cfg,
+):
+    client, cfg = webapp_client_with_cfg
+    headers = _csrf_headers(client)
+    resp = await client.patch(
+        "/api/update/config",
+        json={"check_interval_hours": 6},
+        headers=headers,
+    )
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["check_interval_hours"] == 6
+    # Unspecified fields fall back to defaults.
+    assert data["github_repo"] == "hulki/pv-inverter-proxy"
+    assert data["auto_install"] is False
+
+    # Verify the file actually moved.
+    import yaml as _yaml
+
+    reloaded = _yaml.safe_load(cfg.read_text())
+    assert reloaded["update"]["check_interval_hours"] == 6
+
+
+async def test_update_config_patch_accepts_all_three_fields(
+    webapp_client_with_cfg,
+):
+    client, cfg = webapp_client_with_cfg
+    headers = _csrf_headers(client)
+    resp = await client.patch(
+        "/api/update/config",
+        json={
+            "github_repo": "forked/repo",
+            "check_interval_hours": 12,
+            "auto_install": True,
+        },
+        headers=headers,
+    )
+    assert resp.status == 200
+    data = await resp.json()
+    assert data == {
+        "github_repo": "forked/repo",
+        "check_interval_hours": 12,
+        "auto_install": True,
+    }
+
+
+# ---- PATCH /api/update/config: 422 validation ---------------------------
+
+
+async def test_update_config_patch_rejects_unknown_key_with_422(
+    webapp_client_with_cfg,
+):
+    client, cfg = webapp_client_with_cfg
+    headers = _csrf_headers(client)
+    resp = await client.patch(
+        "/api/update/config",
+        json={"release_channel": "beta"},
+        headers=headers,
+    )
+    assert resp.status == 422
+    body = await resp.json()
+    assert body.get("error") == "validation_failed"
+    assert "release_channel" in (body.get("detail") or "")
+    # Config file must NOT have been touched on a validation failure.
+    import yaml as _yaml
+
+    reloaded = _yaml.safe_load(cfg.read_text()) or {}
+    assert "update" not in reloaded
+
+
+async def test_update_config_patch_rejects_invalid_type_with_422(
+    webapp_client_with_cfg,
+):
+    client, _cfg = webapp_client_with_cfg
+    headers = _csrf_headers(client)
+    resp = await client.patch(
+        "/api/update/config",
+        json={"check_interval_hours": -5},
+        headers=headers,
+    )
+    assert resp.status == 422
+    body = await resp.json()
+    assert body.get("error") == "validation_failed"
+    assert "check_interval_hours" in (body.get("detail") or "")
+
+
+async def test_update_config_patch_rejects_invalid_json_with_400(
+    webapp_client_with_cfg,
+):
+    client, _cfg = webapp_client_with_cfg
+    headers = _csrf_headers(client)
+    # Send a raw non-JSON body with JSON content-type.
+    resp = await client.patch(
+        "/api/update/config",
+        data=b"<not json>",
+        headers={**headers, "Content-Type": "application/json"},
+    )
+    assert resp.status == 400
+    body = await resp.json()
+    assert body.get("error") == "invalid_json"
+
+
+# ---- Preservation of sibling config keys (CFG-02 safety net) ------------
+
+
+async def test_update_config_patch_preserves_other_config_keys(
+    webapp_client_with_cfg,
+):
+    """PATCH must not clobber unrelated top-level keys in config.yaml.
+
+    The fixture seeds ``log_level: INFO`` + ``proxy.port: 502``; after a
+    patch those keys must still be present and unchanged.
+    """
+    client, cfg = webapp_client_with_cfg
+    headers = _csrf_headers(client)
+    resp = await client.patch(
+        "/api/update/config",
+        json={"auto_install": True},
+        headers=headers,
+    )
+    assert resp.status == 200
+
+    import yaml as _yaml
+
+    reloaded = _yaml.safe_load(cfg.read_text())
+    assert reloaded["log_level"] == "INFO"
+    assert reloaded["proxy"] == {"port": 502}
+    assert reloaded["update"]["auto_install"] is True
+
+
+# ---- Route table ---------------------------------------------------------
+
+
+async def test_update_config_routes_registered(webapp_client_with_cfg):
+    client, _cfg = webapp_client_with_cfg
+    app = client.server.app
+    routes = [
+        (r.method, r.resource.canonical if r.resource else "")
+        for r in app.router.routes()
+    ]
+    assert ("GET", "/api/update/config") in routes
+    assert ("PATCH", "/api/update/config") in routes

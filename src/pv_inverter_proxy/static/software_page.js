@@ -143,6 +143,15 @@
     rollbackDlg: null             // rollback confirm dialog
   };
 
+  // Phase 46-05 (CFG-02): originals snapshot for the dirty-tracking
+  // Save/Cancel pair on the update-config card. Populated by
+  // loadUpdateConfig() after the skeleton is mounted.
+  var _cfgOriginals = {
+    github_repo: '',
+    check_interval_hours: 24,
+    auto_install: false
+  };
+
   var initialized = false;
 
   // ===== CSRF helper (D-07 consumer) =====
@@ -769,7 +778,9 @@
   }
 
   function buildUpdateConfigCard() {
-    // Skeleton only — Plan 46-05 wires the save/cancel + dirty-tracking.
+    // Plan 46-05 (CFG-02): update-config card with dirty-tracking
+    // Save/Cancel pair reusing the existing ve-cfg-save-pair pattern.
+    // Three inputs wired to PATCH /api/update/config per D-04/D-06.
     var card = buildCard('Update-Konfiguration', 've-software-config-card');
     var grid = document.createElement('div');
     grid.className = 've-software-config-grid';
@@ -795,25 +806,174 @@
 
     card.appendChild(grid);
 
+    // Dirty-tracking Save/Cancel pair (matches app.js ve-cfg-save-pair
+    // convention: span with ve-btn-pair ve-cfg-save-pair, hidden until
+    // any tracked input is marked dirty).
     var pair = document.createElement('span');
-    pair.className = 've-btn-pair';
+    pair.className = 've-btn-pair ve-cfg-save-pair';
+    pair.style.display = 'none';
     var saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.className = 've-btn ve-btn--sm ve-btn--save ve-update-action';
     saveBtn.textContent = 'Speichern';
-    saveBtn.style.display = 'none';
     var cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = 've-btn ve-btn--sm ve-btn--cancel';
     cancelBtn.textContent = 'Abbrechen';
-    cancelBtn.style.display = 'none';
     pair.appendChild(saveBtn);
     pair.appendChild(cancelBtn);
     card.appendChild(pair);
     els.cfgSaveBtn = saveBtn;
     els.cfgCancelBtn = cancelBtn;
+    els.cfgSavePair = pair;
+
+    // Bind dirty-tracking on all three inputs.
+    els.cfgRepoInput.addEventListener('input', _cfgCheckDirty);
+    els.cfgIntervalInput.addEventListener('input', _cfgCheckDirty);
+    els.cfgAutoInstall.addEventListener('change', _cfgCheckDirty);
+
+    cancelBtn.addEventListener('click', _cfgCancel);
+    saveBtn.addEventListener('click', _cfgSave);
 
     return card;
+  }
+
+  // ===== Update-config dirty tracking (CFG-02 / D-04 / D-06) =====
+
+  function _cfgReadInputs() {
+    var intervalRaw = els.cfgIntervalInput ? els.cfgIntervalInput.value : '';
+    var intervalParsed = parseInt(intervalRaw, 10);
+    return {
+      github_repo: els.cfgRepoInput ? els.cfgRepoInput.value : '',
+      check_interval_hours: isNaN(intervalParsed) ? 0 : intervalParsed,
+      auto_install: !!(els.cfgAutoInstall && els.cfgAutoInstall.checked)
+    };
+  }
+
+  function _cfgSetInputs(values) {
+    if (els.cfgRepoInput) {
+      els.cfgRepoInput.value = values.github_repo || '';
+    }
+    if (els.cfgIntervalInput) {
+      els.cfgIntervalInput.value =
+        typeof values.check_interval_hours === 'number'
+          ? values.check_interval_hours
+          : 24;
+    }
+    if (els.cfgAutoInstall) {
+      els.cfgAutoInstall.checked = !!values.auto_install;
+    }
+  }
+
+  function _cfgCheckDirty() {
+    var cur = _cfgReadInputs();
+    var dirty = false;
+
+    var repoDirty = cur.github_repo !== _cfgOriginals.github_repo;
+    if (els.cfgRepoInput) {
+      els.cfgRepoInput.classList.toggle('ve-input--dirty', repoDirty);
+    }
+    if (repoDirty) dirty = true;
+
+    var intervalDirty =
+      cur.check_interval_hours !== _cfgOriginals.check_interval_hours;
+    if (els.cfgIntervalInput) {
+      els.cfgIntervalInput.classList.toggle('ve-input--dirty', intervalDirty);
+    }
+    if (intervalDirty) dirty = true;
+
+    var autoDirty = cur.auto_install !== _cfgOriginals.auto_install;
+    if (els.cfgAutoInstall) {
+      els.cfgAutoInstall.classList.toggle('ve-input--dirty', autoDirty);
+    }
+    if (autoDirty) dirty = true;
+
+    if (els.cfgSavePair) {
+      els.cfgSavePair.style.display = dirty ? '' : 'none';
+    }
+  }
+
+  function _cfgCancel() {
+    _cfgSetInputs(_cfgOriginals);
+    _cfgCheckDirty();
+  }
+
+  function _cfgSave() {
+    var cur = _cfgReadInputs();
+    // Client-side guard: non-positive interval is rejected server-side with
+    // 422 anyway, but fail fast with a clearer message.
+    if (
+      !cur.github_repo ||
+      !cur.check_interval_hours ||
+      cur.check_interval_hours <= 0
+    ) {
+      if (window.showToast) {
+        window.showToast('Bitte gültige Werte eingeben', 'error');
+      }
+      return;
+    }
+    fetch('/api/update/config', {
+      method: 'PATCH',
+      headers: csrfHeaders(),
+      credentials: 'same-origin',
+      body: JSON.stringify(cur)
+    })
+      .then(function (res) {
+        if (res.status === 200) {
+          return res.json().then(function (data) {
+            _cfgOriginals.github_repo = data.github_repo;
+            _cfgOriginals.check_interval_hours = data.check_interval_hours;
+            _cfgOriginals.auto_install = !!data.auto_install;
+            _cfgSetInputs(_cfgOriginals);
+            _cfgCheckDirty();
+            if (window.showToast) {
+              window.showToast('Einstellungen gespeichert', 'success');
+            }
+          });
+        }
+        if (res.status === 422) {
+          return res.json().then(function (data) {
+            var detail = (data && data.detail) || 'unbekannt';
+            if (window.showToast) {
+              window.showToast('Ungültige Eingabe: ' + detail, 'error');
+            }
+          });
+        }
+        if (window.showToast) {
+          window.showToast(
+            'Speichern fehlgeschlagen: HTTP ' + res.status,
+            'error'
+          );
+        }
+        return null;
+      })
+      .catch(function (e) {
+        if (window.showToast) {
+          window.showToast('Netzwerkfehler: ' + (e && e.message), 'error');
+        }
+      });
+  }
+
+  function loadUpdateConfig() {
+    fetch('/api/update/config', { credentials: 'same-origin' })
+      .then(function (res) {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data) return;
+        _cfgOriginals.github_repo = data.github_repo || '';
+        _cfgOriginals.check_interval_hours =
+          typeof data.check_interval_hours === 'number'
+            ? data.check_interval_hours
+            : 24;
+        _cfgOriginals.auto_install = !!data.auto_install;
+        _cfgSetInputs(_cfgOriginals);
+        _cfgCheckDirty();
+      })
+      .catch(function () {
+        /* silent — the page can still render with empty defaults */
+      });
   }
 
   function buildFormGroup(labelText, inputType, elsKey, cfgField) {
@@ -881,6 +1041,9 @@
     restoreRollbackWindowFromStorage();
     renderVersionCard();
     loadAvailableUpdate();
+    // Phase 46-05 (CFG-02): populate the update-config card with the
+    // current server values and arm dirty tracking.
+    loadUpdateConfig();
   }
 
   function onRouteEnter() {

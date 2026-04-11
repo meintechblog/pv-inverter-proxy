@@ -55,6 +55,15 @@ from pv_inverter_proxy.updater.security import (
 from pv_inverter_proxy.updater.progress import start_broadcaster, stop_broadcaster
 from pv_inverter_proxy.updater.status import load_status
 
+# Phase 46 Plan 46-05 (CFG-02): minimal UpdateConfig dataclass + GET/PATCH.
+from pv_inverter_proxy.updater.config import (
+    UpdateConfig,
+    load_update_config,
+    save_update_config,
+    validate_update_config_patch,
+)
+from dataclasses import asdict as _asdict_update_config
+
 log = structlog.get_logger()
 
 # Phase 46 D-12/D-13/D-14: single module-level sliding-window rate limiter
@@ -763,6 +772,74 @@ async def update_check_handler(request: web.Request) -> web.Response:
     return web.json_response(
         {"checked": True, "available": available, "latest_version": latest}
     )
+
+
+async def update_config_get_handler(request: web.Request) -> web.Response:
+    """GET /api/update/config — Plan 46-05 CFG-02 / D-04 / D-06.
+
+    Returns the minimal 3-field ``UpdateConfig`` dataclass as JSON. Read
+    is unauthenticated (no secrets among the 3 fields) and does NOT
+    require a CSRF token: :func:`csrf_middleware` only gates mutating
+    methods on ``/api/update/*``.
+    """
+    cfg_path = request.app.get("config_path") or ""
+    try:
+        uc = load_update_config(cfg_path)
+    except Exception as exc:  # pragma: no cover - load_update_config never raises
+        log.warning("update_config_load_failed", error=str(exc))
+        uc = UpdateConfig()
+    return web.json_response(_asdict_update_config(uc))
+
+
+async def update_config_patch_handler(request: web.Request) -> web.Response:
+    """PATCH /api/update/config — Plan 46-05 CFG-02 / D-04 / D-06.
+
+    Accepts a subset of the 3 allowed keys
+    (``github_repo`` / ``check_interval_hours`` / ``auto_install``) and
+    merges the patch onto the current config. Unknown keys or bad types
+    return 422 with a machine-readable ``detail`` string. CSRF is
+    enforced upstream by :func:`csrf_middleware` (PATCH + ``/api/update/``
+    prefix → double-submit cookie check).
+
+    Response on success: the merged ``UpdateConfig`` as JSON, 200.
+    """
+    try:
+        patch = await request.json()
+    except Exception:
+        return web.json_response(
+            {"error": "invalid_json", "detail": "body_not_json"}, status=400
+        )
+
+    valid, err = validate_update_config_patch(patch)
+    if not valid:
+        return web.json_response(
+            {"error": "validation_failed", "detail": err}, status=422
+        )
+
+    cfg_path = request.app.get("config_path") or ""
+    try:
+        current = load_update_config(cfg_path)
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("update_config_load_failed_for_patch", error=str(exc))
+        current = UpdateConfig()
+
+    merged = UpdateConfig(
+        github_repo=patch.get("github_repo", current.github_repo),
+        check_interval_hours=patch.get(
+            "check_interval_hours", current.check_interval_hours
+        ),
+        auto_install=patch.get("auto_install", current.auto_install),
+    )
+
+    try:
+        save_update_config(cfg_path, merged)
+    except Exception as exc:
+        log.warning("update_config_save_failed", error=str(exc))
+        return web.json_response(
+            {"error": "save_failed", "detail": str(exc)}, status=500
+        )
+
+    return web.json_response(_asdict_update_config(merged), status=200)
 
 
 async def update_available_handler(request: web.Request) -> web.Response:
@@ -2608,6 +2685,9 @@ async def create_webapp(
     app.router.add_get("/api/update/status", update_status_handler)
     app.router.add_post("/api/update/rollback", update_rollback_handler)
     app.router.add_post("/api/update/check", update_check_handler)
+    # Phase 46 Plan 05 (CFG-02 / D-04 / D-06): update-config GET+PATCH.
+    app.router.add_get("/api/update/config", update_config_get_handler)
+    app.router.add_patch("/api/update/config", update_config_patch_handler)
     app.router.add_get("/api/config", config_get_handler)
     app.router.add_post("/api/config", config_save_handler)
     app.router.add_post("/api/config/test", config_test_handler)
