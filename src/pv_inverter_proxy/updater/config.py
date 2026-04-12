@@ -139,6 +139,8 @@ def save_update_config(config_path: str, update_conf: UpdateConfig) -> None:
     try:
         with os.fdopen(fd, "w") as f:
             yaml.safe_dump(raw, f, default_flow_style=False, sort_keys=True)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp_path, abs_path)
     except Exception:
         try:

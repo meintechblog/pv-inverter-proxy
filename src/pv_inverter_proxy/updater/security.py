@@ -106,7 +106,15 @@ AuditOutcome = Literal[
 # the audit log).
 # ---------------------------------------------------------------------------
 
-_audit_lock: asyncio.Lock = asyncio.Lock()
+_audit_lock: asyncio.Lock | None = None
+
+
+def _get_audit_lock() -> asyncio.Lock:
+    """Lazy-init the audit lock inside a running event loop (Python 3.10+ safe)."""
+    global _audit_lock
+    if _audit_lock is None:
+        _audit_lock = asyncio.Lock()
+    return _audit_lock
 
 
 # ---------------------------------------------------------------------------
@@ -404,7 +412,7 @@ async def audit_log_append(
     }
     line = json.dumps(payload, separators=(",", ":"), ensure_ascii=False) + "\n"
 
-    async with _audit_lock:
+    async with _get_audit_lock():
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, _append_audit_line, path, line)
 

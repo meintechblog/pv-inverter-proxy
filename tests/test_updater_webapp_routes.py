@@ -292,6 +292,8 @@ def fresh_rate_limiter(monkeypatch):
     clock = _FakeClock()
     limiter = _security_mod.RateLimiter(clock=clock)
     monkeypatch.setattr(_webapp_mod, "_update_rate_limiter", limiter)
+    check_limiter = _security_mod.RateLimiter(clock=clock)
+    monkeypatch.setattr(_webapp_mod, "_check_rate_limiter", check_limiter)
     return limiter, clock
 
 

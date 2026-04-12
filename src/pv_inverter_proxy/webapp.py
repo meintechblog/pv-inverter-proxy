@@ -67,11 +67,10 @@ from dataclasses import asdict as _asdict_update_config
 log = structlog.get_logger()
 
 # Phase 46 D-12/D-13/D-14: single module-level sliding-window rate limiter
-# shared by POST /api/update/start and POST /api/update/rollback. A second
-# attempt from the same source IP within 60s of any prior call (accepted or
-# rejected) yields 429 + Retry-After. Tests can monkeypatch this attribute
-# to a fresh RateLimiter(clock=FakeClock()) for deterministic behavior.
+# Separate rate limiters: install/rollback share one 60s slot, check-now has
+# its own. Prevents "Jetzt prüfen" from burning the install rate limit.
 _update_rate_limiter = RateLimiter()  # type: RateLimiter
+_check_rate_limiter = RateLimiter()   # type: RateLimiter
 
 
 # SunSpec register layout for the register viewer.
@@ -594,7 +593,7 @@ async def update_start_handler(request: web.Request) -> web.Response:
     except OSError as exc:
         log.error("update_start_write_failed", error=str(exc))
         return await _log_and_respond(
-            request, None, 500, {"error": f"trigger_write_failed: {exc}"}
+            request, "500_trigger_write_failed", 500, {"error": f"trigger_write_failed: {exc}"}
         )
 
     log.info(
@@ -679,7 +678,7 @@ async def update_rollback_handler(request: web.Request) -> web.Response:
     except OSError as exc:
         log.error("rollback_write_failed", error=str(exc))
         return await _log_and_respond(
-            request, None, 500, {"error": f"trigger_write_failed: {exc}"}
+            request, "500_trigger_write_failed", 500, {"error": f"trigger_write_failed: {exc}"}
         )
 
     log.info("update_rollback_accepted", nonce=payload.nonce)
@@ -739,7 +738,7 @@ async def update_check_handler(request: web.Request) -> web.Response:
     /api/update/start and /api/update/rollback via the shared module-level
     limiter to avoid GitHub API thrash.
     """
-    accepted, retry_after = _update_rate_limiter.check(request.remote or "unknown")
+    accepted, retry_after = _check_rate_limiter.check(request.remote or "unknown")
     if not accepted:
         return await _log_and_respond(
             request,
