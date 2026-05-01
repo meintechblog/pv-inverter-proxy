@@ -1868,6 +1868,33 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
 
     control.set_device_clamp(device_id, min_pct, max_pct)
 
+    # Virtual aggregate: clamp applies to the whole Fronius proxy. Update the
+    # global clamp_min/max_pct (read by proxy.async_setValues to clip Venus OS
+    # writes), re-clamp the current limit, and trigger an immediate
+    # distribution so the limit takes effect now — not only on the next
+    # Venus OS write.
+    if device_id == "virtual":
+        control.clamp_min_pct = min_pct
+        control.clamp_max_pct = max_pct
+        floor = max(min_pct, 1)
+        ceiling = max_pct
+        current_raw = control.wmaxlimpct_raw if control.wmaxlimpct_raw > 0 else 100
+        clamped = max(floor, min(ceiling, current_raw))
+        control.update_wmaxlimpct(clamped)
+        control.update_wmaxlim_ena(1)
+        control.save_ui_state()
+        control.save_last_limit()
+        if app_ctx.override_log is not None:
+            app_ctx.override_log.append(
+                "webapp", "clamp",
+                control.wmaxlimpct_float,
+                detail=f"min={min_pct}% max={max_pct}%",
+            )
+        distributor = getattr(app_ctx, "distributor", None)
+        if distributor is not None:
+            await distributor.distribute(control.wmaxlimpct_float, True)
+        return web.json_response({"success": True})
+
     # Find the plugin for this device
     plugin = None
     ds = app_ctx.devices.get(device_id)
@@ -2329,11 +2356,14 @@ async def virtual_snapshot_handler(request: web.Request) -> web.Response:
 
     total_power_w, total_rated_w, contributions = _build_virtual_contributions(app_ctx, config)
 
-    # Include control limits from virtual inverter config
-    vi = config.virtual_inverter
+    # Include control limits from the virtual clamp stored in ControlState.
+    # (VirtualInverterConfig only carries the display name — the actual clamp
+    # lives in control_state.device_clamps["virtual"], populated by
+    # /api/power-clamp.)
+    cmin, cmax = app_ctx.control_state.get_device_clamp("virtual")
     control = {
-        "clamp_min_pct": getattr(vi, "clamp_min_pct", 0),
-        "clamp_max_pct": getattr(vi, "clamp_max_pct", 100),
+        "clamp_min_pct": cmin,
+        "clamp_max_pct": cmax,
     }
 
     return web.json_response({
