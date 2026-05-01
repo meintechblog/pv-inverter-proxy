@@ -136,7 +136,7 @@ Full details: `.planning/milestones/v7.0-ROADMAP.md`
 - [ ] **Phase 43: Blue-Green Layout + Boot Recovery** - Safety foundation: release directories, symlink layout, boot-time recovery hook, systemd hardening (no user-visible changes)
 - [ ] **Phase 44: Passive Version Badge** - First user-visible feature: GitHub API polling, version display, orange badge on "System" entry when update available
 - [x] **Phase 45: Privileged Updater Service** - Root helper via path-unit + oneshot: trigger file protocol, git ops, backup, health check, rollback (CLI-only, no UI wiring) (completed 2026-04-10)
-- [ ] **Phase 46: UI Wiring & End-to-End Flow** - Confirmation modal, progress view, WebSocket update stream, CSRF, rate limit, rollback button -- connects backend to browser
+- [x] **Phase 46: UI Wiring & End-to-End Flow** - Confirmation modal, progress view, WebSocket update stream, CSRF, rate limit, rollback button -- connects backend to browser (completed 2026-04-11)
 - [ ] **Phase 47: Polish, Scheduler UI & Hardening** - Helper heartbeat banner, update history, scheduler settings UI, optional GPG verification, structured logging
 
 ## Phase Details
@@ -218,5 +218,5 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47
 | 43. Blue-Green Layout + Boot Recovery | 0/? | Not started | - |
 | 44. Passive Version Badge | 3/3 | Code-complete, pending human-verify | 2026-04-10 |
 | 45. Privileged Updater Service | 5/5 | Complete   | 2026-04-10 |
-| 46. UI Wiring & End-to-End Flow | 0/? | Not started | - |
+| 46. UI Wiring & End-to-End Flow | 5/5 | Complete   | 2026-04-12 |
 | 47. Polish, Scheduler UI & Hardening | 0/? | Not started | - |

@@ -9,6 +9,7 @@ offline failover, and disable handling.
 """
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass, field
 
@@ -149,6 +150,13 @@ class PowerLimitDistributor:
         waterfall_budget = max(0.0, allowed_watts - non_throttle_rated)
         targets = self._waterfall(waterfall_budget)
 
+        # Reclaim slack from underproducing low-score devices and hand it
+        # to high-score (fast-responding proportional) devices. Without this,
+        # the waterfall reserves the *rated* power of small inverters even
+        # if they are MPPT-limited far below their rated value, causing
+        # the SolarEdge to underutilize the user's ceiling.
+        reclaimed_slack = self._reclaim_slack_into_targets(targets)
+
         self._log.info(
             "distribute",
             limit_pct=limit_pct,
@@ -156,6 +164,7 @@ class PowerLimitDistributor:
             allowed_watts=round(allowed_watts, 1),
             non_throttle_rated=non_throttle_rated,
             waterfall_budget=round(waterfall_budget, 1),
+            reclaimed_slack_w=round(reclaimed_slack, 1),
             targets={k: round(v, 2) for k, v in targets.items()},
         )
 
@@ -367,13 +376,141 @@ class PowerLimitDistributor:
             "current_limit_pct": ds.current_limit_pct,
         }
 
+    # Hysteresis bounds for slack reallocation
+    _SLACK_MIN_PER_DEVICE_W = 50.0   # ignore <50W slack per device (noise)
+    _SLACK_MIN_TOTAL_W = 100.0       # don't bother reallocating <100W total
+    _SLACK_HEADROOM_FLOOR_W = 50.0   # device must have >=50W headroom to absorb
+
+    def _read_actual_power_w(self, device_id: str) -> float | None:
+        """Return current AC output of a device from its collector snapshot.
+
+        Used by the slack reallocator to detect underproducing devices.
+        Returns None if no snapshot is available yet (boot, transient).
+        """
+        managed = getattr(self._registry, "_managed", {})
+        md = managed.get(device_id)
+        if md is None:
+            return None
+        device_state = getattr(md, "device_state", None)
+        collector = getattr(device_state, "collector", None) if device_state else None
+        snap = getattr(collector, "last_snapshot", None) if collector else None
+        if not snap:
+            return None
+        inv = snap.get("inverter") or {}
+        p = inv.get("ac_power_w")
+        if isinstance(p, (int, float)) and p >= 0:
+            return float(p)
+        return None
+
+    def _reclaim_slack_into_targets(self, targets: dict[str, float]) -> float:
+        """Reclaim slack from underproducing non-absorber devices.
+
+        The absorber pool = high-score proportional devices (e.g. SolarEdge):
+        fastest responders, capable of fractional throttling, can absorb
+        extra budget. Slack source pool = everyone else (binary devices,
+        low-score small inverters): when their actual AC output is below
+        their waterfall target (MPPT-limited / partial shade), the
+        difference becomes slack and is handed to the absorbers so the
+        aggregate hits the user-chosen ceiling exactly.
+
+        A device cannot absorb its own slack — feeding back its shortfall
+        as extra budget is meaningless because the device is already
+        producing less than its target.
+
+        Mutates ``targets`` in place. Returns total slack watts reallocated.
+        """
+        if not targets:
+            return 0.0
+
+        # Determine absorber pool: devices the waterfall already throttled
+        # below 100% — they have headroom and can swallow extra budget.
+        # Devices sitting at 100% target are at the front of the waterfall
+        # (= "protected" small inverters); their (rated - actual) shortfall
+        # is the slack source. Binary devices are excluded as absorbers
+        # because their on/off semantics don't accept fractional headroom.
+        # Sort absorbers by score descending: fastest responder gets slack
+        # first.
+        absorbers = sorted(
+            (
+                self._device_states[device_id]
+                for device_id, pct in targets.items()
+                if pct < 100.0
+                and device_id in self._device_states
+                and not self._is_binary_device(self._device_states[device_id])
+            ),
+            key=lambda ds: (-self._effective_score(ds), ds.device_id),
+        )
+        if not absorbers:
+            return 0.0
+        absorber_ids = {ds.device_id for ds in absorbers}
+
+        # Build a target-watts table and compute slack from non-absorbers.
+        target_w_by_id: dict[str, float] = {}
+        slack_w = 0.0
+        for device_id, pct in targets.items():
+            ds = self._device_states.get(device_id)
+            if ds is None:
+                continue
+            target_w = (pct / 100.0) * ds.entry.rated_power
+            target_w_by_id[device_id] = target_w
+            if device_id in absorber_ids:
+                continue
+            actual_w = self._read_actual_power_w(device_id)
+            if actual_w is None:
+                continue
+            shortfall = target_w - actual_w
+            if shortfall > self._SLACK_MIN_PER_DEVICE_W:
+                slack_w += shortfall
+
+        if slack_w < self._SLACK_MIN_TOTAL_W:
+            return 0.0
+
+        reallocated = 0.0
+        for ds in absorbers:
+            if slack_w <= 0:
+                break
+            current_target_w = target_w_by_id.get(ds.device_id, 0.0)
+            headroom = ds.entry.rated_power - current_target_w
+            if headroom <= self._SLACK_HEADROOM_FLOOR_W:
+                continue
+            absorb = min(slack_w, headroom)
+            new_target_w = current_target_w + absorb
+            new_pct = min(100.0, (new_target_w / ds.entry.rated_power) * 100.0)
+            targets[ds.device_id] = round(new_pct, 1)
+            target_w_by_id[ds.device_id] = new_target_w
+            slack_w -= absorb
+            reallocated += absorb
+
+        return reallocated
+
     async def redistribute(self) -> None:
         """Re-run distribution with last known global limit.
 
-        Called on device online/offline change.
+        Called on device online/offline change and periodically by the
+        slack-tracking refresh loop so the SolarEdge picks up unused
+        budget from MPPT-limited small inverters as conditions shift.
         """
         if self._enabled:
             await self.distribute(self._global_limit_pct, True)
+
+    async def slack_refresh_loop(self, interval_s: float = 5.0) -> None:
+        """Periodically redistribute so slack reallocation tracks the sun.
+
+        Each tick re-runs distribute() with the same global limit. The
+        slack reallocator picks up new actual-vs-target shortfalls and
+        hands them to high-score absorbers. This keeps the aggregate
+        output at the user-chosen ceiling even as small inverters'
+        production rises and falls with cloud cover.
+        """
+        while True:
+            try:
+                await asyncio.sleep(interval_s)
+                if self._enabled:
+                    await self.redistribute()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self._log.warning("slack_refresh_error", error=str(exc))
 
     def _is_binary_device(self, ds: DeviceLimitState) -> bool:
         """Check if device uses binary (relay on/off) throttling."""

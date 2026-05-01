@@ -169,13 +169,28 @@ class ControlState:
     _UI_STATE_FILE = "/etc/pv-inverter-proxy/ui_state.json"
 
     def _load_ui_state(self) -> None:
-        """Load persistent UI state (clamp values, lock)."""
+        """Load persistent UI state (clamp values, webapp limit, lock).
+
+        Webapp-driven limits are restored unconditionally on boot — the user
+        explicitly chose them and expects them to survive restarts. Venus
+        OS-driven limits use last_limit.json with a TTL instead.
+        """
         try:
             with open(self._UI_STATE_FILE) as f:
                 data = json.load(f)
             self.clamp_min_pct = data.get("clamp_min_pct", 0)
             self.clamp_max_pct = data.get("clamp_max_pct", 100)
             self.device_clamps = data.get("device_clamps", {})
+            # Restore webapp-driven enable + setpoint so the throttle
+            # survives service restarts.
+            if data.get("wmaxlim_ena") == 1 and data.get("wmaxlimpct_raw", 0) > 0:
+                self.wmaxlim_ena = 1
+                self.wmaxlimpct_raw = int(data["wmaxlimpct_raw"])
+                self.last_source = data.get("last_source", "webapp")
+                logger.info(
+                    "Restored webapp limit from ui_state: %d%% (source=%s)",
+                    self.wmaxlimpct_raw, self.last_source,
+                )
             # Restore lock only if not expired
             if data.get("is_locked") and data.get("lock_ts", 0) > 0:
                 age = time.time() - data["lock_ts"]
@@ -188,13 +203,16 @@ class ControlState:
             pass
 
     def save_ui_state(self) -> None:
-        """Persist clamp + lock state for restart recovery."""
+        """Persist clamp + webapp limit + lock state for restart recovery."""
         try:
             with open(self._UI_STATE_FILE, "w") as f:
                 json.dump({
                     "clamp_min_pct": self.clamp_min_pct,
                     "clamp_max_pct": self.clamp_max_pct,
                     "device_clamps": self.device_clamps,
+                    "wmaxlim_ena": self.wmaxlim_ena,
+                    "wmaxlimpct_raw": self.wmaxlimpct_raw,
+                    "last_source": self.last_source,
                     "is_locked": self.is_locked,
                     "lock_ts": time.time() if self.is_locked else 0,
                 }, f)

@@ -505,6 +505,17 @@ def main():
 
         healthy_flag_task = asyncio.create_task(_healthy_flag_watcher(app_ctx))
 
+        # Periodic redistribute so slack reallocation tracks changing
+        # production (e.g. small inverters ramping up/down with cloud
+        # cover) while the user-chosen ceiling stays exact.
+        if app_ctx.distributor is not None:
+            slack_refresh_task = asyncio.create_task(
+                app_ctx.distributor.slack_refresh_loop(interval_s=5.0),
+                name="distributor-slack-refresh",
+            )
+        else:
+            slack_refresh_task = None
+
         # Start health heartbeat task
         heartbeat_task = asyncio.create_task(_health_heartbeat(app_ctx))
 
@@ -546,12 +557,15 @@ def main():
         log.info("graceful_shutdown_starting")
 
         # Cancel periodic tasks (Phase 44: include update_scheduler_task)
-        for task in (
+        cancellable_tasks = [
             heartbeat_task,
             device_list_task,
             healthy_flag_task,
             update_scheduler_task,
-        ):
+        ]
+        if slack_refresh_task is not None:
+            cancellable_tasks.append(slack_refresh_task)
+        for task in cancellable_tasks:
             task.cancel()
             try:
                 await task

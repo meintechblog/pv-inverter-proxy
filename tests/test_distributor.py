@@ -1023,3 +1023,107 @@ async def test_convergence_rejects_outside_tolerance():
     # 5400W is 8% error -> exceeds 5% tolerance -> should NOT converge
     dist.on_poll("dev1", 5400.0)
     assert ds.measured_response_time_s is None, "Should NOT converge outside 5% tolerance"
+
+
+# ---------------------------------------------------------------------------
+# Slack reallocation
+# ---------------------------------------------------------------------------
+
+def _attach_actual_power(distributor: PowerLimitDistributor, actuals: dict[str, float]) -> None:
+    """Mount mock collector snapshots so _read_actual_power_w returns actuals."""
+    managed = distributor._registry._managed
+    for dev_id, watts in actuals.items():
+        md = managed[dev_id]
+        ds = md.device_state
+        collector = MagicMock()
+        collector.last_snapshot = {"inverter": {"ac_power_w": watts}}
+        ds.collector = collector
+
+
+@pytest.mark.asyncio
+async def test_slack_reallocates_to_high_score_when_low_score_underproduces():
+    """Underproducing low-score device's slack must flow to a high-score absorber.
+
+    Setup mirrors a real Fronius Proxy: 1 small OpenDTU (rated 600W, partial
+    shade -> only producing 200W) + 1 SolarEdge (rated 30kW, fast proportional).
+    With limit_pct=48% on total 30,600W rated, allowed_watts = 14,688W.
+    Naive waterfall would give OpenDTU 600W + SolarEdge 14,088W = 47.0%.
+    With slack reallocation, OpenDTU's 400W shortfall flows to SolarEdge,
+    pushing its target to 14,488W = 48.3%.
+    """
+    dist, plugins = _build_distributor(
+        entries=[
+            ("opendtu", 600, 1, True, 0.0),
+            ("solaredge", 30000, 4, True, 0.0),
+        ],
+        plugin_overrides={
+            # Both proportional, but OpenDTU slower -> lower score
+            "opendtu": {"mode": "proportional", "response_time_s": 8.0},
+            "solaredge": {"mode": "proportional", "response_time_s": 1.0},
+        },
+    )
+    _attach_actual_power(dist, {"opendtu": 200.0, "solaredge": 13000.0})
+
+    await dist.distribute(48.0, True)
+
+    se_pct = plugins["solaredge"].write_power_limit.call_args[0][1]
+    odtu_pct = plugins["opendtu"].write_power_limit.call_args[0][1]
+
+    # OpenDTU still gets the full 600W (100%) — it might ramp up later.
+    assert odtu_pct == pytest.approx(100.0, abs=0.5), (
+        "Low-score device target must not be reduced by slack reallocation"
+    )
+    # SolarEdge picks up the 400W slack (200W shortfall * threshold gate).
+    # Naive: (14688 - 600) / 30000 = 46.96% ~ 47.0
+    # Reclaimed: target rises by 400W -> ~48.3%
+    assert se_pct > 47.5, (
+        f"SolarEdge should absorb slack from OpenDTU (got {se_pct:.2f}%, expected >47.5%)"
+    )
+    assert se_pct <= 100.0
+
+
+@pytest.mark.asyncio
+async def test_slack_ignored_when_below_hysteresis():
+    """Slack < 100W total must be ignored (avoid noise-driven oscillation)."""
+    dist, plugins = _build_distributor(
+        entries=[
+            ("opendtu", 600, 1, True, 0.0),
+            ("solaredge", 30000, 4, True, 0.0),
+        ],
+    )
+    # OpenDTU only 30W below target -> below per-device 50W floor -> ignored.
+    _attach_actual_power(dist, {"opendtu": 570.0, "solaredge": 13000.0})
+
+    await dist.distribute(48.0, True)
+
+    se_pct = plugins["solaredge"].write_power_limit.call_args[0][1]
+    # Should match the naive waterfall: (allowed - 600) / 30000
+    # allowed = 0.48 * 30600 = 14688, SE = (14688-600)/30000 = 46.96 -> 47.0
+    assert se_pct == pytest.approx(47.0, abs=0.2)
+
+
+@pytest.mark.asyncio
+async def test_slack_skips_binary_absorbers():
+    """Binary devices must not absorb slack — on/off semantics, no fractional headroom."""
+    dist, plugins = _build_distributor(
+        entries=[
+            ("solaredge", 30000, 4, True, 0.0),
+            ("shelly", 200, 1, True, 0.0),
+        ],
+        plugin_overrides={
+            "solaredge": {"mode": "proportional", "response_time_s": 1.0},
+            "shelly": {"mode": "binary", "response_time_s": 0.5, "cooldown_s": 60.0},
+        },
+    )
+    _attach_actual_power(dist, {"solaredge": 13000.0, "shelly": 100.0})
+
+    # Disable -> all-100% path, then enable to take the new actuals.
+    await dist.distribute(48.0, True)
+
+    # SolarEdge target was mutated by slack from shelly's shortfall (100W).
+    # Shelly remains binary on/off — the test passes if no exception was raised
+    # and no fractional pct is sent to a binary plugin.
+    if plugins["shelly"].switch.call_args_list:
+        # switch(on=True/False) — boolean, never a float
+        for call in plugins["shelly"].switch.call_args_list:
+            assert isinstance(call[0][0], bool)

@@ -1882,6 +1882,10 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
         clamped = max(floor, min(ceiling, current_raw))
         control.update_wmaxlimpct(clamped)
         control.update_wmaxlim_ena(1)
+        # Tag the source so persisted state files record it correctly
+        # and the boot-time restore paths re-apply it.
+        control.last_source = "webapp"
+        control.last_change_ts = time.time()
         control.save_ui_state()
         control.save_last_limit()
         if app_ctx.override_log is not None:
