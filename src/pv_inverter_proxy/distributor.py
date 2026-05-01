@@ -114,13 +114,18 @@ class PowerLimitDistributor:
                         await self._send_limit(ds.device_id, 100.0, enable=False, force=True)
             return
 
-        # Calculate total rated power of ALL enabled devices with rated_power > 0
-        # (including monitoring-only, per user decision "Leistung zaehlt mit")
-        # Exclude binary devices in startup grace period (not yet producing)
+        # Calculate total rated power of devices that are part of the Fronius
+        # Proxy aggregate (aggregate=True). Devices with aggregate=False are
+        # outside the Fronius scope (e.g. a separate inverter on the same
+        # network) — they do not count toward the limit denominator and are
+        # not throttled by the Fronius limit. This matches the UI gauge,
+        # which computes the dropdown percentage against the same set.
+        # Exclude binary devices in startup grace period (not yet producing).
         total_rated = sum(
             ds.entry.rated_power
             for ds in self._device_states.values()
-            if ds.entry.enabled and ds.entry.rated_power > 0
+            if ds.entry.enabled and ds.entry.aggregate
+            and ds.entry.rated_power > 0
             and not self._is_in_startup(ds)
         )
         if total_rated <= 0:
@@ -128,14 +133,16 @@ class PowerLimitDistributor:
 
         allowed_watts = (limit_pct / 100.0) * total_rated
 
-        # Subtract non-throttle-eligible devices' rated power from the
-        # waterfall budget. These devices produce at ~100% and can't be
-        # controlled, so their output must be deducted from the fleet
-        # budget before distributing to controllable devices.
+        # Subtract non-throttle-eligible aggregate devices' rated power from
+        # the waterfall budget. These devices are part of the aggregate but
+        # produce at ~100% and can't be controlled, so their output must be
+        # deducted from the fleet budget before distributing to controllable
+        # devices.
         non_throttle_rated = sum(
             ds.entry.rated_power
             for ds in self._device_states.values()
-            if ds.entry.enabled and ds.entry.rated_power > 0
+            if ds.entry.enabled and ds.entry.aggregate
+            and ds.entry.rated_power > 0
             and not ds.entry.throttle_enabled
             and not self._is_in_startup(ds)
         )
@@ -196,11 +203,14 @@ class PowerLimitDistributor:
 
         Returns {device_id: limit_pct} for all throttle-eligible devices.
         """
-        # Collect throttle-eligible: throttle_enabled=True, online, rated_power > 0
-        # Exclude binary devices in startup grace period
+        # Collect throttle-eligible: aggregate=True, throttle_enabled=True,
+        # online, rated_power > 0. Non-aggregate devices are outside the
+        # Fronius Proxy scope and must not be throttled by its limit.
+        # Exclude binary devices in startup grace period.
         eligible = [
             ds for ds in self._device_states.values()
-            if ds.entry.throttle_enabled and ds.is_online and ds.entry.rated_power > 0
+            if ds.entry.aggregate
+            and ds.entry.throttle_enabled and ds.is_online and ds.entry.rated_power > 0
             and not self._is_in_startup(ds)
         ]
 
@@ -429,9 +439,14 @@ class PowerLimitDistributor:
         return sorted(device_ids, key=score_key)
 
     def _is_throttle_eligible(self, ds: DeviceLimitState) -> bool:
-        """Check if a device is eligible for throttle commands."""
+        """Check if a device is eligible for throttle commands.
+
+        Non-aggregate devices are outside the Fronius Proxy scope and are
+        never throttled by the Fronius limit.
+        """
         return (
-            ds.entry.throttle_enabled
+            ds.entry.aggregate
+            and ds.entry.throttle_enabled
             and ds.is_online
             and ds.entry.rated_power > 0
         )
