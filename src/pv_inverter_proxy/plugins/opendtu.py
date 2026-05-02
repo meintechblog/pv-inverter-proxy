@@ -342,7 +342,10 @@ class OpenDTUPlugin(InverterPlugin):
         form_data = {"data": json.dumps(payload)}
 
         try:
-            async with self._session.post(url, data=form_data) as resp:
+            async with self._session.post(
+                url, data=form_data,
+                timeout=aiohttp.ClientTimeout(total=3),
+            ) as resp:
                 await resp.json()
 
             self._last_limit_ts = time.monotonic()
@@ -422,7 +425,10 @@ class OpenDTUPlugin(InverterPlugin):
 
         form_data = {"data": json.dumps(payload)}
         try:
-            async with self._session.post(url, data=form_data) as resp:
+            async with self._session.post(
+                url, data=form_data,
+                timeout=aiohttp.ClientTimeout(total=3),
+            ) as resp:
                 await resp.json()
             log.info("opendtu_power_command", serial=self.serial, action=action)
             return WriteResult(success=True)

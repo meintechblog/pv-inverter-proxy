@@ -250,7 +250,9 @@ class TestConnect:
 
             await plugin.connect()
 
-            MockClient.assert_called_once_with(DEFAULT_HOST, port=DEFAULT_PORT)
+            MockClient.assert_called_once_with(
+                DEFAULT_HOST, port=DEFAULT_PORT, timeout=2, retries=1,
+            )
             mock_instance.connect.assert_awaited_once()
             assert plugin._client is mock_instance
 

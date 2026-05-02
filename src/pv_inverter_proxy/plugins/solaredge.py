@@ -55,7 +55,14 @@ class SolarEdgePlugin(InverterPlugin):
         self._client: AsyncModbusTcpClient | None = None
 
     async def connect(self) -> None:
-        self._client = AsyncModbusTcpClient(self.host, port=self.port)
+        # Aggressive timeout/retry to keep clamp round-trips fast. Defaults
+        # of 3s × 3 retries can stall a single write up to 9s when SE has
+        # concurrent connections (Venus OS + our proxy + UI). Bound at
+        # 2s × 1 retry so the worst case per write is ~4s; combined with
+        # parallel writes in the distributor, total round-trip stays small.
+        self._client = AsyncModbusTcpClient(
+            self.host, port=self.port, timeout=2, retries=1,
+        )
         await self._client.connect()
         logger.info("Connected to SolarEdge at %s:%d", self.host, self.port)
 
