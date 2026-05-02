@@ -1876,12 +1876,19 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
     if device_id == "virtual":
         control.clamp_min_pct = min_pct
         control.clamp_max_pct = max_pct
-        floor = max(min_pct, 1)
-        ceiling = max_pct
-        current_raw = control.wmaxlimpct_raw if control.wmaxlimpct_raw > 0 else 100
-        clamped = max(floor, min(ceiling, current_raw))
-        control.update_wmaxlimpct(clamped)
-        control.update_wmaxlim_ena(1)
+        # The user's max dropdown is THE active limit, not just an upper
+        # bound on Venus OS writes. When they pick "Max" (100/0), release
+        # the throttle entirely — distributor sends 100% to all devices
+        # and the SolarEdge ramps back up. Otherwise the chosen ceiling is
+        # the setpoint.
+        full_release = (min_pct == 0 and max_pct >= 100)
+        if full_release:
+            control.update_wmaxlim_ena(0)
+            # Keep wmaxlimpct_raw at 100 so the readback is sane.
+            control.update_wmaxlimpct(100)
+        else:
+            control.update_wmaxlimpct(max_pct)
+            control.update_wmaxlim_ena(1)
         # Tag the source so persisted state files record it correctly
         # and the boot-time restore paths re-apply it.
         control.last_source = "webapp"
@@ -1890,13 +1897,15 @@ async def power_clamp_handler(request: web.Request) -> web.Response:
         control.save_last_limit()
         if app_ctx.override_log is not None:
             app_ctx.override_log.append(
-                "webapp", "clamp",
+                "webapp", "release" if full_release else "clamp",
                 control.wmaxlimpct_float,
                 detail=f"min={min_pct}% max={max_pct}%",
             )
         distributor = getattr(app_ctx, "distributor", None)
         if distributor is not None:
-            await distributor.distribute(control.wmaxlimpct_float, True)
+            await distributor.distribute(
+                control.wmaxlimpct_float, control.is_enabled,
+            )
         return web.json_response({"success": True})
 
     # Find the plugin for this device

@@ -5,6 +5,7 @@ translated for Fronius proxy serving.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import struct
 
@@ -170,16 +171,20 @@ class SolarEdgePlugin(InverterPlugin):
             if result.isError():
                 return WriteResult(success=False, error=f"Limit write failed: {result}")
 
-            # Step 3: Commit power control (register 61696 / 0xF100)
-            # Some SE30K units require the commit to fully apply the limit.
+            # Step 3: Commit power control (register 61696 / 0xF100).
             # The commit may timeout on TCP (concurrent connections) but the
-            # write still takes effect, so we tolerate errors here.
-            try:
-                await self._client.write_registers(
-                    61696, [1], device_id=self.unit_id,
-                )
-            except Exception:
-                pass  # Commit timeout is expected; limit still applies
+            # limit write still takes effect. Fire-and-forget via a
+            # background task so we don't stall the distributor 3-9s on
+            # pymodbus retry timeouts — this used to dominate the
+            # round-trip latency for clamp changes.
+            async def _fire_commit() -> None:
+                try:
+                    await self._client.write_registers(
+                        61696, [1], device_id=self.unit_id,
+                    )
+                except Exception:
+                    pass  # Commit timeout is expected; limit still applies
+            asyncio.create_task(_fire_commit(), name="se30k-commit")
 
             return WriteResult(success=True)
         except Exception as e:

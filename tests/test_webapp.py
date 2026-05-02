@@ -1000,3 +1000,102 @@ async def test_virtual_snapshot_no_throttle_config_fields(client, shared_ctx):
     data = await resp.json()
     assert "auto_throttle" not in data
     assert "auto_throttle_preset" not in data
+
+
+# ---------------------------------------------------------------------------
+# /api/power-clamp — virtual aggregate clamp behaviour
+# ---------------------------------------------------------------------------
+
+async def test_virtual_clamp_active_limit_sets_setpoint_to_max(client, shared_ctx):
+    """Picking max=50 must set wmaxlimpct_raw to 50 and enable limiting.
+
+    The dropdown's "max" is THE active limit, not a passive ceiling. If we
+    only stored max as clamp_max_pct and left wmaxlimpct_raw at its previous
+    value, the SolarEdge would keep its old setpoint after a clamp change.
+    """
+    cs = shared_ctx.control_state
+    cs.update_wmaxlimpct(70)  # simulate previous state
+
+    resp = await client.post(
+        "/api/power-clamp",
+        json={"device_id": "virtual", "min_pct": 0, "max_pct": 50},
+    )
+    assert resp.status == 200
+    body = await resp.json()
+    assert body["success"] is True
+
+    assert cs.clamp_max_pct == 50
+    assert cs.wmaxlim_ena == 1
+    assert cs.wmaxlimpct_raw == 50
+    assert cs.last_source == "webapp"
+
+
+async def test_virtual_clamp_release_to_max_disables_throttle(client, shared_ctx):
+    """min=0 max=100 must fully release: wmaxlim_ena=0 so distributor sends 100%.
+
+    Regression for: user picks 5 kW limit, then moves dropdown back to "Max",
+    SolarEdge stays throttled at 13% because the previous wmaxlimpct_raw was
+    preserved and ena stayed 1.
+    """
+    cs = shared_ctx.control_state
+    # Simulate previous active throttle at 16% (= 5 kW on 31.2 kW total)
+    cs.clamp_min_pct = 0
+    cs.clamp_max_pct = 16
+    cs.update_wmaxlimpct(16)
+    cs.update_wmaxlim_ena(1)
+
+    resp = await client.post(
+        "/api/power-clamp",
+        json={"device_id": "virtual", "min_pct": 0, "max_pct": 100},
+    )
+    assert resp.status == 200
+
+    # Throttle is fully released
+    assert cs.wmaxlim_ena == 0
+    assert cs.is_enabled is False
+    assert cs.clamp_min_pct == 0
+    assert cs.clamp_max_pct == 100
+    # Setpoint reset to 100 so the readback to Venus OS is sane
+    assert cs.wmaxlimpct_raw == 100
+
+
+async def test_virtual_clamp_min_only_keeps_throttle_active(client, shared_ctx):
+    """min>0 with max=100 still counts as an active clamp (floor enforcement)."""
+    cs = shared_ctx.control_state
+    resp = await client.post(
+        "/api/power-clamp",
+        json={"device_id": "virtual", "min_pct": 10, "max_pct": 100},
+    )
+    assert resp.status == 200
+
+    assert cs.clamp_min_pct == 10
+    assert cs.clamp_max_pct == 100
+    assert cs.wmaxlim_ena == 1
+    assert cs.wmaxlimpct_raw == 100  # ceiling
+
+
+async def test_virtual_clamp_round_trip_through_persistence(
+    tmp_path, client, shared_ctx, monkeypatch,
+):
+    """Setting + reading back must yield consistent state (no setpoint drift)."""
+    # Redirect persistence to a tmp file so the test doesn't touch
+    # /etc/pv-inverter-proxy/.
+    ui_state_path = tmp_path / "ui_state.json"
+    monkeypatch.setattr(shared_ctx.control_state, "_UI_STATE_FILE", str(ui_state_path))
+    last_limit_path = tmp_path / "last_limit.json"
+    monkeypatch.setattr("pv_inverter_proxy.control._LAST_LIMIT_FILE", str(last_limit_path))
+
+    # Sweep through a few realistic clamp values
+    for max_pct, expected_ena in [(80, 1), (50, 1), (30, 1), (16, 1), (100, 0)]:
+        resp = await client.post(
+            "/api/power-clamp",
+            json={"device_id": "virtual", "min_pct": 0, "max_pct": max_pct},
+        )
+        assert resp.status == 200
+        cs = shared_ctx.control_state
+        assert cs.clamp_max_pct == max_pct
+        assert cs.wmaxlim_ena == expected_ena
+        if expected_ena == 1:
+            assert cs.wmaxlimpct_raw == max_pct
+        else:
+            assert cs.wmaxlimpct_raw == 100  # "release" sentinel
