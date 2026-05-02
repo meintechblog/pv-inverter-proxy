@@ -170,6 +170,7 @@ class PowerLimitDistributor:
 
         binary_on: list[str] = []
         binary_off: list[str] = []
+        proportional_writes: list = []
         for device_id, target_pct in targets.items():
             ds = self._device_states[device_id]
             if self._is_binary_device(ds):
@@ -178,7 +179,16 @@ class PowerLimitDistributor:
                 else:
                     binary_off.append(device_id)
             else:
-                await self._send_limit(device_id, target_pct, enable=True)
+                proportional_writes.append(
+                    self._send_limit(device_id, target_pct, enable=True),
+                )
+
+        # Proportional writes: fire in parallel so total round-trip latency
+        # is max(per-device), not sum. Without this, a clamp change waits
+        # for SE + 2x OpenDTU + Shelly sequentially and a single slow plugin
+        # (e.g. OpenDTU HTTP gateway) dominates the whole round-trip.
+        if proportional_writes:
+            await asyncio.gather(*proportional_writes, return_exceptions=True)
 
         # Binary OFF: send immediately (throttle)
         for device_id in binary_off:
@@ -226,10 +236,19 @@ class PowerLimitDistributor:
         if not eligible:
             return {}
 
-        # Sort ascending: low score gets budget first, high score throttled first
+        # Sort ascending: low score gets budget first, high score throttled
+        # first. Tie-break by rated_power ASCENDING — smaller devices are
+        # "protected" so they always get their full rated budget before any
+        # large absorber. Without this, two equal-score devices would
+        # tie-break alphabetically by id and a small OpenDTU could be
+        # starved by the SolarEdge with the lower-sorting hex id.
         sorted_eligible = sorted(
             eligible,
-            key=lambda ds: (self._effective_score(ds), ds.device_id),
+            key=lambda ds: (
+                self._effective_score(ds),
+                ds.entry.rated_power,
+                ds.device_id,
+            ),
         )
 
         result: dict[str, float] = {}

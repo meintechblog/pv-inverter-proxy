@@ -1127,3 +1127,73 @@ async def test_slack_skips_binary_absorbers():
         # switch(on=True/False) — boolean, never a float
         for call in plugins["shelly"].switch.call_args_list:
             assert isinstance(call[0][0], bool)
+
+
+@pytest.mark.asyncio
+async def test_waterfall_tiebreak_by_rated_power_protects_small():
+    """When two devices tie on score, the smaller-rated one must come first.
+
+    Regression: two proportional devices with equal effective_score (same
+    measured response time) tie-broke alphabetically by hex device_id.
+    The SolarEdge (id "5303...") would consume the entire waterfall budget
+    before a smaller OpenDTU (id "cce...") got anything, leaving the
+    OpenDTU starved at 0% target despite having only 600 W rated.
+    """
+    dist, plugins = _build_distributor(
+        entries=[
+            # Same score (proportional, response 1s) -> tie on score.
+            ("se30k_aaa", 30000, 4, True, 0.0),  # big, low-sorting id
+            ("opendtu_zzz", 600, 2, True, 0.0),  # small, high-sorting id
+        ],
+        plugin_overrides={
+            "se30k_aaa": {"mode": "proportional", "response_time_s": 1.0},
+            "opendtu_zzz": {"mode": "proportional", "response_time_s": 1.0},
+        },
+    )
+    # Limit large enough that the small one fits at 100% with budget
+    # remaining for the big one. allowed = 0.20 * 30600 = 6120 W.
+    await dist.distribute(20.0, True)
+
+    # Find the calls and verify the small device got 100%
+    odtu_pct = plugins["opendtu_zzz"].write_power_limit.call_args[0][1]
+    se_pct = plugins["se30k_aaa"].write_power_limit.call_args[0][1]
+
+    assert odtu_pct == pytest.approx(100.0, abs=0.5), (
+        f"Small OpenDTU must be protected at 100% (got {odtu_pct:.1f}%)"
+    )
+    # Big one absorbs the rest: (6120 - 600) / 30000 = 18.4%
+    assert se_pct == pytest.approx(18.4, abs=0.5)
+
+
+@pytest.mark.asyncio
+async def test_distribute_writes_proportional_devices_in_parallel():
+    """Multiple proportional writes must fire concurrently, not sequentially.
+
+    Mock each plugin's write_power_limit with a small sleep; total wall
+    time must be close to a single sleep, not the sum.
+    """
+    import time as _time
+
+    dist, plugins = _build_distributor(
+        entries=[
+            ("a", 1000, 1, True, 0.0),
+            ("b", 1000, 2, True, 0.0),
+            ("c", 1000, 3, True, 0.0),
+        ],
+    )
+    write_delay_s = 0.4
+    for plugin in plugins.values():
+        async def _slow_write(*args, **kwargs):
+            await asyncio.sleep(write_delay_s)
+            return MagicMock(success=True, error=None)
+        plugin.write_power_limit = AsyncMock(side_effect=_slow_write)
+
+    t0 = _time.monotonic()
+    await dist.distribute(50.0, True)
+    elapsed = _time.monotonic() - t0
+
+    # Sequential would be ~3 * 0.4 = 1.2s. Parallel ~ 0.4s + overhead.
+    assert elapsed < 0.9, (
+        f"Distribute should write devices in parallel; took {elapsed:.2f}s "
+        f"(sequential would be ~{3 * write_delay_s:.2f}s)"
+    )
