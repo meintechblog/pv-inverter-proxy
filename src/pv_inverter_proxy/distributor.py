@@ -106,13 +106,22 @@ class PowerLimitDistributor:
         self._enabled = enable
 
         if not enable:
-            # Disable: force-send 100% to all devices (skip dead-time + cooldown)
+            # Disable: force-send 100% to all devices (skip dead-time + cooldown).
+            # Run all writes concurrently so "Max release" returns as fast as
+            # the slowest single plugin, not the sum of all of them.
+            release_tasks = []
             for ds in self._device_states.values():
                 if self._is_throttle_eligible(ds):
                     if self._is_binary_device(ds):
-                        await self._send_binary_command(ds.device_id, turn_on=True, force=True)
+                        release_tasks.append(
+                            self._send_binary_command(ds.device_id, turn_on=True, force=True),
+                        )
                     else:
-                        await self._send_limit(ds.device_id, 100.0, enable=False, force=True)
+                        release_tasks.append(
+                            self._send_limit(ds.device_id, 100.0, enable=False, force=True),
+                        )
+            if release_tasks:
+                await asyncio.gather(*release_tasks, return_exceptions=True)
             return
 
         # Calculate total rated power of devices that are part of the Fronius
